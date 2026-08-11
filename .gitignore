@@ -1,0 +1,11 @@
+node_modules/
+
+# Generated at runtime: rendered tile cache, saved projects, world registry
+# and the synthetic test world. All reproducible, none of it belongs in git.
+data/cache/
+data/projects/
+data/testworld/
+data/worlds.json
+
+*.log
+.DS_Store

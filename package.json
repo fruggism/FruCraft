@@ -1,0 +1,38 @@
+{
+  "name": "cube-atlas",
+  "version": "1.0.0",
+  "description": "Mappa locale di mondi Minecraft Java Edition con layer vettoriali (strade, punti di interesse, aree) e archivio esportabile come libri di gioco",
+  "main": "server.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "node test/run-tests.js",
+    "start": "node server.js",
+    "textures": "node tools/make-textures.js",
+    "world": "node test/make-test-world.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fruggism/FruCraft.git"
+  },
+  "keywords": [
+    "minecraft",
+    "mappa",
+    "anvil",
+    "nbt",
+    "cartografia"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/fruggism/FruCraft/issues"
+  },
+  "homepage": "https://github.com/fruggism/FruCraft#readme",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "pngjs": "^7.0.0"
+  }
+}
