@@ -90,6 +90,18 @@ dentro la cartella `web/`.
 |---|---|---|
 | **Strade** | tracciati a vertici successivi, estendibili in un secondo momento | colore, spessore, tratteggio, colore/spessore del bordo, nome |
 | **Trasporti** | linee di trasporto pubblico (metro, bus…), anche adiacenti fra loro | colore, spessore, tratteggio, **stazioni condivise**: una stazione collegata a più linee fa fermare tutte allo stesso punto |
+
+   Disegnando una linea di trasporto, gli angoli scattano ogni 45°, passare
+   sopra una stazione esistente vi si aggancia automaticamente, e tornare col
+   disegno sul punto di partenza chiude la linea ad anello e la conclude da
+   sola. Se due linee corrono per un tratto sullo stesso percorso, l'app le
+   affianca in automatico (un avviso lo segnala) invece di sovrapporle in un
+   unico tratto indistinguibile. Le stazioni sono elementi indipendenti dalle
+   linee — *"🚉 Nuova stazione"*, nel pannello del layer trasporti, ne pianta
+   una prima ancora che qualunque linea ci passi; una stazione con due o più
+   linee diventa un'icona rettangolare con una striscia colorata per ogni
+   linea. *"📋 Elenco linee e stazioni"* apre la lista di ogni linea del layer
+   con le sue fermate in ordine.
 | **Punti di interesse** | un simbolo sul punto | forma, colore, dimensione, categoria (abitazione, negozio, istituzioni, fiume, montagna, lago…), descrizione |
 | **Note** | promemoria sulla mappa, per le cose da costruire | colore, dimensione, descrizione libera |
 | **Aree** | poligoni chiusi che delimitano zone | colore e opacità del riempimento, colore/spessore/tratteggio del bordo |
@@ -102,10 +114,12 @@ dentro la cartella `web/`.
    *Modifica nodi* per spostare i vertici, *Cancella* per eliminare cliccando.
    `Esc` annulla, `Canc` elimina l'elemento selezionato. I punti si spostano
    trascinandoli. Passando il mouse su un elemento compaiono le sue
-   informazioni; il nome può restare sempre visibile sulla mappa. Ogni elemento
-   può avere un **banner** (un'immagine PNG/JPEG/WebP caricata dal proprietà),
-   piantato come una bandierina sulla mappa e nell'anteprima al passaggio del
-   mouse.
+   informazioni; il nome può restare sempre visibile sulla mappa, e la sua
+   etichetta si trascina dove preferisci: se la allontani troppo dal punto a
+   cui appartiene compare una sottile linea nera che li ricollega. Ogni
+   elemento può avere un **banner** (un'immagine PNG/JPEG/WebP caricata dal
+   proprietà), piantato come una bandierina sulla mappa e nell'anteprima al
+   passaggio del mouse.
 6. **Esporta** — cinque formati, tutti con un'area da scegliere prima (vista
    attuale, o tutto il mondo generato):
    - **📖 Esporta per il Lettore** (`.camap.json`) — pensato per il Lettore: il

@@ -640,7 +640,7 @@ test('snapToStations aggancia un vertice vicino a una stazione e lo colloca esat
 });
 
 test('snapToStations non aggancia una stazione troppo lontana dal tracciato', () => {
-  const layer = { stations: [{ id: 'st1', x: 50, z: 8, name: 'Centrale' }] };
+  const layer = { stations: [{ id: 'st1', x: 50, z: 12, name: 'Centrale' }] };
   const { coords, stationIds } = atlasGeom.snapToStations(layer, [[0, 0], [50, 0], [100, 0]]);
   assertEqual(stationIds.length, 0, 'nessuna stazione agganciata oltre la tolleranza di disegno');
   assertEqual(coords[1].join(','), '50,0', 'il vertice resta dove è stato disegnato');

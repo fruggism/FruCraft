@@ -8,7 +8,7 @@
 
 import {
   state, el, escapeHtml, toast, toLatLng, fromLatLng, roundCoord,
-  debounce, newId, confirmDialog, promptDialog, pickDialog, download, slugify, setStatus, markDirty,
+  debounce, newId, confirmDialog, promptDialog, pickDialog, alertDialog, download, slugify, setStatus, markDirty,
   findLayer, selectedLayer, findFeature, selectedFeature, engine,
 } from './ui-core.js';
 
@@ -45,11 +45,10 @@ let placingStation = null;       // { layerId, featureId, name } while placing a
 // of creating an overlapping twin — this is how you deliberately attach a
 // new station to an existing one, or place one on an existing line.
 const STATION_CLICK_SNAP_BLOCKS = 10;
-// Tighter tolerance for auto-attaching while *drawing*: two lines merely
-// running near each other (an "adiacente" line 4-5 blocks over) must not
-// accidentally pick up every station along the other line's route — only a
-// line that genuinely passes through the stop should snap to it.
-const STATION_DRAW_SNAP_BLOCKS = 4;
+// Tolerance for auto-attaching while *drawing*: generous enough that a
+// normal, not pixel-perfect click on or near an existing stop reliably
+// catches it (this was too tight before and rarely triggered).
+const STATION_DRAW_SNAP_BLOCKS = 8;
 // Sideways nudge, in blocks, applied to each line sharing an exact stretch
 // of track with another line in the same layer, so "linee adiacenti" don't
 // render as one indistinguishable stroke. Purely visual.
@@ -305,14 +304,80 @@ function noteSvg(color, size) {
   </svg>`;
 }
 
-/** A shared transit station: a white dot with a dark core, distinct from any
- *  POI shape so it always reads as "stop", whatever colour the line is. */
-function stationSvg(size) {
-  const s = size, half = s / 2;
-  return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="${half}" cy="${half}" r="${half - 2}" fill="#ffffff" stroke="#1a1a1a" stroke-width="2.5"/>
-    <circle cx="${half}" cy="${half}" r="${Math.max(1, half - 6)}" fill="#1a1a1a"/>
+/** A shared transit station: a white dot with a dark core when only one (or
+ *  no) line stops there. Once a second line joins, it becomes a rounded
+ *  rectangle with one colour stripe per line — a real interchange, not just
+ *  a dot — so a glance at the icon says how many lines meet there and which. */
+function stationSvg(size, lineColors) {
+  if (!lineColors || lineColors.length <= 1) {
+    const s = size, half = s / 2;
+    return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="${half}" cy="${half}" r="${half - 2}" fill="#ffffff" stroke="#1a1a1a" stroke-width="2.5"/>
+      <circle cx="${half}" cy="${half}" r="${Math.max(1, half - 6)}" fill="${(lineColors && lineColors[0]) || '#1a1a1a'}"/>
+    </svg>`;
+  }
+  const [w, h] = stationIconSize(size, lineColors.length);
+  const pad = 2;
+  const stripeW = (w - pad * 2) / lineColors.length;
+  const stripes = lineColors.map((c, i) => (
+    `<rect x="${(pad + i * stripeW).toFixed(1)}" y="${pad}" width="${Math.ceil(stripeW)}" height="${h - pad * 2}" fill="${c}"/>`
+  )).join('');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+    ${stripes}
+    <rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="${h * 0.22}" fill="none" stroke="#1a1a1a" stroke-width="2"/>
   </svg>`;
+}
+
+/** Width/height of the station icon: a plain size×size square for a lone
+ *  stop, widened for each extra line so its stripe has room. Shared between
+ *  stationSvg (what to draw) and buildStationMarker (icon size/anchor), so
+ *  the two can never disagree about how big the icon actually is. */
+function stationIconSize(size, lineCount) {
+  if (lineCount <= 1) return [size, size];
+  return [Math.max(size * 1.6, size * 0.85 * lineCount), size];
+}
+
+// How far a label can be dragged from what it names before a thin line
+// appears to tie the two back together, in blocks.
+const LABEL_LEADER_BLOCKS = 20;
+// Default nudge for a point feature's label so it doesn't start on top of
+// its own icon; lines and areas default to dead centre, as before.
+const DEFAULT_POINT_LABEL_OFFSET = [10, 0];
+
+/** A label as a small draggable marker rather than a fixed tooltip, so it
+ *  can be moved clear of clutter by hand. Past LABEL_LEADER_BLOCKS from its
+ *  anchor, a thin line ties it back to whatever it labels. Returns the
+ *  marker and leader line for the caller to add to its group; `getOffset`/
+ *  `setOffset` read and persist the [dx, dz] world-unit offset wherever the
+ *  caller keeps it (feature.style.labelOffset, or a station's own field). */
+function buildLabel({ text, anchor, getOffset, setOffset, extraClass }) {
+  const anchorPt = fromLatLng(anchor);
+  const off = getOffset() || [0, 0];
+  const labelLatLng = toLatLng(anchorPt.x + off[0], anchorPt.z + off[1]);
+
+  const leader = L.polyline([anchor, labelLatLng], {
+    color: '#0a0a0a', weight: 1, opacity: Math.hypot(off[0], off[1]) > LABEL_LEADER_BLOCKS ? 0.6 : 0,
+    interactive: false,
+  });
+
+  const marker = L.marker(labelLatLng, {
+    icon: L.divIcon({
+      className: `ca-label-marker${extraClass ? ` ${extraClass}` : ''}`,
+      html: text,
+      iconSize: null,
+    }),
+    draggable: true,
+    keyboard: false,
+  });
+  marker.on('drag', () => leader.setLatLngs([anchor, marker.getLatLng()]));
+  marker.on('dragend', () => {
+    const p = fromLatLng(marker.getLatLng());
+    const dx = Math.round(p.x - anchorPt.x);
+    const dz = Math.round(p.z - anchorPt.z);
+    leader.setStyle({ opacity: Math.hypot(dx, dz) > LABEL_LEADER_BLOCKS ? 0.6 : 0 });
+    setOffset([dx, dz]);
+  });
+  return { marker, leader };
 }
 
 /** A banner drawn on the map, as a flag planted on the feature. */
@@ -427,13 +492,22 @@ function buildFeatureLayer(feature, layer) {
   }
 
   if (style.showName !== false && feature.name) {
-    primary.bindTooltip(escapeHtml(feature.name), {
-      permanent: true,
-      direction: isPointLayer(layer.type) ? 'right' : 'center',
-      offset: isPointLayer(layer.type) ? [Number(style.size) / 2 + 2 || 8, 0] : [0, 0],
-      className: `ca-label${layer.type === 'areas' ? ' big' : ''}`,
-      sticky: false,
+    const { marker: labelMarker, leader } = buildLabel({
+      text: escapeHtml(feature.name),
+      anchor: bannerAnchor(feature, layer),
+      // No stored offset yet: a point label starts just clear of its own
+      // icon instead of sitting right on top of it; lines/areas start dead
+      // centre, as the old fixed tooltip did.
+      getOffset: () => (feature.style && feature.style.labelOffset)
+        || (isPointLayer(layer.type) ? DEFAULT_POINT_LABEL_OFFSET : [0, 0]),
+      setOffset: (off) => {
+        feature.style = { ...(feature.style || {}), labelOffset: off };
+        markDirty();
+      },
+      extraClass: layer.type === 'areas' ? 'big' : '',
     });
+    group.addLayer(leader);
+    group.addLayer(labelMarker);
   }
 
   // Hover-only info bubble. It must not swallow clicks: it appears under the
@@ -589,18 +663,25 @@ function offsetTransitCoords(feature, layer) {
   });
 }
 
-/** Starts a one-off "click the map to place this station" interaction. */
+/** Starts a one-off "click the map to place this station" interaction.
+ *  `feature` is optional: a station is its own element (see linesAtStation),
+ *  not owned by any one line — pass no feature to plant a stop before any
+ *  line reaches it yet, and attach lines to it later ("Collega", or just by
+ *  drawing/extending a line past it). */
 async function beginPlaceStation(layer, feature) {
   const name = await promptDialog({
     title: 'Nuova stazione', message: 'Nome della stazione', confirmLabel: 'Crea',
   });
   if (name === null) return;
   setTool('select'); // cancel any active drawing tool; also clears placingStation
-  placingStation = { layerId: layer.id, featureId: feature.id, name: name.trim() || 'Stazione' };
+  placingStation = { layerId: layer.id, featureId: feature ? feature.id : null, name: name.trim() || 'Stazione' };
   const hint = el('draw-hint');
   hint.classList.remove('hidden');
-  hint.innerHTML = 'Clicca sulla mappa, idealmente sulla linea, per posizionare la stazione. '
-    + 'Clicca vicino a una stazione esistente per collegarti a quella. <kbd>Esc</kbd> per annullare.';
+  hint.innerHTML = feature
+    ? 'Clicca sulla mappa, idealmente sulla linea, per posizionare la stazione. '
+      + 'Clicca vicino a una stazione esistente per collegarti a quella. <kbd>Esc</kbd> per annullare.'
+    : 'Clicca sulla mappa per posizionare la stazione. '
+      + 'Clicca vicino a una stazione esistente per non duplicarla. <kbd>Esc</kbd> per annullare.';
 }
 
 function placeStationAt(latlng) {
@@ -608,43 +689,59 @@ function placeStationAt(latlng) {
   placingStation = null;
   el('draw-hint').classList.add('hidden');
   const layer = findLayer(target.layerId);
-  const feature = findFeature(target.layerId, target.featureId);
-  if (!layer || !feature) return;
+  const feature = target.featureId ? findFeature(target.layerId, target.featureId) : null;
+  if (!layer) return;
 
   const p = fromLatLng(latlng);
   let x = Math.round(p.x), z = Math.round(p.z);
 
   const existing = nearestStation(layer, x, z);
   if (existing) {
-    feature.stationIds = [...new Set([...(feature.stationIds || []), existing.id])];
-    toast(`Collegata alla stazione esistente "${existing.name || '(senza nome)'}"`, 'ok');
+    if (feature) {
+      feature.stationIds = [...new Set([...(feature.stationIds || []), existing.id])];
+      toast(`Collegata alla stazione esistente "${existing.name || '(senza nome)'}"`, 'ok');
+    } else {
+      toast(`"${existing.name || '(senza nome)'}" è già una stazione qui: non ne ho creata una seconda`, 'err');
+    }
   } else {
-    const onLine = nearestVertex(feature.coords, x, z);
+    const onLine = feature ? nearestVertex(feature.coords, x, z) : null;
     if (onLine) { x = onLine[0]; z = onLine[1]; }
     const station = { id: newId('st'), x, z, name: target.name, description: '' };
     layer.stations = layer.stations || [];
     layer.stations.push(station);
-    feature.stationIds = [...(feature.stationIds || []), station.id];
+    if (feature) feature.stationIds = [...(feature.stationIds || []), station.id];
     toast('Stazione aggiunta', 'ok');
   }
   markDirty();
   refreshStations(layer.id);
   Main.renderLayerList();
-  if (state.selectedFeature && state.selectedFeature.featureId === feature.id) refreshProps();
+  if (feature && state.selectedFeature && state.selectedFeature.featureId === feature.id) refreshProps();
 }
 
-/** A station marker, shared by every transit line that stops there. */
+/** The lines (features) that stop at a station, each with its own colour —
+ *  what decides whether the icon is a plain dot or a multi-line rectangle. */
+function linesAtStation(station, layer) {
+  return layer.features.filter((f) => (f.stationIds || []).includes(station.id));
+}
+
+/** A station marker, shared by every transit line that stops there — a
+ *  standalone element in its own right (see beginPlaceStation), not owned
+ *  by any one line. */
 function buildStationMarker(station, layer) {
   const size = 14;
+  const lines = linesAtStation(station, layer);
+  const colors = lines.map((f) => styleOf(f, layer).color || '#4fa3d1');
+  const [w, h] = stationIconSize(size, colors.length);
   const icon = L.divIcon({
     className: 'ca-poi ca-station',
-    html: stationSvg(size),
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
+    html: stationSvg(size, colors),
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h / 2],
   });
   const marker = L.marker(toLatLng(station.x, station.z), {
     icon, draggable: !layer.locked, keyboard: false,
   });
+  const group = L.layerGroup([marker]);
   marker.on('dragend', () => {
     const p = fromLatLng(marker.getLatLng());
     station.x = Math.round(p.x);
@@ -652,18 +749,24 @@ function buildStationMarker(station, layer) {
     markDirty();
   });
   if (station.name) {
-    marker.bindTooltip(escapeHtml(station.name), {
-      permanent: true, direction: 'right', offset: [size / 2 + 2, 0],
-      className: 'ca-label', sticky: false,
+    const { marker: labelMarker, leader } = buildLabel({
+      text: escapeHtml(station.name),
+      anchor: toLatLng(station.x, station.z),
+      getOffset: () => station.labelOffset || [Math.round(w / 2) + 4, 0],
+      setOffset: (off) => { station.labelOffset = off; markDirty(); },
     });
+    group.addLayer(leader);
+    group.addLayer(labelMarker);
   }
-  const lines = layer.features
-    .filter((f) => (f.stationIds || []).includes(station.id))
-    .map((f) => f.name || '(senza nome)');
+  const lineNames = lines.map((f) => f.name || '(senza nome)');
+  const lineChips = lines.map((f) => (
+    `<span class="line-chip" style="background:${styleOf(f, layer).color || '#4fa3d1'}"></span>${escapeHtml(f.name || '(senza nome)')}`
+  )).join('<br>');
   marker.bindPopup(`<div class="ca-popup">
       <h4>${escapeHtml(station.name || '(stazione)')}</h4>
       ${station.description ? `<p class="desc">${escapeHtml(station.description)}</p>` : ''}
-      <div class="meta">Stazione · ${lines.length ? escapeHtml(lines.join(', ')) : 'nessuna linea collegata'}</div>
+      <div class="meta">Stazione${lineNames.length ? '' : ' · nessuna linea collegata'}</div>
+      ${lineChips ? `<div class="line-chip-list">${lineChips}</div>` : ''}
     </div>`, { closeButton: false, autoPan: false, className: 'ca-info-popup' });
   marker.on('mouseover', () => { if (currentTool !== 'draw') marker.openPopup(); });
   marker.on('mouseout', () => marker.closePopup());
@@ -672,7 +775,7 @@ function buildStationMarker(station, layer) {
     if (placingStation) { placeStationAt(e.latlng); return; }
     if (currentTool === 'delete') deleteStation(layer.id, station.id);
   });
-  return marker;
+  return group;
 }
 
 /** Rebuild just the station markers of one layer, without touching its
@@ -768,9 +871,20 @@ function refreshFeature(layerId, featureId) {
   const entry = rendered.get(featureId);
   const group = layerGroups.get(layerId);
   if (!layer || !feature || !group) return;
+  // Rebuilding replaces the Leaflet layer object entirely — including its
+  // vertex-editing handles. Left alone, that silently threw away any
+  // in-progress drag the moment something else refreshed this same feature
+  // (typing in the name field, nudging a colour slider — anything in the
+  // Properties panel commits via this same function). Commit whatever is
+  // on screen right now first, then resume editing on the fresh layer, so
+  // "Modifica nodi" can never lose an edit that hasn't been saved yet.
+  const wasEditing = featureId === editingFeatureId
+    && entry && entry.primary.editing && entry.primary.editing.enabled();
+  if (wasEditing) commitVertexPositions(featureId);
   if (entry) group.removeLayer(entry.group);
   const fresh = buildFeatureLayer(feature, layer);
   group.addLayer(fresh);
+  if (wasEditing) toggleVertexEditing(featureId, true);
 }
 
 function setLayerVisibility(layerId, visible) {
@@ -786,6 +900,25 @@ function selectFeature(layerId, featureId) {
   if (editingFeatureId && editingFeatureId !== featureId) toggleVertexEditing(editingFeatureId, false);
   state.selectedFeature = layerId && featureId ? { layerId, featureId } : null;
   refreshProps();
+}
+
+/** Reads the live (possibly mid-drag) vertex positions of an editing
+ *  feature back into the project. Split out of toggleVertexEditing so
+ *  refreshFeature can call it without also disabling editing or recursing
+ *  back into itself. */
+function commitVertexPositions(featureId) {
+  const entry = rendered.get(featureId);
+  if (!entry) return;
+  const layer = findLayer(entry.layerId);
+  if (!layer || !entry.primary.editing || !entry.primary.editing.enabled()) return;
+  const latlngs = layer.type === 'areas'
+    ? entry.primary.getLatLngs()[0]
+    : entry.primary.getLatLngs();
+  entry.feature.coords = latlngs.map((ll) => {
+    const p = fromLatLng(ll);
+    return [Math.round(p.x), Math.round(p.z)];
+  });
+  markDirty();
 }
 
 function toggleVertexEditing(featureId, on) {
@@ -804,16 +937,8 @@ function toggleVertexEditing(featureId, on) {
     editingFeatureId = featureId;
   } else {
     if (entry.primary.editing.enabled()) {
+      commitVertexPositions(featureId);
       entry.primary.editing.disable();
-      // Read the moved vertices back into the project.
-      const latlngs = layer.type === 'areas'
-        ? entry.primary.getLatLngs()[0]
-        : entry.primary.getLatLngs();
-      entry.feature.coords = latlngs.map((ll) => {
-        const p = fromLatLng(ll);
-        return [Math.round(p.x), Math.round(p.z)];
-      });
-      markDirty();
       refreshFeature(entry.layerId, featureId);
     }
     editingFeatureId = null;
@@ -862,6 +987,59 @@ function setTool(tool) {
   }
 }
 
+/** Snaps `latlng` so the segment from `prevLatLng` to it falls on a
+ *  multiple of 45°, keeping the same length — "gli angoli possono essere
+ *  solo ogni 45 gradi" while tracing a transit line. */
+function snapTransitVertex(prevLatLng, latlng) {
+  const prev = fromLatLng(prevLatLng);
+  const cur = fromLatLng(latlng);
+  const dx = cur.x - prev.x;
+  const dz = cur.z - prev.z;
+  const len = Math.hypot(dx, dz);
+  if (len < 0.01) return latlng;
+  const step = Math.PI / 4;
+  const angle = Math.round(Math.atan2(dz, dx) / step) * step;
+  return toLatLng(prev.x + Math.cos(angle) * len, prev.z + Math.sin(angle) * len);
+}
+
+/** Overrides a live L.Draw.Polyline session (must be called before
+ *  `.enable()`) so that, while tracing a transit line:
+ *   - every new vertex snaps to a 45° angle from the previous one, live in
+ *     the mouse-move preview as well as on click;
+ *   - clicking back near the line's own starting point closes the loop and
+ *     finishes the shape instead of adding an overlapping vertex. */
+function wireTransitDrawSnapping(handler) {
+  const originalMouseMove = handler._onMouseMove.bind(handler);
+  handler._onMouseMove = function onMouseMoveSnapped(t) {
+    const markers = this._markers || [];
+    if (!markers.length) { originalMouseMove(t); return; }
+    const layerPoint = this._map.mouseEventToLayerPoint(t.originalEvent);
+    const raw = this._map.layerPointToLatLng(layerPoint);
+    const snapped = snapTransitVertex(markers[markers.length - 1].getLatLng(), raw);
+    this._currentLatLng = snapped;
+    this._updateTooltip(snapped);
+    this._updateGuide(this._map.latLngToLayerPoint(snapped));
+    this._mouseMarker.setLatLng(snapped);
+    L.DomEvent.preventDefault(t.originalEvent);
+  };
+
+  const originalAddVertex = handler.addVertex.bind(handler);
+  handler.addVertex = function addVertexSnapped(latlng) {
+    const markers = this._markers || [];
+    const target = markers.length ? snapTransitVertex(markers[markers.length - 1].getLatLng(), latlng) : latlng;
+    if (markers.length >= 3) {
+      const start = fromLatLng(markers[0].getLatLng());
+      const t2 = fromLatLng(target);
+      if (dist(start.x, start.z, t2.x, t2.z) <= STATION_DRAW_SNAP_BLOCKS) {
+        originalAddVertex(markers[0].getLatLng());
+        this._finishShape();
+        return;
+      }
+    }
+    originalAddVertex(target);
+  };
+}
+
 function startDrawing(layer) {
   const style = layer.defaultStyle || {};
   if (isPointLayer(layer.type)) {
@@ -893,6 +1071,7 @@ function startDrawing(layer) {
         weight: Number(style.width) || (layer.type === 'transit' ? 5 : 4),
       },
     });
+    if (layer.type === 'transit') wireTransitDrawSnapping(drawHandler);
   }
   drawHandler.enable();
 }
@@ -992,6 +1171,14 @@ function onDrawCreated(e) {
   }
 
   layer.features.push(feature);
+  if (layer.type === 'transit') {
+    // Passing near an existing line's segments bundles the two automatically
+    // (see offsetTransitCoords) — let the user know it happened, since
+    // there's no separate "affianca" step to trigger on purpose.
+    const offsetCoords = offsetTransitCoords(feature, layer);
+    const bundled = offsetCoords.some(([x, z], i) => x !== feature.coords[i][0] || z !== feature.coords[i][1]);
+    if (bundled) toast('Linea affiancata automaticamente a un\'altra linea che corre sullo stesso tracciato', 'ok');
+  }
   const group = layerGroups.get(layer.id);
   if (group) group.addLayer(buildFeatureLayer(feature, layer));
   markDirty();
@@ -1789,6 +1976,60 @@ async function exportForReader() {
   }
 }
 
+/** Stations of one line, ordered along its path (nearest-vertex cumulative
+ *  distance — good enough for a human-readable report, not exact point-to-
+ *  segment projection). */
+function orderedStationsForLine(feature, layer) {
+  const stations = (feature.stationIds || [])
+    .map((id) => (layer.stations || []).find((s) => s.id === id))
+    .filter(Boolean);
+  const paramFor = (station) => {
+    let best = Infinity;
+    let bestParam = 0;
+    let cum = 0;
+    for (let i = 0; i < feature.coords.length - 1; i++) {
+      const a = feature.coords[i];
+      const b = feature.coords[i + 1];
+      const dA = dist(station.x, station.z, a[0], a[1]);
+      if (dA < best) { best = dA; bestParam = cum; }
+      cum += dist(a[0], a[1], b[0], b[1]);
+    }
+    const last = feature.coords[feature.coords.length - 1];
+    const dLast = dist(station.x, station.z, last[0], last[1]);
+    if (dLast < best) { bestParam = cum; }
+    return bestParam;
+  };
+  return stations
+    .map((s) => ({ station: s, param: paramFor(s) }))
+    .sort((a, b) => a.param - b.param)
+    .map((x) => x.station);
+}
+
+function transitReportHtml(layer) {
+  const lines = layer.features;
+  if (!lines.length) return '<p class="hint" style="margin:0">Nessuna linea in questo layer.</p>';
+  return lines.map((f) => {
+    const style = styleOf(f, layer);
+    const stations = orderedStationsForLine(f, layer);
+    const stopsHtml = stations.length
+      ? `<ol style="margin:4px 0 0 18px;padding:0">${stations.map((s) => `<li>${escapeHtml(s.name || '(senza nome)')}</li>`).join('')}</ol>`
+      : '<div class="hint" style="margin:2px 0 0">Nessuna stazione collegata</div>';
+    return `<div style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="line-chip" style="background:${style.color || '#4fa3d1'}"></span>
+        <b>${escapeHtml(f.name || '(senza nome)')}</b>
+      </div>
+      ${stopsHtml}
+    </div>`;
+  }).join('');
+}
+
+/** "Elenco linee e stazioni" — a read-only report of every transit line in
+ *  a layer with its stops in order along the line. */
+async function showTransitReport(layer) {
+  await alertDialog({ title: `Linee e stazioni — ${layer.name}`, bodyHtml: transitReportHtml(layer) });
+}
+
 export {
   initMap, attachWorld, renderAllLayers, refreshFeature, setLayerVisibility, applyLayerVisibility,
   selectFeature, refreshProps, setTool, deleteFeature,
@@ -1804,6 +2045,7 @@ export {
   // looks like, not two that can drift apart.
   styleOf, dashFor, poiSvg, noteSvg, stationSvg, popupHtml, lengthOf, areaOf,
   bannerMarker, bannerAnchor, isPointLayer,
+  beginPlaceStation, showTransitReport, orderedStationsForLine,
 };
 export function getMap() { return map; }
 export function getCurrentTool() { return currentTool; }

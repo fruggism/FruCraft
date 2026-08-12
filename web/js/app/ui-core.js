@@ -142,6 +142,29 @@ export function pickDialog({ title, message, options }) {
   });
 }
 
+/** A read-only info panel — the report ("elenco linee e stazioni") and
+ *  similar one-way displays. `bodyHtml` is trusted markup the caller has
+ *  already escaped where it embeds user data. */
+export function alertDialog({ title, bodyHtml, closeLabel = 'Chiudi' }) {
+  return new Promise((resolve) => {
+    const host = el('modal-host');
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>${escapeHtml(title)}</h3>
+        <div class="modal-body">${bodyHtml}</div>
+        <div class="row"><button class="btn btn-primary" data-act="ok">${escapeHtml(closeLabel)}</button></div>
+      </div>`;
+    const done = () => { backdrop.remove(); resolve(); };
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) done();
+      if (e.target.dataset && e.target.dataset.act === 'ok') done();
+    });
+    host.appendChild(backdrop);
+  });
+}
+
 export function download(filename, content, mime) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: mime || 'text/plain' });
   const url = URL.createObjectURL(blob);

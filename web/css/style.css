@@ -403,6 +403,18 @@ details.sub > summary::-webkit-details-marker { display: none; }
 .ca-label::before { display: none !important; }
 .ca-label.big { font-size: 14px; }
 
+/* A label you can drag: same look as .ca-label, but it's a marker icon, not
+ * a Leaflet tooltip, so it can be repositioned independently of its anchor. */
+.ca-label-marker {
+  background: rgba(12, 12, 12, .72);
+  color: #fff; font-family: var(--font-ui); font-size: 11px;
+  padding: 1px 5px; white-space: nowrap;
+  text-shadow: 1px 1px 0 #000;
+  cursor: move;
+  width: auto !important; height: auto !important;
+}
+.ca-label-marker.big { font-size: 14px; }
+
 /* The hover info bubble is informational only — clicks must pass through it
    to the feature underneath, otherwise hovering would block selecting. */
 .ca-info-popup { pointer-events: none; }
@@ -417,6 +429,11 @@ details.sub > summary::-webkit-details-marker { display: none; }
 .ca-popup h4 { margin: 0 0 5px; color: var(--accent-bright); font-weight: normal; font-size: 13px; }
 .ca-popup .desc { color: var(--ink-dim); white-space: pre-wrap; margin: 0 0 6px; }
 .ca-popup .meta { color: var(--ink-faint); font-size: 10px; }
+.line-chip-list { margin-top: 6px; font-size: 11px; color: var(--ink); line-height: 1.9; }
+.line-chip {
+  display: inline-block; width: 9px; height: 9px; margin-right: 5px;
+  box-shadow: 0 0 0 1px #0d0d0d; vertical-align: middle;
+}
 
 /* --------------------------------------------------------------- archivio */
 .doc-list { list-style: none; margin: 0; padding: 0; }

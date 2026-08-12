@@ -144,12 +144,14 @@ export function normalizeFeature(raw, layerType) {
 export function normalizeStation(raw) {
   if (!raw || typeof raw !== 'object') return null;
   if (!isNum(raw.x) || !isNum(raw.z)) return null;
+  const off = raw.labelOffset;
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId('st'),
     x: raw.x,
     z: raw.z,
     name: typeof raw.name === 'string' ? raw.name : '',
     description: typeof raw.description === 'string' ? raw.description : '',
+    labelOffset: Array.isArray(off) && off.length === 2 && isNum(off[0]) && isNum(off[1]) ? [off[0], off[1]] : null,
   };
 }
 
