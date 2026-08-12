@@ -1,6 +1,11 @@
 # Tests every branch, and publishes the app to GitHub Pages from whichever
-# branch is the repository's default one. The first run also switches Pages on
-# by itself, so there is no setting to remember.
+# branch is the repository's default one.
+#
+# Pages must be switched on once by the repository owner:
+#   Settings -> Pages -> Source: GitHub Actions
+# The workflow cannot do it: creating a Pages site is refused to the Actions
+# token ("Resource not accessible by integration"), whatever permissions the
+# workflow asks for.
 name: Test e pubblica Cube-Atlas
 
 on:
@@ -43,10 +48,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-        with:
-          # Switches Pages on the first time this runs, so the site does not
-          # need anyone to flip a setting by hand.
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           # Static files: no build step, nothing to compile.

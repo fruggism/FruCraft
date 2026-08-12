@@ -188,5 +188,7 @@ codice che gira nel browser, senza browser.
 `.github/workflows/pages.yml` esegue i test su ogni branch e pubblica `web/` su
 GitHub Pages dal branch predefinito del repository.
 
-Non c'è niente da configurare a mano: alla prima esecuzione il workflow accende
-Pages da sé. Da quel momento ogni push al branch predefinito aggiorna il sito.
+Pages va acceso una volta sola dal proprietario del repository:
+**Settings → Pages → Source: GitHub Actions**. Il workflow non può farlo da sé —
+GitHub non concede al token delle Actions il permesso di creare un sito Pages.
+Da quel momento ogni push al branch predefinito aggiorna il sito.
