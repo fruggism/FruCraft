@@ -129,6 +129,44 @@ export async function renderBaseTile(source, regionDir, tx, ty, options = {}) {
   return { rgba, empty: false };
 }
 
+/**
+ * Rail overlay: one transparent tile with only the rails painted, so it can be
+ * switched on and off over the terrain. Rails found deep underground are drawn
+ * dimmer than surface ones, which makes a tunnel readable as a tunnel while
+ * still showing where it runs.
+ */
+export async function renderRailTile(source, regionDir, tx, ty, options = {}) {
+  const span = TILE_SIZE;
+  const minX = tx * span;
+  const minZ = ty * span;
+  const grid = await readSurface(source, regionDir, minX, minZ, span, span, {
+    ...options, detectRails: true,
+  });
+  if (grid.totalChunks === 0 || !grid.railY) return { rgba: emptyTile(), empty: true };
+
+  const rgba = new Uint8ClampedArray(PIXELS);
+  const [r, g, b] = options.railColor || [255, 92, 46];
+  let any = false;
+
+  for (let i = 0; i < grid.railY.length; i++) {
+    const y = grid.railY[i];
+    if (y === NO_DATA) continue;
+    any = true;
+    // How far below the surface the rail sits.
+    const surface = grid.surfaceY[i];
+    const depth = surface === NO_DATA ? 0 : clamp(surface - y, 0, 48);
+    const k = 1 - Math.min(0.55, depth * 0.011);
+    const out = i * 4;
+    rgba[out] = r * k;
+    rgba[out + 1] = g * k;
+    rgba[out + 2] = b * k;
+    rgba[out + 3] = 255;
+  }
+
+  if (!any) return { rgba: emptyTile(), empty: true };
+  return { rgba, empty: false };
+}
+
 // ---------------------------------------------------------------------------
 // Pyramid: box-downsample of the four children
 // ---------------------------------------------------------------------------
@@ -179,8 +217,9 @@ export function downsampleChildren(children) {
 /**
  * Produce a tile.
  *
- * ctx: { source, regionDir, regionSet, cache, renderOptions }
+ * ctx: { source, regionDir, regionSet, cache, renderOptions, kind }
  *   cache is optional and must expose async get(z,x,y) / set(z,x,y,rgba).
+ *   kind is 'terrain' (default) or 'rails' for the rail overlay.
  *
  * allowRender=true is for the background builder and permits rendering the
  * whole subtree; while serving a request it stays false.
@@ -207,11 +246,13 @@ export async function getTile(ctx, z, x, y, allowRender = false) {
   }
 
   if (z === NATIVE_ZOOM) {
-    if (!allowRender && MAX_ON_DEMAND_DEPTH < 0) {
-      return { rgba: emptyTile(), empty: true, cached: false, partial: true };
-    }
-    const result = await renderBaseTile(ctx.source, ctx.regionDir, x, y, ctx.renderOptions);
-    if (ctx.cache && !result.empty) await ctx.cache.set(z, x, y, result.rgba);
+    const render = ctx.kind === 'rails' ? renderRailTile : renderBaseTile;
+    const result = await render(ctx.source, ctx.regionDir, x, y, ctx.renderOptions);
+    // Empty tiles are cached too, as fully transparent ones. For the rail
+    // overlay most tiles inside a region have no rails at all, and each of
+    // those costs a full-height scan to discover — recomputing them on every
+    // pan would be the slowest thing the app does.
+    if (ctx.cache) await ctx.cache.set(z, x, y, result.rgba);
     return { ...result, cached: false, partial: false };
   }
 
@@ -230,7 +271,7 @@ export async function getTile(ctx, z, x, y, allowRender = false) {
   }
 
   const result = downsampleChildren(children);
-  if (ctx.cache && !partial && !result.empty) await ctx.cache.set(z, x, y, result.rgba);
+  if (ctx.cache && !partial) await ctx.cache.set(z, x, y, result.rgba);
   return { ...result, cached: false, partial };
 }
 

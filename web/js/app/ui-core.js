@@ -115,6 +115,33 @@ export function promptDialog({ title, message, value = '', confirmLabel = 'OK' }
   });
 }
 
+/** A row of labeled buttons instead of a single confirm/cancel — used to
+ *  pick a layer type when creating a sublayer. Resolves the chosen value,
+ *  or null if dismissed. */
+export function pickDialog({ title, message, options }) {
+  return new Promise((resolve) => {
+    const host = el('modal-host');
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>${escapeHtml(title)}</h3>
+        ${message ? `<div class="modal-body">${escapeHtml(message)}</div>` : ''}
+        <div class="modal-options">${options.map((o) => (
+          `<button class="btn btn-sm" data-val="${escapeHtml(o.value)}">${o.label}</button>`
+        )).join('')}</div>
+        <div class="row"><button class="btn" data-act="cancel">Annulla</button></div>
+      </div>`;
+    const done = (value) => { backdrop.remove(); resolve(value); };
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) done(null);
+      if (e.target.dataset.act === 'cancel') done(null);
+      if (e.target.dataset.val !== undefined) done(e.target.dataset.val);
+    });
+    host.appendChild(backdrop);
+  });
+}
+
 export function download(filename, content, mime) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: mime || 'text/plain' });
   const url = URL.createObjectURL(blob);

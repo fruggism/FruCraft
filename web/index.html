@@ -79,6 +79,25 @@
         <label style="display:flex;align-items:center;gap:8px">
           <input type="checkbox" id="chk-terrain" checked> Mostra il terreno
         </label>
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="chk-rails"> Evidenzia le ferrovie
+        </label>
+        <div class="hint">Le ferrovie vengono cercate a tutte le altezze: le gallerie
+          compaiono comunque, disegnate più scure quanto più sono profonde.</div>
+
+        <details id="block-filter" class="sub">
+          <summary>Filtro blocchi</summary>
+          <div class="hint">Blocchi da attraversare come se fossero aria: sulla mappa
+            si vede quello che c'è sotto.</div>
+          <div id="block-presets"></div>
+          <label>
+            <span class="lbl">Altri blocchi (uno per riga)</span>
+            <textarea id="block-custom" rows="3" spellcheck="false"
+              placeholder="tinted_glass&#10;modpack:blocco"></textarea>
+          </label>
+          <button class="btn btn-sm" id="btn-apply-filter">Applica il filtro</button>
+          <div id="filter-status" class="status"></div>
+        </details>
 
         <label>
           <span class="lbl">Area da generare</span>
@@ -122,11 +141,17 @@
 
       <section class="panel">
         <h2><span class="num">5</span> Layer</h2>
+        <div class="hint">I sublayer (➕ su un layer) creano elenchi come regione › provincia ›
+          quartiere, con strade/trasporti/punti annidati dentro.</div>
         <ul class="layer-list" id="layer-list"></ul>
         <div class="row-3">
           <button class="btn btn-sm" data-add-layer="roads" title="Nuovo layer strade">+ Strade</button>
+          <button class="btn btn-sm" data-add-layer="transit" title="Nuovo layer trasporti">+ Trasporti</button>
           <button class="btn btn-sm" data-add-layer="pois" title="Nuovo layer punti">+ Punti</button>
+        </div>
+        <div class="row-3">
           <button class="btn btn-sm" data-add-layer="areas" title="Nuovo layer aree">+ Aree</button>
+          <button class="btn btn-sm" data-add-layer="notes" title="Nuovo layer note">+ Note</button>
         </div>
         <div id="layer-edit" class="hidden" style="margin-top:8px">
           <label>

@@ -18,9 +18,34 @@ import { idbGet, idbPut, idbDeletePrefix, idbStatsPrefix } from './app/db.js';
 let source = null;
 let scan = null;
 const regionSets = new Map();   // dimId -> Set("rx,rz")
-const caches = new Map();       // dimId -> TileCache
+const caches = new Map();       // cacheKey -> TileCache
 let cancelRequested = false;
 let rendering = false;
+
+/*
+ * Render settings that change what a tile looks like. They are folded into the
+ * cache key: switching the block filter must not show tiles drawn under the
+ * old one, and switching back should find the old tiles still there.
+ */
+let renderSettings = { hiddenBlocks: [] };
+
+function settingsFingerprint() {
+  const hidden = [...(renderSettings.hiddenBlocks || [])].sort();
+  if (!hidden.length) return 'std';
+  // A short stable digest keeps the key readable and bounded.
+  let h = 2166136261;
+  for (const name of hidden) {
+    for (let i = 0; i < name.length; i++) {
+      h ^= name.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+  }
+  return `h${(h >>> 0).toString(36)}`;
+}
+
+function hiddenBlockSet() {
+  return new Set(renderSettings.hiddenBlocks || []);
+}
 
 // ---------------------------------------------------------------------------
 // Tile cache
@@ -115,16 +140,20 @@ function dimensionById(dimId) {
   return dim;
 }
 
-function contextFor(dimId, renderOptions = {}) {
+function contextFor(dimId, kind = 'terrain') {
   const dim = dimensionById(dimId);
   if (!regionSets.has(dimId)) regionSets.set(dimId, tiler.regionSetOf(dim.regions));
-  if (!caches.has(dimId)) caches.set(dimId, new TileCache(scan.worldKey, dimId));
+  // The rail overlay is independent of the block filter, so it keeps a stable
+  // cache namespace instead of being thrown away whenever the filter changes.
+  const namespace = kind === 'rails' ? `${dimId}|rails` : `${dimId}|${settingsFingerprint()}`;
+  if (!caches.has(namespace)) caches.set(namespace, new TileCache(scan.worldKey, namespace));
   return {
     source,
+    kind,
     regionDir: dim.regionDir,
     regionSet: regionSets.get(dimId),
-    cache: caches.get(dimId),
-    renderOptions,
+    cache: caches.get(namespace),
+    renderOptions: kind === 'rails' ? {} : { hiddenBlocks: hiddenBlockSet() },
   };
 }
 
@@ -167,8 +196,15 @@ const handlers = {
     return publicScan(scan);
   },
 
-  async tile({ dimId, z, x, y }) {
-    const ctx = contextFor(dimId);
+  async setRenderSettings({ settings }) {
+    renderSettings = {
+      hiddenBlocks: Array.isArray(settings && settings.hiddenBlocks) ? settings.hiddenBlocks : [],
+    };
+    return { ok: true, fingerprint: settingsFingerprint() };
+  },
+
+  async tile({ dimId, z, x, y, kind }) {
+    const ctx = contextFor(dimId, kind === 'rails' ? 'rails' : 'terrain');
     const result = await tiler.serveTile(ctx, z, x, y);
     if (result.empty) return { empty: true, partial: !!result.partial };
     const bitmap = await createImageBitmap(
@@ -178,7 +214,8 @@ const handlers = {
 
   async probe({ dimId, x, z }) {
     const dim = dimensionById(dimId);
-    const g = await anvil.readSurface(source, dim.regionDir, x, z, 1, 1);
+    const g = await anvil.readSurface(source, dim.regionDir, x, z, 1, 1,
+      { hiddenBlocks: hiddenBlockSet() });
     const missing = g.surfaceY[0] === anvil.NO_DATA;
     return {
       x, z,
@@ -203,8 +240,11 @@ const handlers = {
   },
 
   async clearCache({ dimId }) {
-    const cache = caches.get(dimId);
-    if (cache) cache.clearMemory();
+    // Drop every namespace of this dimension: terrain under any block filter,
+    // plus the rail overlay.
+    for (const [key, cache] of caches) {
+      if (key.startsWith(`${dimId}|`)) cache.clearMemory();
+    }
     anvil.clearRegionCache();
     let removed = 0;
     try {
@@ -222,15 +262,16 @@ const handlers = {
     }
   },
 
-  async render({ dimId, area, requestId }) {
+  async render({ dimId, area, withRails, requestId }) {
     if (rendering) throw new Error('Una generazione è già in corso');
     rendering = true;
     cancelRequested = false;
     const dim = dimensionById(dimId);
-    const ctx = contextFor(dimId);
+    const contexts = [contextFor(dimId, 'terrain')];
+    if (withRails) contexts.push(contextFor(dimId, 'rails'));
     try {
       const result = await runRender({
-        ctx,
+        contexts,
         dimension: dim,
         area,
         onProgress: (p) => postMessage({ type: 'progress', requestId, progress: p }),
@@ -243,6 +284,8 @@ const handlers = {
             bounds: result.bounds,
             tiles: result.total,
             regionCount: dim.regionCount,
+            withRails: !!withRails,
+            settings: settingsFingerprint(),
           }, metaKey(dimId));
         } catch { /* storage unavailable: the map is still rendered in memory */ }
       }

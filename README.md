@@ -53,21 +53,34 @@ dentro la cartella `web/`.
    solito *intorno a un punto*, con le coordinate della tua città e un raggio) e
    premi **Genera mappa**: la barra mostra l'avanzamento e i tile compaiono man
    mano. È interrompibile, e quello che è già stato prodotto resta.
+   - **Filtro blocchi**: esclude dal disegno blocchi come le barriere, che altrimenti
+     apparirebbero come pareti inesistenti — il tile mostra quello che c'è sotto.
+   - **Evidenzia le ferrovie**: un layer a parte, cercato a tutte le altezze, così
+     anche le gallerie profonde compaiono (più scure quanto più sono in basso).
 3. **Naviga** — porta la mappa alle coordinate che scegli (le stesse che leggi
    in gioco con F3), al punto di spawn o su tutto il mondo.
-4. **Layer** — creane quanti vuoi, di tre tipi:
+4. **Layer** — creane quanti vuoi, di cinque tipi:
 
 | Tipo | Cosa disegna | Stile |
 |---|---|---|
-| **Strade** | tracciati a vertici successivi | colore, spessore, tratteggio (continuo / tratteggiato / punteggiato / tratto-punto), colore e spessore del bordo, nome |
-| **Punti di interesse** | un simbolo sul punto | forma (cerchio, quadrato, triangolo, rombo, stella, segnaposto), colore, dimensione, categoria, descrizione |
+| **Strade** | tracciati a vertici successivi, estendibili in un secondo momento | colore, spessore, tratteggio, colore/spessore del bordo, nome |
+| **Trasporti** | linee di trasporto pubblico (metro, bus…), anche adiacenti fra loro | colore, spessore, tratteggio, **stazioni condivise**: una stazione collegata a più linee fa fermare tutte allo stesso punto |
+| **Punti di interesse** | un simbolo sul punto | forma, colore, dimensione, categoria (abitazione, negozio, istituzioni, fiume, montagna, lago…), descrizione |
+| **Note** | promemoria sulla mappa, per le cose da costruire | colore, dimensione, descrizione libera |
 | **Aree** | poligoni chiusi che delimitano zone | colore e opacità del riempimento, colore/spessore/tratteggio del bordo |
 
+   Ogni layer può avere **sublayer** (il ➕ sulla riga): utile per elenchi come
+   *regione › provincia › quartiere*, con *strade*/*trasporti*/*punti* annidati
+   dentro. Nascondere un layer nasconde anche i suoi sublayer. Il 🗑 sulla riga
+   elimina un layer (i suoi sublayer restano, spostati al livello superiore).
 5. **Strumenti** — *Disegna* per aggiungere, *Seleziona* per scegliere,
    *Modifica nodi* per spostare i vertici, *Cancella* per eliminare cliccando.
    `Esc` annulla, `Canc` elimina l'elemento selezionato. I punti si spostano
    trascinandoli. Passando il mouse su un elemento compaiono le sue
-   informazioni; il nome può restare sempre visibile sulla mappa.
+   informazioni; il nome può restare sempre visibile sulla mappa. Ogni elemento
+   può avere un **banner** (un'immagine PNG/JPEG/WebP caricata dal proprietà),
+   piantato come una bandierina sulla mappa e nell'anteprima al passaggio del
+   mouse.
 6. **Esporta** — PNG, SVG (**un gruppo per layer**, apribile in
    Inkscape/Illustrator), GeoJSON, o il progetto completo `.cubeatlas.json`
    che si riapre con *Importa* mantenendo i layer.
@@ -173,7 +186,7 @@ i blocchi sbagliati.
 ## Test
 
 ```bash
-npm test           # 42 test, nessuna dipendenza
+npm test           # 54 test, nessuna dipendenza
 npm run world      # rigenera i mondi sintetici di prova
 npm run textures   # rigenera le texture dell'interfaccia
 ```

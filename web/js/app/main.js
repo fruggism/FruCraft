@@ -8,7 +8,7 @@
 
 import {
   state, el, escapeHtml, toast, debounce, setStatus, markDirty, fromLatLng,
-  confirmDialog, promptDialog, download, slugify, newId, engine, projects,
+  confirmDialog, promptDialog, pickDialog, download, slugify, newId, engine, projects,
 } from './ui-core.js';
 import * as Atlas from './atlas.js';
 import * as Archive from './archive.js';
@@ -16,8 +16,8 @@ import {
   supportsHandles, pickDirectory, restoreLastWorld, sourceFromFileList, pickerHint, forgetWorld,
 } from './worldPicker.js';
 
-const LAYER_ICONS = { roads: '🛣️', pois: '📍', areas: '⬟' };
-const LAYER_KIND_LABEL = { roads: 'Strade', pois: 'Punti', areas: 'Aree' };
+const LAYER_ICONS = { roads: '🛣️', pois: '📍', areas: '⬟', transit: '🚇', notes: '📝' };
+const LAYER_KIND_LABEL = { roads: 'Strade', pois: 'Punti', areas: 'Aree', transit: 'Trasporti', notes: 'Note' };
 
 // The description of the currently open folder, kept so a project reopened
 // later can be matched against the world actually loaded in the worker.
@@ -210,6 +210,10 @@ async function openProject(project) {
     `<span>${escapeHtml(project.name)}</span> · ${escapeHtml(state.world.levelName || '')} · ${escapeHtml(dim.label)}`;
 
   el('chk-terrain').checked = project.settings.showTerrain !== false;
+  el('chk-rails').checked = project.settings.showRails === true;
+  renderBlockFilter();
+  // The worker has to know the filter before the first tile is asked for.
+  await engine.setRenderSettings({ hiddenBlocks: project.settings.hiddenBlocks || [] });
   Atlas.attachWorld(state.world, dim.id, project.view);
   Atlas.renderAllLayers();
   Atlas.setTerrainVisible(el('chk-terrain').checked);
@@ -275,22 +279,61 @@ async function onImportFile(e) {
 }
 
 // ----------------------------------------------------------------- layers
+/** Flatten the layer list into a depth-first order, honouring `parentId`, so
+ *  a "quartiere" can list "strade"/"trasporti"/"edifici" nested under it.
+ *  A layer whose parent doesn't exist (or was just deleted) is shown as a
+ *  root rather than disappearing. */
+function layerTree() {
+  const layers = state.project.layers;
+  const byParent = new Map();
+  for (const l of layers) {
+    const key = l.parentId || '';
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key).push(l);
+  }
+  const order = [];
+  const visit = (parentKey, depth) => {
+    for (const l of byParent.get(parentKey) || []) {
+      order.push({ layer: l, depth });
+      visit(l.id, depth + 1);
+    }
+  };
+  visit('', 0);
+  const seen = new Set(order.map((o) => o.layer.id));
+  for (const l of layers) if (!seen.has(l.id)) order.push({ layer: l, depth: 0 });
+  return order;
+}
+
 function renderLayerList() {
   const host = el('layer-list');
   if (!state.project) { host.innerHTML = ''; updateToolAvailability(); return; }
 
-  host.innerHTML = state.project.layers.map((layer) => `
-    <li class="layer-item ${layer.id === state.selectedLayerId ? 'selected' : ''}" data-id="${layer.id}">
+  host.innerHTML = layerTree().map(({ layer, depth }) => `
+    <li class="layer-item ${layer.id === state.selectedLayerId ? 'selected' : ''}" data-id="${layer.id}" style="padding-left:${7 + depth * 16}px">
       <span class="eye ${layer.visible === false ? 'off' : ''}" data-eye="${layer.id}" title="Mostra/nascondi">👁</span>
       <span class="kind" title="${LAYER_KIND_LABEL[layer.type]}">${LAYER_ICONS[layer.type]}</span>
       <span class="lname">${escapeHtml(layer.name)}</span>
       <span class="count">${layer.features.length}</span>
+      <span class="sub" data-sub="${layer.id}" title="Nuovo sublayer">➕</span>
+      <span class="kill" data-kill="${layer.id}" title="Elimina questo layer">🗑</span>
     </li>`).join('');
 
   host.querySelectorAll('.layer-item').forEach((node) => {
     node.addEventListener('click', (e) => {
-      if (e.target.dataset.eye) return;
+      if (e.target.dataset.eye || e.target.dataset.kill || e.target.dataset.sub) return;
       selectLayer(node.dataset.id);
+    });
+  });
+  host.querySelectorAll('.kill').forEach((node) => {
+    node.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteLayer(node.dataset.kill);
+    });
+  });
+  host.querySelectorAll('.sub').forEach((node) => {
+    node.addEventListener('click', (e) => {
+      e.stopPropagation();
+      addSubLayer(node.dataset.sub);
     });
   });
   host.querySelectorAll('.eye').forEach((node) => {
@@ -299,7 +342,7 @@ function renderLayerList() {
       const layer = state.project.layers.find((l) => l.id === node.dataset.eye);
       if (!layer) return;
       layer.visible = layer.visible === false;
-      Atlas.setLayerVisibility(layer.id, layer.visible);
+      Atlas.applyLayerVisibility();
       markDirty();
       renderLayerList();
     });
@@ -321,17 +364,33 @@ function updateToolAvailability() {
   const layer = state.project && state.project.layers.find((l) => l.id === state.selectedLayerId);
   for (const id of ['tool-draw', 'tool-edit', 'tool-delete']) el(id).disabled = !layer;
   if (layer) {
-    el('tool-draw-label').textContent =
-      { roads: 'Traccia strada', pois: 'Aggiungi punto', areas: 'Disegna area' }[layer.type];
+    el('tool-draw-label').textContent = {
+      roads: 'Traccia strada', pois: 'Aggiungi punto', areas: 'Disegna area',
+      transit: 'Traccia linea', notes: 'Aggiungi nota',
+    }[layer.type];
     el('tool-draw-ico').textContent = LAYER_ICONS[layer.type];
-    el('tool-edit').disabled = layer.type === 'pois'; // points move by dragging
-    el('tool-hint').textContent = layer.type === 'pois'
+    const isPoint = layer.type === 'pois' || layer.type === 'notes';
+    el('tool-edit').disabled = isPoint; // points move by dragging
+    el('tool-hint').textContent = isPoint
       ? 'I punti si spostano trascinandoli. Usa "Cancella" e poi clicca per eliminare.'
       : 'Disegna un nuovo elemento, oppure selezionane uno e usa "Modifica nodi" per spostarne i vertici.';
   } else {
     el('tool-draw-label').textContent = 'Disegna';
     el('tool-hint').textContent = 'Seleziona un layer per attivare gli strumenti.';
   }
+}
+
+function pickLayerType() {
+  return pickDialog({
+    title: 'Tipo di layer',
+    options: [
+      { value: 'roads', label: `${LAYER_ICONS.roads} Strade` },
+      { value: 'transit', label: `${LAYER_ICONS.transit} Trasporti` },
+      { value: 'pois', label: `${LAYER_ICONS.pois} Punti di interesse` },
+      { value: 'notes', label: `${LAYER_ICONS.notes} Note` },
+      { value: 'areas', label: `${LAYER_ICONS.areas} Aree` },
+    ],
+  });
 }
 
 async function addLayer(type) {
@@ -352,23 +411,97 @@ async function addLayer(type) {
   toast(`Layer "${layer.name}" creato`, 'ok');
 }
 
-async function deleteLayer() {
-  const layer = state.project && state.project.layers.find((l) => l.id === state.selectedLayerId);
+/** A sublayer is just a layer with `parentId` set — used to build lists
+ *  like regione > provincia > quartiere, with strade/trasporti/edifici
+ *  nested at the bottom. */
+async function addSubLayer(parentId) {
+  if (!state.project) return;
+  const parent = state.project.layers.find((l) => l.id === parentId);
+  if (!parent) return;
+  const type = await pickLayerType();
+  if (!type) return;
+  const name = await promptDialog({
+    title: `Nuovo sublayer di "${parent.name}"`,
+    message: 'Nome del layer',
+    value: LAYER_KIND_LABEL[type],
+    confirmLabel: 'Crea',
+  });
+  if (name === null) return;
+  const layer = projects.makeLayer(type, name.trim() || LAYER_KIND_LABEL[type], parent.id);
+  state.project.layers.push(layer);
+  state.selectedLayerId = layer.id;
+  markDirty();
+  Atlas.renderAllLayers();
+  renderLayerList();
+  toast(`Sublayer "${layer.name}" creato dentro "${parent.name}"`, 'ok');
+}
+
+async function deleteLayer(layerId) {
+  const id = layerId || state.selectedLayerId;
+  const layer = state.project && state.project.layers.find((l) => l.id === id);
   if (!layer) return;
+  const children = state.project.layers.filter((l) => l.parentId === layer.id);
+  const childNote = children.length ? ` I suoi ${children.length} sublayer diventeranno layer di primo livello.` : '';
   const ok = await confirmDialog({
     title: 'Eliminare il layer?',
-    message: `"${layer.name}" e i suoi ${layer.features.length} elementi verranno rimossi.`,
+    message: `"${layer.name}" e i suoi ${layer.features.length} elementi verranno rimossi.${childNote}`,
     confirmLabel: 'Elimina', danger: true,
   });
   if (!ok) return;
+  for (const child of children) child.parentId = null;
   state.project.layers = state.project.layers.filter((l) => l.id !== layer.id);
-  state.selectedLayerId = state.project.layers.length ? state.project.layers[0].id : null;
+  if (state.selectedLayerId === layer.id) {
+    state.selectedLayerId = state.project.layers.length ? state.project.layers[0].id : null;
+  }
   state.selectedFeature = null;
   markDirty();
   Atlas.renderAllLayers();
   Atlas.refreshProps();
   renderLayerList();
   toast('Layer eliminato');
+}
+
+// --------------------------------------------------------- block filter
+/* Presets for the blocks people most often want to look through: all of them
+ * are invisible or near-invisible in game, so leaving them in draws walls and
+ * blobs that exist nowhere on screen. */
+const BLOCK_PRESETS = [
+  { name: 'minecraft:barrier', label: 'Barriere' },
+  { name: 'minecraft:light', label: 'Blocchi luce' },
+  { name: 'minecraft:structure_void', label: 'Vuoti struttura' },
+  { name: 'minecraft:structure_block', label: 'Blocchi struttura' },
+  { name: 'minecraft:jigsaw', label: 'Blocchi jigsaw' },
+];
+
+function currentHiddenBlocks() {
+  const chosen = [...document.querySelectorAll('#block-presets input:checked')].map((i) => i.value);
+  const custom = String(el('block-custom').value || '').split(/[\n,]/);
+  return projects.normalizeBlockList([...chosen, ...custom]);
+}
+
+function renderBlockFilter() {
+  const hidden = (state.project && state.project.settings.hiddenBlocks) || [];
+  el('block-presets').innerHTML = BLOCK_PRESETS.map((p) => `
+    <label class="check-row">
+      <input type="checkbox" value="${p.name}" ${hidden.includes(p.name) ? 'checked' : ''}>
+      ${escapeHtml(p.label)} <code>${escapeHtml(p.name)}</code>
+    </label>`).join('');
+  const extras = hidden.filter((h) => !BLOCK_PRESETS.some((p) => p.name === h));
+  el('block-custom').value = extras.join('\n');
+}
+
+async function applyBlockFilter() {
+  if (!state.project) { toast('Apri prima un atlante', 'err'); return; }
+  const hiddenBlocks = currentHiddenBlocks();
+  state.project.settings.hiddenBlocks = hiddenBlocks;
+  markDirty();
+  renderBlockFilter();
+  await engine.setRenderSettings({ hiddenBlocks });
+  Atlas.refreshTiles();
+  setStatus('filter-status',
+    hiddenBlocks.length
+      ? `${hiddenBlocks.length} blocchi nascosti. Le parti già generate vanno rigenerate per aggiornarsi.`
+      : 'Nessun blocco nascosto.', 'ok');
 }
 
 // ------------------------------------------------------- map generation
@@ -400,9 +533,11 @@ function updateRenderEstimate() {
     return;
   }
   const tiles = Math.ceil((maxX - minX + 1) / 256) * Math.ceil((maxZ - minZ + 1) / 256);
-  const seconds = Math.round(tiles * 0.8);
+  // The rail overlay is a second pass over the same tiles.
+  const withRails = el('chk-rails').checked;
+  const seconds = Math.round(tiles * (withRails ? 1.5 : 0.8));
   const pretty = seconds > 90 ? `~${Math.round(seconds / 60)} min` : `~${seconds} s`;
-  node.textContent = `Circa ${tiles} tile di dettaglio, ${pretty} di elaborazione.`;
+  node.textContent = `Circa ${tiles} tile di dettaglio${withRails ? ' (più le ferrovie)' : ''}, ${pretty} di elaborazione.`;
 }
 
 async function startRender() {
@@ -416,7 +551,7 @@ async function startRender() {
 
   let lastRefresh = 0;
   try {
-    const result = await engine.render(state.project.world.dimension, renderArea(), (p) => {
+    const result = await engine.render(state.project.world.dimension, renderArea(), el('chk-rails').checked, (p) => {
       const percent = p.total ? Math.round((p.done / p.total) * 100) : 0;
       el('render-bar').style.width = `${percent}%`;
       setStatus('render-status', `${p.phase}: ${p.done}/${p.total} (${percent}%)`, 'busy');
@@ -496,6 +631,13 @@ async function init() {
     if (state.project) { state.project.settings.showTerrain = el('chk-terrain').checked; markDirty(); }
   });
 
+  el('chk-rails').addEventListener('change', () => {
+    Atlas.setRailsVisible(el('chk-rails').checked);
+    if (state.project) { state.project.settings.showRails = el('chk-rails').checked; markDirty(); }
+    updateRenderEstimate();
+  });
+  el('btn-apply-filter').addEventListener('click', applyBlockFilter);
+
   el('render-extent').addEventListener('change', () => {
     el('render-around').classList.toggle('hidden', el('render-extent').value === 'all');
     updateRenderEstimate();
@@ -545,7 +687,7 @@ async function init() {
   document.querySelectorAll('[data-add-layer]').forEach((btn) => {
     btn.addEventListener('click', () => addLayer(btn.dataset.addLayer));
   });
-  el('btn-delete-layer').addEventListener('click', deleteLayer);
+  el('btn-delete-layer').addEventListener('click', () => deleteLayer());
   el('layer-name').addEventListener('input', debounce(() => {
     const layer = state.project && state.project.layers.find((l) => l.id === state.selectedLayerId);
     if (!layer) return;

@@ -49,10 +49,13 @@ class Engine {
   }
 
   openWorld(init) { return this.request('openWorld', { init }); }
-  tile(dimId, z, x, y) { return this.request('tile', { dimId, z, x, y }); }
+  setRenderSettings(settings) { return this.request('setRenderSettings', { settings }); }
+  tile(dimId, z, x, y, kind) { return this.request('tile', { dimId, z, x, y, kind }); }
   probe(dimId, x, z) { return this.request('probe', { dimId, x, z }); }
   renderStatus(dimId) { return this.request('renderStatus', { dimId }); }
-  render(dimId, area, onProgress) { return this.request('render', { dimId, area }, onProgress); }
+  render(dimId, area, withRails, onProgress) {
+    return this.request('render', { dimId, area, withRails }, onProgress);
+  }
   cancelRender() { return this.request('cancelRender', {}); }
   clearCache(dimId) { return this.request('clearCache', { dimId }); }
   cacheStats(dimId) { return this.request('cacheStats', { dimId }); }

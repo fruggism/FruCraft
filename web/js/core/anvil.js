@@ -25,6 +25,13 @@ export const AIR_NAMES = new Set([
 ]);
 export const WATER_NAMES = new Set(['minecraft:water', 'minecraft:bubble_column']);
 
+/* Rails are looked for through the whole column, not just at the surface, so
+ * that tunnels show up on the map too. */
+export const RAIL_NAMES = new Set([
+  'minecraft:rail', 'minecraft:powered_rail', 'minecraft:detector_rail',
+  'minecraft:activator_rail',
+]);
+
 const MASK64 = (1n << 64n) - 1n;
 const asUnsigned = (v) => v & MASK64;
 
@@ -104,6 +111,9 @@ export function normalizeChunk(root) {
 
     sections.push({
       yBase: Number(sec.Y) * 16,
+      // The palette is kept so a caller can ask "is any of these blocks in
+      // this section?" and skip all 4096 of its cells when the answer is no.
+      names,
       getBlock: (lx, ly, lz) => getBlockAt(blockIndex(lx, ly, lz)),
       getBiome: getBiomeAt ? (lx, ly, lz) => getBiomeAt(biomeIndex(lx, ly, lz)) : null,
     });
@@ -115,18 +125,31 @@ export function normalizeChunk(root) {
 
 /**
  * Per-column surface analysis for one chunk (256 columns).
- *   surfaceY / surfaceName : topmost non-air block (water counts as surface)
+ *   surfaceY / surfaceName : topmost visible block (water counts as surface)
  *   floorY                 : first non-water block below it
  *   biome                  : biome at the surface, or null
+ *   railY                  : highest rail in the column, or NO_DATA (only when
+ *                            options.detectRails is set)
+ *
+ * options.hiddenBlocks is a Set of block names to look straight through, as if
+ * they were air — barriers and other invisible blocks otherwise draw solid
+ * walls across the map.
  */
-export function analyzeChunk(root) {
+export function analyzeChunk(root, options = {}) {
   const sections = normalizeChunk(root);
   if (!sections) return null;
+
+  const hidden = options.hiddenBlocks;
+  const detectRails = !!options.detectRails;
+  const isSkippable = hidden && hidden.size
+    ? (name) => AIR_NAMES.has(name) || hidden.has(name)
+    : (name) => AIR_NAMES.has(name);
 
   const surfaceY = new Int32Array(256).fill(NO_DATA);
   const floorY = new Int32Array(256).fill(NO_DATA);
   const surfaceName = new Array(256).fill('minecraft:air');
   const biome = new Array(256).fill(null);
+  const railY = detectRails ? new Int32Array(256).fill(NO_DATA) : null;
 
   for (let lz = 0; lz < 16; lz++) {
     for (let lx = 0; lx < 16; lx++) {
@@ -136,7 +159,7 @@ export function analyzeChunk(root) {
       scan: for (const sec of sections) {
         for (let ly = 15; ly >= 0; ly--) {
           const name = sec.getBlock(lx, ly, lz);
-          if (AIR_NAMES.has(name)) continue;
+          if (isSkippable(name)) continue;
           const y = sec.yBase + ly;
           if (top === null) {
             top = { y, name, sec, ly };
@@ -153,7 +176,27 @@ export function analyzeChunk(root) {
       if (top.sec.getBiome) biome[col] = top.sec.getBiome(lx, top.ly, lz);
     }
   }
-  return { surfaceY, surfaceName, floorY, biome };
+
+  if (detectRails) {
+    // Sections are sorted top-down, and only the ones whose palette actually
+    // mentions a rail are worth walking — which is what keeps a full-height
+    // search affordable.
+    for (const sec of sections) {
+      if (!sec.names.some((n) => RAIL_NAMES.has(n))) continue;
+      for (let ly = 15; ly >= 0; ly--) {
+        const y = sec.yBase + ly;
+        for (let lz = 0; lz < 16; lz++) {
+          for (let lx = 0; lx < 16; lx++) {
+            const col = lz * 16 + lx;
+            if (railY[col] !== NO_DATA) continue; // already found higher up
+            if (RAIL_NAMES.has(sec.getBlock(lx, ly, lz))) railY[col] = y;
+          }
+        }
+      }
+    }
+  }
+
+  return { surfaceY, surfaceName, floorY, biome, railY };
 }
 
 // ---------------------------------------------------------------------------
@@ -221,7 +264,7 @@ export function clearRegionCache() { regionCache.clear(); }
  * Surface grid for a block bounding box, reading only the region files it
  * touches from `regionDir`. Row-major (z outer, x inner).
  */
-export async function readSurface(source, regionDir, minX, minZ, width, depth) {
+export async function readSurface(source, regionDir, minX, minZ, width, depth, options = {}) {
   const maxX = minX + width - 1;
   const maxZ = minZ + depth - 1;
   const size = width * depth;
@@ -230,6 +273,7 @@ export async function readSurface(source, regionDir, minX, minZ, width, depth) {
   const floorY = new Int32Array(size).fill(NO_DATA);
   const surfaceName = new Array(size).fill('minecraft:air');
   const biome = new Array(size).fill(null);
+  const railY = options.detectRails ? new Int32Array(size).fill(NO_DATA) : null;
 
   let totalChunks = 0;
   let unparsedChunks = 0;
@@ -254,7 +298,7 @@ export async function readSurface(source, regionDir, minX, minZ, width, depth) {
           let cols = null;
           try {
             const root = await region.getChunkRoot(lx, lz);
-            if (root) cols = analyzeChunk(root.value);
+            if (root) cols = analyzeChunk(root.value, options);
           } catch {
             cols = null;
           }
@@ -273,6 +317,7 @@ export async function readSurface(source, regionDir, minX, minZ, width, depth) {
               floorY[dst] = cols.floorY[src];
               surfaceName[dst] = cols.surfaceName[src];
               biome[dst] = cols.biome[src];
+              if (railY) railY[dst] = cols.railY[src];
             }
           }
         }
@@ -280,5 +325,5 @@ export async function readSurface(source, regionDir, minX, minZ, width, depth) {
     }
   }
 
-  return { minX, minZ, width, depth, surfaceY, floorY, surfaceName, biome, totalChunks, unparsedChunks };
+  return { minX, minZ, width, depth, surfaceY, floorY, surfaceName, biome, railY, totalChunks, unparsedChunks };
 }

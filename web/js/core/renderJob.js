@@ -72,18 +72,22 @@ export function buildQueue(dimension, bounds) {
 /**
  * Run a render.
  *
- * ctx      tile context ({ source, regionDir, regionSet, cache, ... })
+ * ctx        tile context ({ source, regionDir, regionSet, cache, ... })
+ * contexts   several contexts to render in one pass, e.g. the terrain and the
+ *            rail overlay; each tile is produced for all of them before moving
+ *            on, so the two layers stay in step as the map fills in
  * onProgress({ done, total, phase }) is called as work completes
  * shouldStop() lets the caller cancel between tiles
  */
-export async function runRender({ ctx, dimension, area, onProgress, shouldStop }) {
+export async function runRender({ ctx, contexts, dimension, area, onProgress, shouldStop }) {
+  const targets = contexts && contexts.length ? contexts : [ctx];
   const bounds = effectiveBounds(dimension, area);
   if (bounds.minX > bounds.maxX || bounds.minZ > bounds.maxZ) {
     throw new Error("L'area richiesta non contiene nessuna parte generata del mondo.");
   }
 
   const queue = buildQueue(dimension, bounds);
-  const total = queue.length;
+  const total = queue.length * targets.length;
   let done = 0;
   let lastPhase = '';
 
@@ -91,8 +95,10 @@ export async function runRender({ ctx, dimension, area, onProgress, shouldStop }
     if (shouldStop && shouldStop()) {
       return { state: 'cancelled', done, total, bounds };
     }
-    await getTile(ctx, t.z, t.x, t.y, true);
-    done++;
+    for (const target of targets) {
+      await getTile(target, t.z, t.x, t.y, true);
+      done++;
+    }
     if (onProgress && (done % 2 === 0 || done === total || t.phase !== lastPhase)) {
       lastPhase = t.phase;
       onProgress({ done, total, phase: t.phase, bounds });

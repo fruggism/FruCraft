@@ -19,6 +19,7 @@ import { colorFor } from '../web/js/core/blockColors.js';
 import { FileMapSource } from '../web/js/core/source.js';
 import { NodeSource, MemoryTileCache } from './node-source.js';
 import * as fixture from './make-test-world.js';
+import * as projects from '../web/js/app/projects.js';
 
 let passed = 0;
 let failed = 0;
@@ -500,6 +501,103 @@ test("l'export completo produce comando e mcfunction", () => {
   assert(out.mcfunction.includes('give @p'), 'mcfunction presente');
   assert(out.pages.length >= 1, 'almeno una pagina');
   assertEqual(out.title, 'Diario', 'titolo conservato');
+});
+
+// ---------------------------------------------------------------------------
+section('Modello del progetto: layer, filtro blocchi, trasporti');
+
+test('i tipi di layer includono trasporti e note', () => {
+  assert(projects.LAYER_TYPES.includes('transit'), 'transit');
+  assert(projects.LAYER_TYPES.includes('notes'), 'notes');
+});
+
+test('normalizeBlockList deduplica e normalizza i nomi', () => {
+  const out = projects.normalizeBlockList(['Barrier', 'minecraft:barrier', ' tinted_glass ', '', 'a b']);
+  assertEqual(out.length, 3, 'tre voci uniche');
+  assert(out.includes('minecraft:barrier'), 'barrier normalizzato con namespace');
+  assert(out.includes('minecraft:tinted_glass'), 'spazi tolti');
+  assert(out.includes('minecraft:a_b'), 'spazio interno diventa underscore');
+});
+
+test('normalizeFeature accetta un punto di interesse valido e scarta uno senza coordinate', () => {
+  const ok = projects.normalizeFeature({ name: 'Casa', coord: [10, 20] }, 'pois');
+  assert(ok && ok.coord[0] === 10 && ok.category === 'altro', 'poi normalizzato con categoria di default');
+  assertEqual(projects.normalizeFeature({ name: 'Casa' }, 'pois'), null, 'senza coord viene scartato');
+});
+
+test('normalizeFeature per una nota si comporta come un punto, senza categoria', () => {
+  const note = projects.normalizeFeature({ name: 'Da costruire', description: 'un faro', coord: [1, 2] }, 'notes');
+  assert(note && note.coord[1] === 2, 'la nota ha una posizione');
+  assertEqual(note.category, undefined, 'una nota non ha categoria');
+});
+
+test('normalizeFeature per una linea di trasporto richiede almeno 2 vertici e porta stationIds', () => {
+  const short = projects.normalizeFeature({ coords: [[0, 0]] }, 'transit');
+  assertEqual(short, null, 'una linea di un solo punto viene scartata');
+  const line = projects.normalizeFeature({ coords: [[0, 0], [10, 0], [10, 10]], stationIds: ['st_a', 42, 'st_b'] }, 'transit');
+  assert(line, 'linea valida accettata');
+  assertEqual(line.coords.length, 3, 'i vertici sono conservati');
+  assertEqual(line.stationIds.join(','), 'st_a,st_b', 'solo gli id stringa sopravvivono a questo livello');
+});
+
+test('normalizeStation richiede coordinate numeriche', () => {
+  assert(projects.normalizeStation({ x: 5, z: -5, name: 'Centrale' }), 'stazione valida');
+  assertEqual(projects.normalizeStation({ x: 'nord', z: 0 }), null, 'x non numerico viene scartato');
+  assertEqual(projects.normalizeStation(null), null, 'input nullo viene scartato');
+});
+
+test('normalizeLayer per un layer trasporti tiene solo i riferimenti a stazioni realmente esistenti', () => {
+  const layer = projects.normalizeLayer({
+    type: 'transit',
+    name: 'Metro',
+    stations: [{ id: 'st_1', x: 0, z: 0, name: 'Nord' }, { x: 'bad', z: 0 }],
+    features: [{ coords: [[0, 0], [5, 5]], stationIds: ['st_1', 'st_ghost'] }],
+  });
+  assertEqual(layer.stations.length, 1, 'la stazione senza coordinate valide non sopravvive');
+  assertEqual(layer.features[0].stationIds.join(','), 'st_1', 'il riferimento a una stazione inesistente viene tolto');
+});
+
+test('un layer non-trasporti ha comunque un array stations vuoto', () => {
+  const layer = projects.makeLayer('roads', 'Strade');
+  assert(Array.isArray(layer.stations) && layer.stations.length === 0, 'stations presente ma vuota');
+});
+
+test('makeLayer accetta un parentId per creare un sublayer', () => {
+  const parent = projects.makeLayer('areas', 'Quartiere');
+  const child = projects.makeLayer('roads', 'Vie del quartiere', parent.id);
+  assertEqual(child.parentId, parent.id, 'il figlio referenzia il genitore');
+});
+
+test('normalizeProject scarta un parentId che non esiste', () => {
+  const project = projects.normalizeProject({
+    layers: [{ id: 'l1', type: 'roads', name: 'Strade', parentId: 'non-esiste', features: [] }],
+  }, null);
+  assertEqual(project.layers[0].parentId, null, 'il riferimento pendente viene rimosso');
+});
+
+test('normalizeProject spezza un ciclo di parentId', () => {
+  const project = projects.normalizeProject({
+    layers: [
+      { id: 'a', type: 'roads', name: 'A', parentId: 'b', features: [] },
+      { id: 'b', type: 'roads', name: 'B', parentId: 'a', features: [] },
+    ],
+  }, null);
+  const byId = Object.fromEntries(project.layers.map((l) => [l.id, l]));
+  // Almeno uno dei due deve aver perso il parent, altrimenti l'albero non si potrebbe disegnare.
+  assert(byId.a.parentId === null || byId.b.parentId === null, 'il ciclo viene spezzato');
+});
+
+test('normalizeProject mantiene una catena di sublayer valida intatta', () => {
+  const project = projects.normalizeProject({
+    layers: [
+      { id: 'regione', type: 'areas', name: 'Regione', features: [] },
+      { id: 'provincia', type: 'areas', name: 'Provincia', parentId: 'regione', features: [] },
+      { id: 'strade', type: 'roads', name: 'Strade', parentId: 'provincia', features: [] },
+    ],
+  }, null);
+  const byId = Object.fromEntries(project.layers.map((l) => [l.id, l]));
+  assertEqual(byId.provincia.parentId, 'regione', 'provincia sotto regione');
+  assertEqual(byId.strade.parentId, 'provincia', 'strade sotto provincia');
 });
 
 // ---------------------------------------------------------------------------

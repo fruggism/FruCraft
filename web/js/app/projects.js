@@ -14,7 +14,7 @@ import { idbGet, idbPut, idbDelete, idbGetAll } from './db.js';
 
 export const FORMAT = 'cube-atlas/project';
 export const FORMAT_VERSION = 1;
-export const LAYER_TYPES = ['roads', 'pois', 'areas'];
+export const LAYER_TYPES = ['roads', 'pois', 'areas', 'transit', 'notes'];
 
 export function newId(prefix) {
   const rand = (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2)).slice(0, 8);
@@ -32,23 +32,47 @@ export const DEFAULT_AREA_STYLE = {
   fillColor: '#4fa3d1', fillOpacity: 0.25,
   strokeColor: '#4fa3d1', strokeWidth: 2, dash: 'solid', showName: true,
 };
+/* A transit line looks like a road (colour/width/dash) but carries no casing:
+ * metro lines are usually drawn as a single flat stroke, and two of them
+ * running side by side ("linee adiacenti") tell themselves apart by colour. */
+export const DEFAULT_TRANSIT_STYLE = {
+  color: '#4fa3d1', width: 5, dash: 'solid', opacity: 1, showName: true,
+};
+export const DEFAULT_NOTE_STYLE = {
+  color: '#f5e14a', size: 16, showName: true,
+};
 
 export function defaultStyleFor(type) {
   if (type === 'roads') return { ...DEFAULT_ROAD_STYLE };
   if (type === 'pois') return { ...DEFAULT_POI_STYLE };
+  if (type === 'transit') return { ...DEFAULT_TRANSIT_STYLE };
+  if (type === 'notes') return { ...DEFAULT_NOTE_STYLE };
   return { ...DEFAULT_AREA_STYLE };
 }
 
-export function makeLayer(type, name) {
+export const LAYER_TYPE_NAMES = {
+  roads: 'Strade', pois: 'Punti di interesse', areas: 'Aree',
+  transit: 'Trasporti', notes: 'Note',
+};
+
+export function makeLayer(type, name, parentId) {
   if (!LAYER_TYPES.includes(type)) throw new Error(`Tipo di layer sconosciuto: ${type}`);
   return {
     id: newId('lay'),
     type,
-    name: name || { roads: 'Strade', pois: 'Punti di interesse', areas: 'Aree' }[type],
+    name: name || LAYER_TYPE_NAMES[type],
     visible: true,
     locked: false,
+    // A layer can nest under another purely for organization (e.g. a
+    // "quartiere" area containing "strade"/"trasporti"/"edifici" sublayers).
+    // Nesting has no effect on what a layer draws, only on the list and on
+    // cascading visibility.
+    parentId: typeof parentId === 'string' && parentId ? parentId : null,
     defaultStyle: defaultStyleFor(type),
     features: [],
+    // Only meaningful for 'transit' layers, but present on every layer so
+    // callers never have to guard against it being missing.
+    stations: [],
   };
 }
 
@@ -72,40 +96,107 @@ function normCoords(list) {
   return list.map(normCoord).filter(Boolean);
 }
 
+/* A banner is stored inline as a small data URL. The cap is deliberate: these
+ * live inside the project, which is kept in the browser's storage and gets
+ * downloaded whole on export. */
+export const MAX_IMAGE_BYTES = 400000;
+
+function normalizeImage(value) {
+  if (typeof value !== 'string') return null;
+  if (!/^data:image\/(png|jpeg|webp|gif);base64,/.test(value)) return null;
+  if (value.length > MAX_IMAGE_BYTES) return null;
+  return value;
+}
+
 export function normalizeFeature(raw, layerType) {
   if (!raw || typeof raw !== 'object') return null;
   const base = {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId('f'),
     name: typeof raw.name === 'string' ? raw.name : '',
     description: typeof raw.description === 'string' ? raw.description : '',
+    image: normalizeImage(raw.image),
     style: raw.style && typeof raw.style === 'object' ? { ...raw.style } : {},
   };
-  if (layerType === 'pois') {
+  if (layerType === 'pois' || layerType === 'notes') {
     const coord = normCoord(raw.coord);
     if (!coord) return null;
-    return { ...base, coord, category: typeof raw.category === 'string' ? raw.category : 'altro' };
+    const out = { ...base, coord };
+    if (layerType === 'pois') out.category = typeof raw.category === 'string' ? raw.category : 'altro';
+    return out;
   }
   const coords = normCoords(raw.coords);
   // A line needs 2 points; a closed area needs 3.
   if (coords.length < (layerType === 'areas' ? 3 : 2)) return null;
-  return { ...base, coords };
+  const out = { ...base, coords };
+  if (layerType === 'transit') {
+    // Which shared stations (see normalizeStation) this line stops at.
+    // Filtered against the layer's actual station list by normalizeLayer,
+    // since that list isn't known here.
+    out.stationIds = Array.isArray(raw.stationIds) ? raw.stationIds.filter((s) => typeof s === 'string') : [];
+  }
+  return out;
+}
+
+/* A station is not owned by any single line: several transit features in the
+ * same layer can reference the same station id, which is how two metro lines
+ * "share a stop" ("passare sulle stazioni per far fermare le linee anche
+ * lì") without duplicating its position or name. */
+export function normalizeStation(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (!isNum(raw.x) || !isNum(raw.z)) return null;
+  return {
+    id: typeof raw.id === 'string' && raw.id ? raw.id : newId('st'),
+    x: raw.x,
+    z: raw.z,
+    name: typeof raw.name === 'string' ? raw.name : '',
+    description: typeof raw.description === 'string' ? raw.description : '',
+  };
 }
 
 export function normalizeLayer(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const type = LAYER_TYPES.includes(raw.type) ? raw.type : null;
   if (!type) return null;
+  const stations = type === 'transit' && Array.isArray(raw.stations)
+    ? raw.stations.map(normalizeStation).filter(Boolean)
+    : [];
+  const stationIdSet = new Set(stations.map((s) => s.id));
+  const features = Array.isArray(raw.features)
+    ? raw.features.map((f) => normalizeFeature(f, type)).filter(Boolean)
+    : [];
+  if (type === 'transit') {
+    // Drop references to stations that didn't survive normalization.
+    for (const f of features) f.stationIds = (f.stationIds || []).filter((id) => stationIdSet.has(id));
+  }
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId('lay'),
     type,
     name: typeof raw.name === 'string' && raw.name ? raw.name : 'Layer',
     visible: raw.visible !== false,
     locked: raw.locked === true,
+    parentId: typeof raw.parentId === 'string' && raw.parentId ? raw.parentId : null,
     defaultStyle: { ...defaultStyleFor(type), ...(raw.defaultStyle || {}) },
-    features: Array.isArray(raw.features)
-      ? raw.features.map((f) => normalizeFeature(f, type)).filter(Boolean)
-      : [],
+    features,
+    stations,
   };
+}
+
+/** Drop parentId links that point nowhere, or that would form a cycle —
+ *  both would otherwise make the layer tree impossible to render. */
+function sanitizeLayerTree(layers) {
+  const byId = new Map(layers.map((l) => [l.id, l]));
+  for (const layer of layers) {
+    if (!layer.parentId) continue;
+    if (!byId.has(layer.parentId) || layer.parentId === layer.id) { layer.parentId = null; continue; }
+    const seen = new Set([layer.id]);
+    let cur = byId.get(layer.parentId);
+    while (cur) {
+      if (seen.has(cur.id)) { layer.parentId = null; break; }
+      seen.add(cur.id);
+      cur = cur.parentId ? byId.get(cur.parentId) : null;
+    }
+  }
+  return layers;
 }
 
 export function normalizeDocument(raw) {
@@ -117,6 +208,47 @@ export function normalizeDocument(raw) {
     body: typeof raw.body === 'string' ? raw.body : '',
     tags: Array.isArray(raw.tags) ? raw.tags.filter((t) => typeof t === 'string') : [],
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
+  };
+}
+
+/* Blocks hidden by default: both are invisible in game, and both otherwise
+ * draw solid walls across the map. */
+export const DEFAULT_HIDDEN_BLOCKS = ['minecraft:barrier', 'minecraft:light'];
+
+/** "barrier" and "minecraft:barrier" mean the same thing to a player. */
+export function normalizeBlockName(name) {
+  const clean = String(name || '').trim().toLowerCase().replace(/\s+/g, '_');
+  if (!clean) return null;
+  if (!/^[a-z0-9_.:\/-]+$/.test(clean)) return null;
+  return clean.includes(':') ? clean : `minecraft:${clean}`;
+}
+
+export function normalizeBlockList(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const item of list) {
+    const name = normalizeBlockName(item);
+    if (name && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
+function normalizeSettings(raw, existing) {
+  const from = (raw && raw.settings) || null;
+  const prev = (existing && existing.settings) || null;
+  const pick = (key, fallback) => {
+    if (from && from[key] !== undefined) return from[key];
+    if (prev && prev[key] !== undefined) return prev[key];
+    return fallback;
+  };
+  return {
+    showTerrain: pick('showTerrain', true) !== false,
+    showRails: pick('showRails', false) === true,
+    hiddenBlocks: from && from.hiddenBlocks !== undefined
+      ? normalizeBlockList(from.hiddenBlocks)
+      : (prev && prev.hiddenBlocks !== undefined
+        ? normalizeBlockList(prev.hiddenBlocks)
+        : [...DEFAULT_HIDDEN_BLOCKS]),
   };
 }
 
@@ -136,9 +268,9 @@ export function normalizeView(raw, existing) {
 export function normalizeProject(raw, existing) {
   const now = new Date().toISOString();
   const world = (raw && raw.world) || (existing && existing.world) || {};
-  const layers = Array.isArray(raw && raw.layers)
+  const layers = sanitizeLayerTree(Array.isArray(raw && raw.layers)
     ? raw.layers.map(normalizeLayer).filter(Boolean)
-    : (existing ? existing.layers : defaultLayers());
+    : (existing ? existing.layers : defaultLayers()));
 
   return {
     format: FORMAT,
@@ -154,9 +286,7 @@ export function normalizeProject(raw, existing) {
     // A brand-new project has no saved view, which is what tells the map to
     // frame the whole generated world instead of jumping to an arbitrary spot.
     view: normalizeView(raw, existing),
-    settings: {
-      showTerrain: raw && raw.settings ? raw.settings.showTerrain !== false : true,
-    },
+    settings: normalizeSettings(raw, existing),
     layers: layers.length ? layers : defaultLayers(),
     documents: Array.isArray(raw && raw.documents)
       ? raw.documents.map(normalizeDocument).filter(Boolean)

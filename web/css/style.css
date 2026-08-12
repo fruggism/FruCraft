@@ -201,6 +201,46 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 .status.busy { color: var(--warn); }
 .hidden { display: none !important; }
 
+/* ------------------------------------------------------------ sub-panels */
+details.sub {
+  margin: 8px 0;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, .04);
+  box-shadow: inset -1px -1px 0 rgba(0, 0, 0, .4), inset 1px 1px 0 rgba(255, 255, 255, .06);
+}
+details.sub > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--accent-bright);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  list-style: none;
+}
+details.sub > summary::before { content: '▸ '; }
+details.sub[open] > summary::before { content: '▾ '; }
+details.sub > summary::-webkit-details-marker { display: none; }
+
+.check-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink); margin-bottom: 4px; }
+.check-row code { color: var(--ink-faint); font-size: 10px; }
+
+/* ------------------------------------------------------- feature banners */
+.ca-banner img {
+  image-rendering: pixelated;
+  display: block;
+  filter: drop-shadow(1px 1px 0 #000) drop-shadow(-1px -1px 0 rgba(0, 0, 0, .6));
+}
+.ca-popup .banner { margin: 0 0 6px; }
+.ca-popup .banner img {
+  max-width: 120px; max-height: 120px;
+  image-rendering: pixelated;
+  box-shadow: 0 0 0 2px #101010;
+}
+.props-banner { margin-top: 4px; display: flex; align-items: center; gap: 8px; }
+.props-banner img {
+  max-width: 48px; max-height: 48px; image-rendering: pixelated;
+  box-shadow: 0 0 0 2px #101010; background: #1a1a1a;
+}
+
 /* --------------------------------------------------------------- progress */
 .progress {
   height: 14px;
@@ -249,6 +289,16 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 }
 .layer-item .lname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-item .count { color: var(--ink-faint); font-size: 10px; flex: none; }
+.layer-item .sub {
+  width: 18px; flex: none; text-align: center; cursor: pointer;
+  font-size: 11px; opacity: .5;
+}
+.layer-item .sub:hover { opacity: 1; color: var(--accent-bright); }
+.layer-item .kill {
+  width: 20px; flex: none; text-align: center; cursor: pointer;
+  font-size: 12px; opacity: .5;
+}
+.layer-item .kill:hover { opacity: 1; color: #ff8b7d; }
 
 /* ------------------------------------------------------------------ tools */
 .tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -274,6 +324,20 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
   box-shadow: inset -1px -1px 0 rgba(0, 0, 0, .5), inset 1px 1px 0 rgba(255, 255, 255, .25), 0 0 0 1px #0d0d0d;
 }
 .swatch.sel { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #0d0d0d; }
+.stations-box {
+  margin-top: 8px; padding: 8px;
+  background: rgba(255, 255, 255, .04);
+  box-shadow: inset -1px -1px 0 rgba(0, 0, 0, .5), inset 1px 1px 0 rgba(255, 255, 255, .07);
+}
+.station-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 6px; }
+.station-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 6px; font-size: 11px; color: var(--ink);
+  background: rgba(255, 255, 255, .08);
+  box-shadow: inset -1px -1px 0 rgba(0, 0, 0, .5), inset 1px 1px 0 rgba(255, 255, 255, .1);
+}
+.station-chip b { cursor: pointer; color: var(--ink-faint); font-weight: normal; }
+.station-chip b:hover { color: #ff8b7d; }
 .shape-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
 .shape-btn {
   width: 30px; height: 28px; cursor: pointer; background: #4a4a4a; border: none;
@@ -435,6 +499,8 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 }
 .modal h3 { margin: 0 0 12px; color: var(--accent-bright); font-weight: normal; text-shadow: 2px 2px 0 #000; }
 .modal .modal-body { background: rgba(15, 15, 15, .75); padding: 12px; margin-bottom: 12px; }
+.modal-options { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.modal-options .btn { text-align: left; }
 
 @media (max-width: 900px) {
   #app { overflow: auto; }
