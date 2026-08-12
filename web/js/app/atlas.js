@@ -1308,15 +1308,44 @@ function pickExportZoom(bounds) {
   return -6;
 }
 
-/** Draw the terrain for `bounds` onto a canvas at `zoom`, via the worker. */
-async function drawTerrain(ctx, bounds, zoom, kind) {
-  const scale = Math.pow(2, zoom);
-  const span = 256 / scale; // blocks covered by one tile
+/**
+ * Everything an export needs to know about its canvas. `zoom` is capped at
+ * -6 (64 blocks/px, the coarsest native tile) — for a world whose explored
+ * bounds are vast (a stray far-away region is enough: "tutto il mondo
+ * generato" then spans hundreds of thousands of blocks even though the
+ * built-up area is tiny), that still isn't small enough to stay under
+ * MAX_EXPORT_PX. `shrink` covers the rest, so the canvas this actually
+ * allocates never exceeds the cap. Skipping this was the bug behind a
+ * "tutto il mondo" export opening as a broken image in the Lettore: the
+ * browser silently fails (or produces garbage) trying to allocate a
+ * multi-thousand-megapixel canvas, and toDataURL/toBlob on it is worthless.
+ */
+function exportPlan(bounds) {
+  const zoom = pickExportZoom(bounds);
+  const tileScale = Math.pow(2, zoom);
+  const rawW = (bounds.maxX - bounds.minX + 1) * tileScale;
+  const rawH = (bounds.maxZ - bounds.minZ + 1) * tileScale;
+  const shrink = Math.min(1, MAX_EXPORT_PX / Math.max(rawW, rawH, 1));
+  const scale = tileScale * shrink;
+  const w = Math.max(1, Math.round((bounds.maxX - bounds.minX + 1) * scale));
+  const h = Math.max(1, Math.round((bounds.maxZ - bounds.minZ + 1) * scale));
+  return { zoom, scale, w, h, shrunk: shrink < 1 };
+}
+
+/** Draw the terrain for `bounds` onto a canvas, via the worker. `zoom`
+ *  decides which cached/rendered tiles are fetched; `drawScale` (which may
+ *  be smaller than the tiles' own native scale — see exportPlan) decides
+ *  where and how big each one is painted, so the canvas stays bounded no
+ *  matter how far apart the fetched tiles are. */
+async function drawTerrain(ctx, bounds, zoom, drawScale, kind) {
+  const tileScale = Math.pow(2, zoom);
+  const span = 256 / tileScale; // blocks covered by one native tile
   const t0x = Math.floor(bounds.minX / span);
   const t1x = Math.floor(bounds.maxX / span);
   const t0y = Math.floor(bounds.minZ / span);
   const t1y = Math.floor(bounds.maxZ / span);
   const dimId = state.project.world.dimension;
+  const drawSize = 256 * (drawScale / tileScale);
 
   const jobs = [];
   for (let ty = t0y; ty <= t1y; ty++) {
@@ -1333,7 +1362,11 @@ async function drawTerrain(ctx, bounds, zoom, kind) {
     results.forEach((res, k) => {
       if (!res || res.empty || !res.bitmap) return;
       const { tx, ty } = slice[k];
-      ctx.drawImage(res.bitmap, (tx * span - bounds.minX) * scale, (ty * span - bounds.minZ) * scale, 256, 256);
+      ctx.drawImage(
+        res.bitmap,
+        (tx * span - bounds.minX) * drawScale, (ty * span - bounds.minZ) * drawScale,
+        drawSize, drawSize,
+      );
       res.bitmap.close();
     });
   }
@@ -1550,10 +1583,7 @@ async function exportPNG() {
   const area = await pickExportArea();
   if (!area) return;
   const bounds = exportBounds(area);
-  const zoom = pickExportZoom(bounds);
-  const scale = Math.pow(2, zoom);
-  const w = Math.max(1, Math.round((bounds.maxX - bounds.minX + 1) * scale));
-  const h = Math.max(1, Math.round((bounds.maxZ - bounds.minZ + 1) * scale));
+  const { zoom, scale, w, h, shrunk } = exportPlan(bounds);
 
   setStatus('export-status', `Composizione immagine ${w}×${h}…`, 'busy');
   const canvas = document.createElement('canvas');
@@ -1565,15 +1595,16 @@ async function exportPNG() {
   ctx.fillRect(0, 0, w, h);
 
   try {
-    if (el('chk-terrain').checked) await drawTerrain(ctx, bounds, zoom);
-    if (el('chk-rails').checked) await drawTerrain(ctx, bounds, zoom, 'rails');
+    if (el('chk-terrain').checked) await drawTerrain(ctx, bounds, zoom, scale);
+    if (el('chk-rails').checked) await drawTerrain(ctx, bounds, zoom, scale, 'rails');
     await preloadBanners();
     drawVectors(ctx, bounds, scale);
     await new Promise((resolve) => canvas.toBlob((blob) => {
       download(`${slugify(state.project.name)}.png`, blob);
       resolve();
     }, 'image/png'));
-    setStatus('export-status', `PNG esportato (${w}×${h} px)`, 'ok');
+    setStatus('export-status',
+      `PNG esportato (${w}×${h} px)${shrunk ? ' — area molto grande, risoluzione ridotta per restare esportabile' : ''}`, 'ok');
   } catch (err) {
     setStatus('export-status', `Export fallito: ${err.message}`, 'err');
   }
@@ -1584,10 +1615,7 @@ async function exportSVG() {
   const area = await pickExportArea();
   if (!area) return;
   const bounds = exportBounds(area);
-  const zoom = pickExportZoom(bounds);
-  const scale = Math.pow(2, zoom);
-  const w = Math.round((bounds.maxX - bounds.minX + 1) * scale);
-  const h = Math.round((bounds.maxZ - bounds.minZ + 1) * scale);
+  const { zoom, scale, w, h, shrunk } = exportPlan(bounds);
   const toPx = (x, z) => [((x - bounds.minX) * scale).toFixed(1), ((z - bounds.minZ) * scale).toFixed(1)];
 
   setStatus('export-status', 'Composizione SVG…', 'busy');
@@ -1601,8 +1629,8 @@ async function exportSVG() {
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     try {
-      if (el('chk-terrain').checked) await drawTerrain(ctx, bounds, zoom);
-      if (el('chk-rails').checked) await drawTerrain(ctx, bounds, zoom, 'rails');
+      if (el('chk-terrain').checked) await drawTerrain(ctx, bounds, zoom, scale);
+      if (el('chk-rails').checked) await drawTerrain(ctx, bounds, zoom, scale, 'rails');
       parts.push(`<image x="0" y="0" width="${w}" height="${h}" href="${canvas.toDataURL('image/png')}" style="image-rendering:pixelated"/>`);
     } catch { /* terrain is optional in the SVG */ }
   }
@@ -1664,7 +1692,8 @@ async function exportSVG() {
   parts.push('</svg>');
 
   download(`${slugify(state.project.name)}.svg`, parts.join('\n'), 'image/svg+xml');
-  setStatus('export-status', `SVG esportato (${w}×${h})`, 'ok');
+  setStatus('export-status',
+    `SVG esportato (${w}×${h})${shrunk ? ' — area molto grande, risoluzione del terreno ridotta' : ''}`, 'ok');
 }
 
 function exportGeoJSON() {
@@ -1731,10 +1760,7 @@ async function exportForReader() {
   const area = await pickExportArea();
   if (!area) return;
   const bounds = exportBounds(area);
-  const zoom = pickExportZoom(bounds);
-  const scale = Math.pow(2, zoom);
-  const w = Math.max(1, Math.round((bounds.maxX - bounds.minX + 1) * scale));
-  const h = Math.max(1, Math.round((bounds.maxZ - bounds.minZ + 1) * scale));
+  const { zoom, scale, w, h, shrunk } = exportPlan(bounds);
 
   setStatus('export-status', `Composizione mappa per il Lettore ${w}×${h}…`, 'busy');
   const canvas = document.createElement('canvas');
@@ -1746,8 +1772,8 @@ async function exportForReader() {
   ctx.fillRect(0, 0, w, h);
 
   try {
-    if (el('chk-terrain').checked) await drawTerrain(ctx, bounds, zoom);
-    if (el('chk-rails').checked) await drawTerrain(ctx, bounds, zoom, 'rails');
+    if (el('chk-terrain').checked) await drawTerrain(ctx, bounds, zoom, scale);
+    if (el('chk-rails').checked) await drawTerrain(ctx, bounds, zoom, scale, 'rails');
     const bundle = {
       format: READER_MAP_FORMAT,
       version: 1,
@@ -1756,7 +1782,8 @@ async function exportForReader() {
       layers: JSON.parse(JSON.stringify(state.project.layers)),
     };
     download(`${slugify(state.project.name)}.camap.json`, JSON.stringify(bundle), 'application/json');
-    setStatus('export-status', `Mappa per il Lettore esportata (${w}×${h} px)`, 'ok');
+    setStatus('export-status',
+      `Mappa per il Lettore esportata (${w}×${h} px)${shrunk ? ' — area molto grande, risoluzione ridotta per restare esportabile' : ''}`, 'ok');
   } catch (err) {
     setStatus('export-status', `Export fallito: ${err.message}`, 'err');
   }
@@ -1770,7 +1797,7 @@ export {
   POI_SHAPES, POI_CATEGORIES, PALETTE,
   // Pure geometry helpers, exported mainly so the test suite can exercise
   // them without a browser (see test/run-tests.js).
-  offsetTransitCoords, snapToStations,
+  offsetTransitCoords, snapToStations, exportPlan, MAX_EXPORT_PX,
   // Read-only rendering pieces, shared with the Lettore so a feature looks
   // and behaves (hover info) exactly the same whether it's being edited or
   // just viewed: one definition of what a road/POI/area/transit/note/station

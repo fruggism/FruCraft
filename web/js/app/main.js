@@ -30,14 +30,18 @@ let openWorldInit = null;
 // standalone viewer for files the Editor has already exported. Switching
 // mode never touches world/project state — only which screen is visible.
 let lastEditorScreen = 'atlas';
+let lastReaderScreen = 'reader-atlas';
 
 function showScreen(name) {
-  // Scoped to the Atlante/Archivio sub-tabs: the mode tabs are also `.tab`
-  // elements, but have no `data-screen`, so a bare `.tab` selector here
-  // would wrongly clear their active state on every screen switch.
-  document.querySelectorAll('#editor-tabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.screen === name));
+  // Scoped to the sub-tabs, not a bare `.tab`: the mode tabs are also `.tab`
+  // elements but have no `data-screen`, so a bare selector here would wrongly
+  // clear their active state on every screen switch.
+  document.querySelectorAll('#editor-tabs .tab, #reader-tabs .tab').forEach((t) => (
+    t.classList.toggle('active', t.dataset.screen === name)
+  ));
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === `screen-${name}`));
   if (name === 'atlas' || name === 'archive') lastEditorScreen = name;
+  if (name === 'reader-atlas' || name === 'reader-archive') lastReaderScreen = name;
   if (name === 'atlas' && Atlas.getMap()) setTimeout(() => Atlas.getMap().invalidateSize(), 60);
   if (name === 'archive') Archive.renderList();
 }
@@ -45,8 +49,9 @@ function showScreen(name) {
 function setMode(mode) {
   document.querySelectorAll('#mode-tabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.mode === mode));
   el('editor-tabs').classList.toggle('hidden', mode !== 'editor');
+  el('reader-tabs').classList.toggle('hidden', mode !== 'reader');
   el('mode-label').textContent = mode === 'reader' ? ' Lettore' : ' Editor';
-  showScreen(mode === 'reader' ? 'reader' : lastEditorScreen);
+  showScreen(mode === 'reader' ? lastReaderScreen : lastEditorScreen);
 }
 
 // ------------------------------------------------------------------ world
@@ -636,7 +641,7 @@ async function init() {
   document.querySelectorAll('#mode-tabs .tab').forEach((btn) => {
     btn.addEventListener('click', () => setMode(btn.dataset.mode));
   });
-  document.querySelectorAll('#editor-tabs .tab').forEach((tab) => {
+  document.querySelectorAll('#editor-tabs .tab, #reader-tabs .tab').forEach((tab) => {
     tab.addEventListener('click', () => showScreen(tab.dataset.screen));
   });
 

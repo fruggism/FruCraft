@@ -16,12 +16,18 @@ L'app è divisa in due, cambiabile dai due bottoni in alto:
 - **✏️ Editor** — dove si fa tutto il lavoro: apri il mondo, disegni la mappa
   a layer, scrivi i documenti dell'Archivio. Richiede il mondo Minecraft.
 - **📖 Lettore** — un visualizzatore leggero per i file che l'Editor ha già
-  esportato: apri una mappa esportata con *"📖 Esporta per il Lettore"* — il
-  terreno è un'immagine piatta, ma i layer restano vivi: si possono ancora
-  nascondere/mostrare uno per uno, e passandoci sopra col mouse se ne vedono
-  le informazioni — oppure un documento dell'Archivio. Non serve nessun
-  mondo: è pensato per chi deve solo *guardare* quello che hai fatto, anche
-  su un altro computer.
+  esportato. Non serve nessun mondo: è pensato per chi deve solo *guardare*
+  quello che hai fatto, anche su un altro computer.
+
+Entrambi hanno le stesse due sezioni, **Atlante** e **Archivio** — nell'Editor
+sono dove crei le cose, nel Lettore dove le apri e le guardi:
+
+- **Atlante** (Lettore) — apri una mappa esportata con *"📖 Esporta per il
+  Lettore"*: il terreno è un'immagine piatta, ma i layer restano vivi: si
+  possono ancora nascondere/mostrare uno per uno, e passandoci sopra col
+  mouse se ne vedono le informazioni, come nell'Editor.
+- **Archivio** (Lettore) — apri un documento esportato dall'Archivio
+  dell'Editor e leggilo impaginato.
 
 ---
 
@@ -112,6 +118,13 @@ dentro la cartella `web/`.
    - **SVG** (un gruppo per layer, apribile in Inkscape/Illustrator), **GeoJSON**,
      o il progetto completo `.cubeatlas.json` che si riapre con *Importa*
      mantenendo i layer.
+
+   Le esportazioni con immagine (PNG e "per il Lettore") riducono da sole la
+   risoluzione quando l'area è enorme — tipicamente "tutto il mondo generato"
+   su una partita esplorata a macchia di leopardo, con una regione sperduta
+   lontanissima dal resto — così il file resta sempre apribile invece di
+   uscire come un'immagine rotta. Lo stato di esportazione lo segnala quando
+   succede.
 7. **Archivio** — scrivi i documenti del tuo impero, vedili impaginati come un
    libro di Minecraft ed esportali come comando `/give` (formato 1.20.5+ o
    precedenti), file `.mcfunction` o testo. *"📖 Esporta per il Lettore"*
@@ -221,7 +234,7 @@ i blocchi sbagliati.
 ## Test
 
 ```bash
-npm test           # 60 test, nessuna dipendenza
+npm test           # 63 test, nessuna dipendenza
 npm run world      # rigenera i mondi sintetici di prova
 npm run textures   # rigenera le texture dell'interfaccia
 ```

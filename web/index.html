@@ -27,6 +27,10 @@
       <button class="tab active" data-screen="atlas">Atlante</button>
       <button class="tab" data-screen="archive">Archivio</button>
     </nav>
+    <nav class="tabs sub-tabs hidden" id="reader-tabs">
+      <button class="tab active" data-screen="reader-atlas">Atlante</button>
+      <button class="tab" data-screen="reader-archive">Archivio</button>
+    </nav>
     <div class="topbar-spacer"></div>
     <div class="topbar-info" id="topbar-info">Nessun progetto aperto</div>
   </header>
@@ -282,8 +286,8 @@
     </div>
   </div>
 
-  <!-- ============================== LETTORE ========================== -->
-  <div class="screen" id="screen-reader">
+  <!-- ============================== LETTORE: ATLANTE ================= -->
+  <div class="screen" id="screen-reader-atlas">
     <aside class="sidebar">
       <section class="panel">
         <h2>Apri una mappa</h2>
@@ -300,21 +304,12 @@
         <div class="hint">Nascondi o mostra i layer di questa mappa.</div>
         <ul class="layer-list" id="reader-layer-list"></ul>
       </section>
-
-      <section class="panel">
-        <h2>Apri un documento</h2>
-        <div class="hint">Apri un documento esportato dall'Archivio con "Esporta per il Lettore"
-          (.cadoc.json). Un semplice .txt si apre anche, come testo normale.</div>
-        <button class="btn btn-primary" id="btn-reader-open-doc">Apri documento…</button>
-        <input type="file" id="reader-doc-input" accept=".cadoc.json,.json,.txt,application/json,text/plain" class="hidden">
-        <div id="reader-doc-status" class="status"></div>
-      </section>
     </aside>
 
     <main class="reader-main">
-      <div class="reader-empty" id="reader-empty">
-        <h3>Cube-Atlas Lettore</h3>
-        <p>Apri una mappa o un documento esportato dall'Editor per vederlo qui.</p>
+      <div class="reader-empty" id="reader-map-empty">
+        <h3>Cube-Atlas Lettore — Atlante</h3>
+        <p>Apri una mappa esportata dall'Editor per vederla qui.</p>
         <p>Non serve aprire nessun mondo: il Lettore mostra solo file già esportati.</p>
       </div>
 
@@ -331,6 +326,27 @@
         <div class="reader-image-scroll" id="reader-image-scroll">
           <img id="reader-image" alt="Mappa esportata">
         </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ============================== LETTORE: ARCHIVIO ================ -->
+  <div class="screen" id="screen-reader-archive">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>Apri un documento</h2>
+        <div class="hint">Apri un documento esportato dall'Archivio con "📖 Esporta per il Lettore"
+          (.cadoc.json). Un semplice .txt si apre anche, come testo normale.</div>
+        <button class="btn btn-primary" id="btn-reader-open-doc">Apri documento…</button>
+        <input type="file" id="reader-doc-input" accept=".cadoc.json,.json,.txt,application/json,text/plain" class="hidden">
+        <div id="reader-doc-status" class="status"></div>
+      </section>
+    </aside>
+
+    <main class="reader-main">
+      <div class="reader-empty" id="reader-doc-empty">
+        <h3>Cube-Atlas Lettore — Archivio</h3>
+        <p>Apri un documento esportato dall'Editor per leggerlo qui.</p>
       </div>
 
       <div class="reader-doc-view hidden" id="reader-doc-view">

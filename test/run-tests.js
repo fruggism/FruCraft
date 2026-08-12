@@ -672,6 +672,38 @@ test('offsetTransitCoords non sposta due linee che si incrociano perpendicolari'
 });
 
 // ---------------------------------------------------------------------------
+section('Esportazione: la tela non supera mai il limite');
+
+test('un\'area enorme (regione lontana isolata) resta sotto MAX_EXPORT_PX', () => {
+  // Il bug reale: "tutto il mondo generato" può includere una regione
+  // sperduta lontanissima dal resto, per cui i confini del mondo sono enormi
+  // pur essendo la parte costruita minuscola. Prima della correzione questo
+  // produceva una tela di decine di migliaia di pixel per lato, che il
+  // browser non riusciva ad allocare — da cui l'immagine "rotta" nel Lettore.
+  const huge = { minX: 0, minZ: 0, maxX: 2_000_000, maxZ: 2_000_000 };
+  const plan = atlasGeom.exportPlan(huge);
+  assert(plan.w <= atlasGeom.MAX_EXPORT_PX, `larghezza ${plan.w} oltre il limite`);
+  assert(plan.h <= atlasGeom.MAX_EXPORT_PX, `altezza ${plan.h} oltre il limite`);
+  assert(plan.shrunk, 'un\'area così enorme deve essere segnalata come ridotta');
+  assert(plan.scale > 0, 'la scala deve restare positiva e utilizzabile');
+});
+
+test('un\'area piccola non viene ridotta oltre lo zoom nativo', () => {
+  const small = { minX: 0, minZ: 0, maxX: 255, maxZ: 255 };
+  const plan = atlasGeom.exportPlan(small);
+  assertEqual(plan.shrunk, false, 'un\'area piccola sta già sotto il limite allo zoom nativo');
+  assertEqual(plan.w, 256, 'larghezza allo zoom scelto, senza ulteriore riduzione');
+});
+
+test('un\'area estrema non produce una tela degenere (0 o non finita)', () => {
+  const extreme = { minX: -30_000_000, minZ: -30_000_000, maxX: 30_000_000, maxZ: 30_000_000 };
+  const plan = atlasGeom.exportPlan(extreme);
+  assert(Number.isFinite(plan.w) && plan.w >= 1, `larghezza non valida: ${plan.w}`);
+  assert(Number.isFinite(plan.h) && plan.h >= 1, `altezza non valida: ${plan.h}`);
+  assert(plan.w <= atlasGeom.MAX_EXPORT_PX && plan.h <= atlasGeom.MAX_EXPORT_PX, 'anche il caso estremo resta entro il limite');
+});
+
+// ---------------------------------------------------------------------------
 (async () => {
   for (const item of tests) {
     if (item.kind === 'section') { console.log(`\n${item.title}`); continue; }

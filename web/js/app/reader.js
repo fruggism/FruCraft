@@ -18,36 +18,39 @@ import { READER_DOC_FORMAT } from './archive.js';
 const READER_MAP_FORMAT = Atlas.READER_MAP_FORMAT || 'cube-atlas/map';
 
 // ------------------------------------------------------------- view state
-function showEmpty() {
-  el('reader-empty').classList.remove('hidden');
+// The Lettore has its own Atlante/Archivio sub-tabs, mirroring the Editor's:
+// map-related views live in #screen-reader-atlas, the document view in
+// #screen-reader-archive. Each pair only has to toggle within its own
+// screen — main.js's showScreen already handles which screen is active.
+function showMapEmpty() {
+  el('reader-map-empty').classList.remove('hidden');
   el('reader-map-view').classList.add('hidden');
   el('reader-image-view').classList.add('hidden');
-  el('reader-doc-view').classList.add('hidden');
   el('reader-map-layers').classList.add('hidden');
 }
 
 function showMap() {
-  el('reader-empty').classList.add('hidden');
+  el('reader-map-empty').classList.add('hidden');
   el('reader-map-view').classList.remove('hidden');
   el('reader-image-view').classList.add('hidden');
-  el('reader-doc-view').classList.add('hidden');
   el('reader-map-layers').classList.remove('hidden');
 }
 
 function showImage() {
-  el('reader-empty').classList.add('hidden');
+  el('reader-map-empty').classList.add('hidden');
   el('reader-map-view').classList.add('hidden');
   el('reader-image-view').classList.remove('hidden');
-  el('reader-doc-view').classList.add('hidden');
   el('reader-map-layers').classList.add('hidden');
 }
 
+function showDocEmpty() {
+  el('reader-doc-empty').classList.remove('hidden');
+  el('reader-doc-view').classList.add('hidden');
+}
+
 function showDoc() {
-  el('reader-empty').classList.add('hidden');
-  el('reader-map-view').classList.add('hidden');
-  el('reader-image-view').classList.add('hidden');
+  el('reader-doc-empty').classList.add('hidden');
   el('reader-doc-view').classList.remove('hidden');
-  el('reader-map-layers').classList.add('hidden');
 }
 
 // -------------------------------------------------------- interactive map
@@ -343,7 +346,8 @@ function init() {
   el('btn-reader-image-fit').addEventListener('click', () => { el('reader-image').className = 'fit'; });
   el('btn-reader-image-full').addEventListener('click', () => { el('reader-image').className = 'full'; });
 
-  showEmpty();
+  showMapEmpty();
+  showDocEmpty();
 }
 
 export { init };
