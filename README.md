@@ -186,7 +186,7 @@ i blocchi sbagliati.
 ## Test
 
 ```bash
-npm test           # 54 test, nessuna dipendenza
+npm test           # 59 test, nessuna dipendenza
 npm run world      # rigenera i mondi sintetici di prova
 npm run textures   # rigenera le texture dell'interfaccia
 ```

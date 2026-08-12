@@ -8,7 +8,7 @@
 
 import {
   state, el, escapeHtml, toast, toLatLng, fromLatLng, roundCoord,
-  debounce, newId, confirmDialog, download, slugify, setStatus, markDirty,
+  debounce, newId, confirmDialog, promptDialog, download, slugify, setStatus, markDirty,
   findLayer, selectedLayer, findFeature, selectedFeature, engine,
 } from './ui-core.js';
 
@@ -39,6 +39,21 @@ const rendered = new Map();     // featureId -> { layerId, group, primary, featu
 const layerGroups = new Map();  // layerId -> L.LayerGroup
 const stationGroups = new Map(); // layerId -> L.LayerGroup (transit stations only)
 let extendTarget = null;         // { layerId, featureId } while continuing an existing line
+let placingStation = null;       // { layerId, featureId, name } while placing a new station by clicking the map
+
+// Clicking within this many blocks of an existing station reuses it instead
+// of creating an overlapping twin — this is how you deliberately attach a
+// new station to an existing one, or place one on an existing line.
+const STATION_CLICK_SNAP_BLOCKS = 10;
+// Tighter tolerance for auto-attaching while *drawing*: two lines merely
+// running near each other (an "adiacente" line 4-5 blocks over) must not
+// accidentally pick up every station along the other line's route — only a
+// line that genuinely passes through the stop should snap to it.
+const STATION_DRAW_SNAP_BLOCKS = 4;
+// Sideways nudge, in blocks, applied to each line sharing an exact stretch
+// of track with another line in the same layer, so "linee adiacenti" don't
+// render as one indistinguishable stroke. Purely visual.
+const TRANSIT_OFFSET_BLOCKS = 3;
 
 let map = null;
 let tileLayer = null;
@@ -82,6 +97,7 @@ function initMap() {
   // layer's, so check what was actually hit rather than relying on
   // propagation being stopped.
   map.on('click', (e) => {
+    if (placingStation) { placeStationAt(e.latlng); return; }
     if (currentTool !== 'select') return;
     if (hitsFeature(e.originalEvent)) return;
     selectFeature(null);
@@ -355,8 +371,8 @@ function buildFeatureLayer(feature, layer) {
 
   } else if (layer.type === 'transit') {
     // No casing: a metro line is a flat stroke, and adjacent lines tell
-    // themselves apart by colour rather than by an outline.
-    const latlngs = feature.coords.map(([x, z]) => toLatLng(x, z));
+    // themselves apart by colour plus the sideways nudge from offsetTransitCoords.
+    const latlngs = offsetTransitCoords(feature, layer).map(([x, z]) => toLatLng(x, z));
     primary = L.polyline(latlngs, {
       color: style.color || '#4fa3d1',
       weight: Number(style.width) || 5,
@@ -434,6 +450,7 @@ function buildFeatureLayer(feature, layer) {
   primary.on('mouseout', () => primary.closePopup());
   primary.on('click', (e) => {
     if (e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
+    if (placingStation) { placeStationAt(e.latlng); return; }
     if (currentTool === 'delete') { deleteFeature(layer.id, feature.id); return; }
     selectFeature(layer.id, feature.id);
     if (currentTool === 'edit') toggleVertexEditing(feature.id, true);
@@ -455,6 +472,165 @@ function popupHtml(feature, layer) {
     ${feature.description ? `<p class="desc">${escapeHtml(feature.description)}</p>` : ''}
     <div class="meta">${kind}${cat}${len}${area}${stops} · ${escapeHtml(layer.name)}</div>
   </div>`;
+}
+
+function dist(x1, z1, x2, z2) { return Math.hypot(x1 - x2, z1 - z2); }
+
+/** The closest station within `tolerance` blocks, or null. */
+function nearestStation(layer, x, z, tolerance = STATION_CLICK_SNAP_BLOCKS) {
+  let best = null, bestD = tolerance;
+  for (const s of layer.stations || []) {
+    const d = dist(s.x, s.z, x, z);
+    if (d <= bestD) { bestD = d; best = s; }
+  }
+  return best;
+}
+
+function nearestVertex(coords, x, z) {
+  let best = null, bestD = STATION_CLICK_SNAP_BLOCKS;
+  for (const pt of coords) {
+    const d = dist(pt[0], pt[1], x, z);
+    if (d <= bestD) { bestD = d; best = pt; }
+  }
+  return best;
+}
+
+/** Whenever a freshly drawn/extended line passes close to an existing
+ *  station, snap that vertex onto it and record the stop — this is the
+ *  "passare sulle stazioni per far fermare le linee anche lì" behaviour.
+ *  Uses the tighter draw tolerance: a merely-nearby adjacent line must not
+ *  pick up stations it doesn't actually call at. */
+function snapToStations(layer, coords) {
+  const stationIds = [];
+  const snapped = coords.map(([x, z]) => {
+    const st = nearestStation(layer, x, z, STATION_DRAW_SNAP_BLOCKS);
+    if (st) { stationIds.push(st.id); return [st.x, st.z]; }
+    return [x, z];
+  });
+  return { coords: snapped, stationIds: [...new Set(stationIds)] };
+}
+
+// Two segments "run together" if their midpoints are close and they point
+// the same way — not only when they're pixel-identical. A user tracing a
+// second line along roughly the same route, a few blocks off, still gets
+// bundled and separated, which is the common case for two real metro lines
+// sharing a stretch of physical track.
+const TRANSIT_BUNDLE_RANGE = 8;          // blocks between midpoints
+const TRANSIT_BUNDLE_ANGLE = Math.PI / 8; // ~22.5°, so a crossing line doesn't bundle
+
+function segAngle(a, b) {
+  let angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  if (angle < 0) angle += Math.PI; // fold the reverse direction onto the same value
+  return angle;
+}
+function angleDiff(a1, a2) {
+  const d = Math.abs(a1 - a2) % Math.PI;
+  return Math.min(d, Math.PI - d);
+}
+
+/** Nudges a transit line's rendered vertices sideways wherever it runs
+ *  alongside another line in the same layer, so two "linee adiacenti" don't
+ *  paint as a single indistinguishable stroke. Pure rendering:
+ *  `feature.coords` itself is never touched, which is also why vertex
+ *  editing must reset to the true coordinates before it starts (see
+ *  toggleVertexEditing) rather than read back these offset ones. */
+function offsetTransitCoords(feature, layer) {
+  const coords = feature.coords;
+  if (coords.length < 2) return coords;
+
+  const siblings = layer.features.filter((f) => f.coords && f.coords.length >= 2);
+  const edges = [];
+  for (const f of siblings) {
+    for (let i = 0; i < f.coords.length - 1; i++) {
+      const a = f.coords[i], b = f.coords[i + 1];
+      edges.push({
+        featureId: f.id, a, b,
+        mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
+        angle: segAngle(a, b),
+      });
+    }
+  }
+
+  const edgeOffset = (i) => {
+    const a = coords[i], b = coords[i + 1];
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const angle = segAngle(a, b);
+    // Every OTHER line with a segment running alongside this one here — one
+    // entry per line, whichever of its segments comes first in scan order.
+    const bundle = [];
+    const seen = new Set();
+    for (const e of edges) {
+      if (seen.has(e.featureId)) continue;
+      if (Math.hypot(e.mid[0] - mid[0], e.mid[1] - mid[1]) > TRANSIT_BUNDLE_RANGE) continue;
+      if (angleDiff(e.angle, angle) > TRANSIT_BUNDLE_ANGLE) continue;
+      bundle.push(e);
+      seen.add(e.featureId);
+    }
+    if (bundle.length <= 1) return [0, 0];
+    // Stable order (not scan order) so the sides don't flicker on re-render.
+    bundle.sort((x, y) => (x.featureId < y.featureId ? -1 : x.featureId > y.featureId ? 1 : 0));
+    const rank = bundle.findIndex((g) => g.featureId === feature.id) - (bundle.length - 1) / 2;
+    // All lines in the bundle offset along the same axis — the first
+    // segment's direction, rather than each line's own — so they fan out to
+    // either side instead of each computing an independent, mismatched one.
+    const ref = bundle[0];
+    const dx = ref.b[0] - ref.a[0], dz = ref.b[1] - ref.a[1];
+    const len = Math.hypot(dx, dz) || 1;
+    return [(-dz / len) * rank * TRANSIT_OFFSET_BLOCKS, (dx / len) * rank * TRANSIT_OFFSET_BLOCKS];
+  };
+
+  return coords.map((pt, i) => {
+    const before = i > 0 ? edgeOffset(i - 1) : null;
+    const after = i < coords.length - 1 ? edgeOffset(i) : null;
+    let ox = 0, oz = 0, n = 0;
+    if (before) { ox += before[0]; oz += before[1]; n++; }
+    if (after) { ox += after[0]; oz += after[1]; n++; }
+    return n ? [pt[0] + ox / n, pt[1] + oz / n] : pt;
+  });
+}
+
+/** Starts a one-off "click the map to place this station" interaction. */
+async function beginPlaceStation(layer, feature) {
+  const name = await promptDialog({
+    title: 'Nuova stazione', message: 'Nome della stazione', confirmLabel: 'Crea',
+  });
+  if (name === null) return;
+  setTool('select'); // cancel any active drawing tool; also clears placingStation
+  placingStation = { layerId: layer.id, featureId: feature.id, name: name.trim() || 'Stazione' };
+  const hint = el('draw-hint');
+  hint.classList.remove('hidden');
+  hint.innerHTML = 'Clicca sulla mappa, idealmente sulla linea, per posizionare la stazione. '
+    + 'Clicca vicino a una stazione esistente per collegarti a quella. <kbd>Esc</kbd> per annullare.';
+}
+
+function placeStationAt(latlng) {
+  const target = placingStation;
+  placingStation = null;
+  el('draw-hint').classList.add('hidden');
+  const layer = findLayer(target.layerId);
+  const feature = findFeature(target.layerId, target.featureId);
+  if (!layer || !feature) return;
+
+  const p = fromLatLng(latlng);
+  let x = Math.round(p.x), z = Math.round(p.z);
+
+  const existing = nearestStation(layer, x, z);
+  if (existing) {
+    feature.stationIds = [...new Set([...(feature.stationIds || []), existing.id])];
+    toast(`Collegata alla stazione esistente "${existing.name || '(senza nome)'}"`, 'ok');
+  } else {
+    const onLine = nearestVertex(feature.coords, x, z);
+    if (onLine) { x = onLine[0]; z = onLine[1]; }
+    const station = { id: newId('st'), x, z, name: target.name, description: '' };
+    layer.stations = layer.stations || [];
+    layer.stations.push(station);
+    feature.stationIds = [...(feature.stationIds || []), station.id];
+    toast('Stazione aggiunta', 'ok');
+  }
+  markDirty();
+  refreshStations(layer.id);
+  Main.renderLayerList();
+  if (state.selectedFeature && state.selectedFeature.featureId === feature.id) refreshProps();
 }
 
 /** A station marker, shared by every transit line that stops there. */
@@ -493,6 +669,7 @@ function buildStationMarker(station, layer) {
   marker.on('mouseout', () => marker.closePopup());
   marker.on('click', (e) => {
     if (e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
+    if (placingStation) { placeStationAt(e.latlng); return; }
     if (currentTool === 'delete') deleteStation(layer.id, station.id);
   });
   return marker;
@@ -614,11 +791,18 @@ function selectFeature(layerId, featureId) {
 function toggleVertexEditing(featureId, on) {
   const entry = rendered.get(featureId);
   if (!entry || !entry.primary.editing) return;
+  const layer = findLayer(entry.layerId);
   if (on) {
+    // A transit line can be rendered offset from its stored path (see
+    // offsetTransitCoords) when it shares track with another line: editing
+    // must move handles on the true coordinates, or every edit would bake
+    // the visual offset permanently into feature.coords.
+    if (layer && layer.type === 'transit') {
+      entry.primary.setLatLngs(entry.feature.coords.map(([x, z]) => toLatLng(x, z)));
+    }
     entry.primary.editing.enable();
     editingFeatureId = featureId;
   } else {
-    const layer = findLayer(entry.layerId);
     if (entry.primary.editing.enabled()) {
       entry.primary.editing.disable();
       // Read the moved vertices back into the project.
@@ -657,6 +841,7 @@ function setTool(tool) {
   if (drawHandler) { drawHandler.disable(); drawHandler = null; }
   if (editingFeatureId) toggleVertexEditing(editingFeatureId, false);
   extendTarget = null;
+  placingStation = null;
   currentTool = tool;
 
   document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
@@ -728,18 +913,27 @@ function handleExtend(target, e) {
   const layer = findLayer(target.layerId);
   const feature = findFeature(target.layerId, target.featureId);
   if (!layer || !feature) return;
-  const newPts = e.layer.getLatLngs().map((ll) => {
+  let newPts = e.layer.getLatLngs().map((ll) => {
     const p = fromLatLng(ll);
     return [Math.round(p.x), Math.round(p.z)];
   });
   if (!newPts.length) return;
+  let newStationIds = [];
+  if (layer.type === 'transit') {
+    const snapped = snapToStations(layer, newPts);
+    newPts = snapped.coords;
+    newStationIds = snapped.stationIds;
+  }
+  const ptDist = (a, b) => dist(a[0], a[1], b[0], b[1]);
   const first = feature.coords[0];
   const last = feature.coords[feature.coords.length - 1];
-  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-  if (dist(newPts[0], first) < dist(newPts[0], last)) {
+  if (ptDist(newPts[0], first) < ptDist(newPts[0], last)) {
     feature.coords = [...newPts.slice().reverse(), ...feature.coords];
   } else {
     feature.coords = [...feature.coords, ...newPts];
+  }
+  if (newStationIds.length) {
+    feature.stationIds = [...new Set([...(feature.stationIds || []), ...newStationIds])];
   }
   markDirty();
   refreshFeature(target.layerId, target.featureId);
@@ -776,12 +970,16 @@ function onDrawCreated(e) {
     feature.coord = [Math.round(p.x), Math.round(p.z)];
     feature.name = `Nota ${layer.features.length + 1}`;
   } else if (layer.type === 'transit') {
-    feature.coords = e.layer.getLatLngs().map((ll) => {
+    const raw = e.layer.getLatLngs().map((ll) => {
       const p = fromLatLng(ll);
       return [Math.round(p.x), Math.round(p.z)];
     });
-    feature.stationIds = [];
+    const snapped = snapToStations(layer, raw);
+    feature.coords = snapped.coords;
+    feature.stationIds = snapped.stationIds;
     feature.name = `Linea ${layer.features.length + 1}`;
+    if (snapped.stationIds.length === 1) toast('Linea collegata a 1 stazione esistente', 'ok');
+    else if (snapped.stationIds.length > 1) toast(`Linea collegata a ${snapped.stationIds.length} stazioni esistenti`, 'ok');
   } else {
     const latlngs = layer.type === 'areas' ? e.layer.getLatLngs()[0] : e.layer.getLatLngs();
     feature.coords = latlngs.map((ll) => {
@@ -866,8 +1064,10 @@ function refreshProps() {
             )).join('')}</select>
             <button class="btn btn-sm" data-act="attachstation">Collega</button>
           </div>` : ''}
-        <div class="hint">Una stazione può servire più linee: collega una stazione esistente
-          per far fermare anche questa linea nello stesso punto.</div>
+        <div class="hint">"+ Nuova stazione" fa scegliere il punto sulla mappa: se clicchi
+          vicino a una stazione già esistente ti colleghi a quella invece di crearne una nuova.
+          Disegnando o estendendo una linea che passa sopra una stazione, la linea si collega
+          da sola.</div>
       </div>`;
   } else if (layer.type === 'notes') {
     specific = `
@@ -1029,24 +1229,7 @@ function wireProps(host, feature, layer) {
   if (extendBtn) extendBtn.addEventListener('click', () => extendFeature(layer, feature));
 
   const newStationBtn = host.querySelector('[data-act="newstation"]');
-  if (newStationBtn) {
-    newStationBtn.addEventListener('click', async () => {
-      const name = await promptDialog({
-        title: 'Nuova stazione', message: 'Nome della stazione', confirmLabel: 'Crea',
-      });
-      if (name === null) return;
-      const mid = feature.coords[Math.floor(feature.coords.length / 2)];
-      const station = { id: newId('st'), x: mid[0], z: mid[1], name: name.trim() || 'Stazione', description: '' };
-      layer.stations = layer.stations || [];
-      layer.stations.push(station);
-      feature.stationIds = [...(feature.stationIds || []), station.id];
-      markDirty();
-      refreshStations(layer.id);
-      Main.renderLayerList();
-      refreshProps();
-      toast('Stazione aggiunta: trascinala sulla mappa per posizionarla con precisione.', 'ok');
-    });
-  }
+  if (newStationBtn) newStationBtn.addEventListener('click', () => beginPlaceStation(layer, feature));
   const attachBtn = host.querySelector('[data-act="attachstation"]');
   if (attachBtn) {
     attachBtn.addEventListener('click', () => {
@@ -1211,9 +1394,10 @@ function drawVectors(ctx, bounds, scale) {
         }
 
       } else if (layer.type === 'roads' || layer.type === 'transit') {
+        const drawCoords = layer.type === 'transit' ? offsetTransitCoords(feature, layer) : feature.coords;
         const stroke = (color, width, dashed) => {
           ctx.beginPath();
-          feature.coords.forEach(([x, z], i) => {
+          drawCoords.forEach(([x, z], i) => {
             const [px, py] = toPx(x, z);
             if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
           });
@@ -1419,7 +1603,8 @@ async function exportSVG() {
         const pts = feature.coords.map(([x, z]) => toPx(x, z).join(',')).join(' ');
         parts.push(`<polygon points="${pts}" fill="${style.fillColor || '#4fa3d1'}" fill-opacity="${style.fillOpacity ?? 0.25}" stroke="${style.strokeColor || '#4fa3d1'}" stroke-width="${style.strokeWidth || 2}"${dashAttr}/>`);
       } else if (layer.type === 'roads' || layer.type === 'transit') {
-        const d = `M ${feature.coords.map(([x, z]) => toPx(x, z).join(',')).join(' L ')}`;
+        const drawCoords = layer.type === 'transit' ? offsetTransitCoords(feature, layer) : feature.coords;
+        const d = `M ${drawCoords.map(([x, z]) => toPx(x, z).join(',')).join(' L ')}`;
         const casing = Number(style.casingWidth) || 0;
         if (casing > 0) {
           parts.push(`<path d="${d}" fill="none" stroke="${style.casingColor || '#000'}" stroke-width="${(Number(style.width) || 4) + casing * 2}" stroke-linejoin="round" stroke-linecap="round"/>`);
@@ -1523,6 +1708,9 @@ export {
   setTerrainVisible, setRailsVisible, zoomToFeature, goTo, fitWorld, refreshTiles, updateViewInfo,
   currentDimension, exportPNG, exportSVG, exportGeoJSON,
   POI_SHAPES, POI_CATEGORIES, PALETTE,
+  // Pure geometry helpers, exported mainly so the test suite can exercise
+  // them without a browser (see test/run-tests.js).
+  offsetTransitCoords, snapToStations,
 };
 export function getMap() { return map; }
 export function getCurrentTool() { return currentTool; }

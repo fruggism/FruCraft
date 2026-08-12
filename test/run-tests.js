@@ -8,6 +8,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import './dom-shim.js';
+import * as atlasGeom from '../web/js/app/atlas.js';
 import * as nbtWrite from './nbt-write.js';
 import * as nbt from '../web/js/core/nbt.js';
 import * as anvil from '../web/js/core/anvil.js';
@@ -598,6 +600,50 @@ test('normalizeProject mantiene una catena di sublayer valida intatta', () => {
   const byId = Object.fromEntries(project.layers.map((l) => [l.id, l]));
   assertEqual(byId.provincia.parentId, 'regione', 'provincia sotto regione');
   assertEqual(byId.strade.parentId, 'provincia', 'strade sotto provincia');
+});
+
+// ---------------------------------------------------------------------------
+section('Geometria dei trasporti: stazioni condivise e linee adiacenti');
+
+test('snapToStations aggancia un vertice vicino a una stazione e lo colloca esattamente su di essa', () => {
+  const layer = { stations: [{ id: 'st1', x: 50, z: 2, name: 'Centrale' }] };
+  const { coords, stationIds } = atlasGeom.snapToStations(layer, [[0, 0], [50, 0], [100, 0]]);
+  assertEqual(stationIds.join(','), 'st1', 'la stazione vicina viene agganciata');
+  assertEqual(coords[1].join(','), '50,2', 'il vertice viene spostato esattamente sulla stazione');
+  assertEqual(coords[0].join(','), '0,0', 'i vertici lontani non si muovono');
+});
+
+test('snapToStations non aggancia una stazione troppo lontana dal tracciato', () => {
+  const layer = { stations: [{ id: 'st1', x: 50, z: 8, name: 'Centrale' }] };
+  const { coords, stationIds } = atlasGeom.snapToStations(layer, [[0, 0], [50, 0], [100, 0]]);
+  assertEqual(stationIds.length, 0, 'nessuna stazione agganciata oltre la tolleranza di disegno');
+  assertEqual(coords[1].join(','), '50,0', 'il vertice resta dove è stato disegnato');
+});
+
+test('offsetTransitCoords non tocca una linea senza altre linee vicine', () => {
+  const feature = { id: 'f1', coords: [[0, 0], [100, 0]] };
+  const layer = { features: [feature] };
+  const out = atlasGeom.offsetTransitCoords(feature, layer);
+  assertEqual(JSON.stringify(out), JSON.stringify(feature.coords), 'coordinate invariate senza altre linee');
+});
+
+test('offsetTransitCoords separa due linee che corrono vicine e parallele', () => {
+  const a = { id: 'fa', coords: [[0, 0], [100, 0]] };
+  const b = { id: 'fb', coords: [[0, 3], [100, 3]] };
+  const layer = { features: [a, b] };
+  const outA = atlasGeom.offsetTransitCoords(a, layer);
+  const outB = atlasGeom.offsetTransitCoords(b, layer);
+  assert(Math.abs(outA[0][1] - outB[0][1]) > 0.5, 'le due linee vengono spostate su lati diversi');
+  assert(Math.abs(outA[0][1] - 0) > 0.01, 'la prima linea si sposta dalla propria coordinata originale');
+  assert(Math.abs(outB[0][1] - 3) > 0.01, 'la seconda linea si sposta dalla propria coordinata originale');
+});
+
+test('offsetTransitCoords non sposta due linee che si incrociano perpendicolari', () => {
+  const a = { id: 'fa', coords: [[0, 0], [100, 0]] };
+  const b = { id: 'fb', coords: [[50, -50], [50, 50]] };
+  const layer = { features: [a, b] };
+  const outA = atlasGeom.offsetTransitCoords(a, layer);
+  assertEqual(JSON.stringify(outA), JSON.stringify(a.coords), 'una linea che solo incrocia, senza correre parallela, non viene spostata');
 });
 
 // ---------------------------------------------------------------------------
