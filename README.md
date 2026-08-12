@@ -19,6 +19,15 @@ fogliame e acqua cambiano come in gioco), ombreggiatura del rilievo e acqua
 scurita in base alla profondità. La mappa è navigabile con zoom continuo grazie
 a una piramide di tile messa in cache su disco.
 
+Le cartelle delle regioni vengono **cercate dentro il salvataggio**, quindi
+funzionano sia il layout classico (`region/`, `DIM-1/`, `DIM1/`) sia quelli in
+cui i file stanno più in profondità, per esempio
+`dimensions/minecraft/overworld/region/`.
+
+La generazione avviene come **lavoro in background con barra di avanzamento** e
+si può **limitare a un'area** — in un mondo molto esplorato interessa quasi
+sempre solo la zona in cui hai costruito.
+
 **2. Editor a layer**
 
 Sopra la mappa crei quanti layer vuoi, di tre tipi:
@@ -84,15 +93,21 @@ Per cambiare porta: `PORT=8080 npm start`.
 
 1. **Mondo** — incolla il percorso della cartella del salvataggio (quella che
    contiene `level.dat`). Se Cube-Atlas trova i mondi nelle posizioni standard
-   te li propone già in elenco. Premi *Analizza mondo*, scegli la dimensione
-   (Overworld / Nether / End) e crea l'atlante.
-2. **Layer** — seleziona un layer (o creane uno con `+ Strade`, `+ Punti`, `+ Aree`).
-3. **Strumenti** — *Disegna* per aggiungere un elemento, *Seleziona* per
+   te li propone già in elenco; se indichi una cartella che ne contiene diversi,
+   ti chiede quale. Premi *Analizza mondo*, scegli la dimensione e crea l'atlante.
+2. **Genera la mappa** — la mappa si apre sul punto di spawn. Nel pannello
+   *Generazione mappa* scegli l'area (di solito *intorno a un punto*, con le
+   coordinate della tua città e un raggio) e premi **Genera mappa**: la barra
+   mostra l'avanzamento e i tile compaiono man mano.
+3. **Naviga** — il pannello *Naviga* porta la mappa alle coordinate che scegli
+   (le stesse che leggi in gioco con F3), al punto di spawn o su tutto il mondo.
+4. **Layer** — seleziona un layer (o creane uno con `+ Strade`, `+ Punti`, `+ Aree`).
+5. **Strumenti** — *Disegna* per aggiungere un elemento, *Seleziona* per
    sceglierlo, *Modifica nodi* per spostarne i vertici, *Cancella* per
    eliminarlo cliccandolo. `Esc` annulla, `Canc` elimina l'elemento selezionato.
-4. **Proprietà** — nome, descrizione e stile dell'elemento selezionato.
-5. **Esporta** — PNG, SVG, GeoJSON o il progetto completo.
-6. **Archivio** — scrivi i documenti e copia il comando `/give`.
+6. **Proprietà** — nome, descrizione e stile dell'elemento selezionato.
+7. **Esporta** — PNG, SVG, GeoJSON o il progetto completo.
+8. **Archivio** — scrivi i documenti e copia il comando `/give`.
 
 Il salvataggio è **automatico** (e viene forzato anche se chiudi la scheda
 subito dopo una modifica).
@@ -103,10 +118,19 @@ subito dopo una modifica).
 - **macOS** — `~/Library/Application Support/minecraft/saves/NomeMondo`
 - **Linux** — `~/.minecraft/saves/NomeMondo`
 
+## Quanto ci mette
+
+Un tile di dettaglio copre 256×256 blocchi e richiede circa mezzo secondo. Il
+pannello di generazione stima il tempo prima di partire. Per orientarsi: un
+raggio di 1024 blocchi intorno alla propria città sono una manciata di secondi,
+mentre l'intero mondo esplorato di una partita lunga può richiedere parecchi
+minuti — per questo l'area è limitabile e la generazione è interrompibile
+(quello che è già stato prodotto resta).
+
 ## Se cambi il mondo in gioco
 
 I tile renderizzati restano in cache. Dopo aver costruito qualcosa premi
-**Rigenera mappa (svuota cache)** per rileggere il salvataggio.
+**Svuota cache e rigenera** per rileggere il salvataggio.
 
 > Conviene chiudere Minecraft (o almeno uscire dal mondo) prima di rigenerare:
 > i chunk non ancora salvati su disco non possono essere letti.
@@ -122,7 +146,8 @@ lib/
   anvil.js                file di regione .mca, sezioni, palette, biomi
   blockColors.js          colori dei blocchi + tinte per bioma
   tiler.js                piramide di tile con cache su disco
-  worldScan.js            riconoscimento del mondo, limiti, level.dat
+  worldScan.js            ricerca delle cartelle region, dimensioni, level.dat
+  renderJob.js            generazione della mappa in background, con avanzamento
   projects.js             progetti: layer, elementi, documenti
   book.js                 impaginazione e comandi /give per i libri
 public/
@@ -135,7 +160,7 @@ public/
   js/main.js              avvio e collegamento dei controlli
 tools/make-textures.js    genera le texture pixel
 test/
-  make-test-world.js      mondo sintetico di prova (non serve Minecraft)
+  make-test-world.js      mondi sintetici di prova (non serve Minecraft)
   run-tests.js            suite di test
 ```
 
@@ -153,15 +178,29 @@ direttamente confrontabili con le coordinate che leggi in gioco con F3.
 npm test
 ```
 
-La suite genera un mondo sintetico (colline, fiume, lago, spiagge, vetta
-innevata, biomi diversi) e verifica NBT, bit-packing delle palette, lettura del
-mondo, colori/biomi, tile e piramide di zoom, e l'export dei libri. Non serve
-avere Minecraft installato.
+La suite genera due mondi sintetici — uno con il layout classico e uno con le
+regioni annidate in `dimensions/minecraft/overworld/`, una regione lontanissima
+e un Nether accanto — e verifica NBT, bit-packing delle palette, ricerca delle
+cartelle region, lettura del mondo, colori/biomi, tile e piramide di zoom,
+generazione in background ed export dei libri. Non serve avere Minecraft
+installato.
 
 ```bash
 npm run world      # rigenera solo il mondo di prova
 npm run textures   # rigenera le texture dell'interfaccia
 ```
+
+### Perché la mappa si genera in background
+
+Un tile panoramico (zoom -6) copre 16 384 blocchi per lato: costruirlo
+ricorsivamente vuol dire produrre 4096 tile di dettaglio, cioè decine di minuti
+di lavoro. Farlo dentro una richiesta HTTP significa, in pratica, una mappa che
+non compare mai. Quindi: servendo un tile si renderizza solo ciò che è
+economico (zoom 0 e -1) e per il resto si compone da ciò che è già in cache,
+mentre la piramide completa la produce il job in background. In più, l'elenco
+dei file di regione permette di rispondere «qui non c'è niente» senza toccare
+il disco, ed è ciò che rende scorrevole lo spostamento in un mondo esplorato a
+macchia di leopardo.
 
 ### Una nota sul bit-packing
 

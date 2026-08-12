@@ -34,6 +34,8 @@ const Atlas = (function () {
 
   let map = null;
   let tileLayer = null;
+  let worldBounds = null;
+  let currentDim = null;
   let drawHandler = null;
   let editingFeatureId = null;
   let currentTool = 'select';
@@ -58,7 +60,7 @@ const Atlas = (function () {
       const { x, z } = fromLatLng(e.latlng);
       el('coord-readout').innerHTML = `X <b>${Math.floor(x)}</b>&nbsp; Z <b>${Math.floor(z)}</b>`;
     });
-    map.on('moveend zoomend', persistView);
+    map.on('moveend zoomend', () => { persistView(); updateViewInfo(); });
     map.on(L.Draw.Event.CREATED, onDrawCreated);
     // Clicking empty map clears the selection — but a click that landed on a
     // feature must not, and Leaflet still fires the map's click after the
@@ -90,37 +92,82 @@ const Atlas = (function () {
     CA.markDirty();
   }
 
-  /** Point the map at a world+dimension and fit it to the generated area. */
-  function attachWorld(world, dimension, view) {
+  /** Point the map at a world + dimension. */
+  function attachWorld(world, dimId, view) {
     if (tileLayer) { map.removeLayer(tileLayer); tileLayer = null; }
-    const dim = world.dimensions.find((d) => d.dimension === dimension) || world.dimensions[0];
+    const dim = world.dimensions.find((d) => d.id === dimId) || world.dimensions[0];
+    currentDim = dim;
 
     tileLayer = L.tileLayer(
-      `/api/tiles/${world.worldId}/${dim.dimension}/{z}/{x}/{y}.png`,
+      `/api/tiles/${world.worldId}/${dim.id}/{z}/{x}/{y}.png`,
       {
         tileSize: 256,
         minZoom: -6, maxZoom: 5,
         minNativeZoom: -6, maxNativeZoom: 0,
         noWrap: true,
-        keepBuffer: 3,
+        keepBuffer: 2,
         updateWhenZooming: false,
         className: 'ca-terrain-tiles',
       }
     );
     if (el('chk-terrain').checked) tileLayer.addTo(map);
 
+    // Panning is bounded by the generated area, but generously: a tight bound
+    // makes the map feel stuck, which is worse than letting the user drift a
+    // little into the void.
     const b = dim.bounds;
-    const bounds = L.latLngBounds(toLatLng(b.minX, b.minZ), toLatLng(b.maxX + 1, b.maxZ + 1));
-    map.setMaxBounds(bounds.pad(0.35));
+    worldBounds = L.latLngBounds(toLatLng(b.minX, b.minZ), toLatLng(b.maxX + 1, b.maxZ + 1));
+    map.setMaxBounds(worldBounds.pad(1.0));
 
     if (view && Array.isArray(view.center)) {
       map.setView(toLatLng(view.center[0], view.center[1]), view.zoom ?? -2);
     } else {
-      // Never positioned before: frame the whole generated world.
-      map.fitBounds(bounds);
+      // A freshly opened world starts where the player does, at one pixel per
+      // block — not zoomed out over an explored area that can be tens of
+      // thousands of blocks wide, where a whole town is a few pixels.
+      const spawn = world.spawn || { x: 0, z: 0 };
+      goTo(spawn.x, spawn.z, 0);
     }
     el('map-overlay').classList.add('hidden');
+    updateViewInfo();
   }
+
+  /** Centre the map on a block coordinate. */
+  function goTo(x, z, zoom) {
+    if (!map) return;
+    const target = toLatLng(Number(x) || 0, Number(z) || 0);
+    // Don't let maxBounds silently refuse a jump to a far-away coordinate.
+    if (worldBounds && !worldBounds.pad(1.0).contains(target)) {
+      map.setMaxBounds(null);
+      map.setView(target, zoom ?? map.getZoom());
+      return;
+    }
+    map.setView(target, zoom ?? map.getZoom());
+  }
+
+  function fitWorld() {
+    if (worldBounds) {
+      map.setMaxBounds(worldBounds.pad(1.0));
+      map.fitBounds(worldBounds);
+    }
+  }
+
+  function updateViewInfo() {
+    const node = el('view-info');
+    if (!node || !map) return;
+    const c = fromLatLng(map.getCenter());
+    const z = map.getZoom();
+    const scale = Math.pow(2, z);
+    const blocksAcross = Math.round(map.getSize().x / scale);
+    node.textContent = `Centro X ${Math.round(c.x)}, Z ${Math.round(c.z)} — larghezza vista ~${blocksAcross} blocchi`;
+  }
+
+  /** Re-request the terrain tiles (after a render job produced new ones). */
+  function refreshTiles() {
+    if (tileLayer) tileLayer.redraw();
+  }
+
+  function currentDimension() { return currentDim; }
 
   // -------------------------------------------------------------- styling
   function styleOf(feature, layer) {
@@ -653,7 +700,7 @@ const Atlas = (function () {
   /** Block bounds to export, either the current view or the whole dimension. */
   function exportBounds(mode) {
     if (mode === 'all' && state.world) {
-      const dim = state.world.dimensions.find((d) => d.dimension === state.project.world.dimension)
+      const dim = state.world.dimensions.find((d) => d.id === state.project.world.dimension)
         || state.world.dimensions[0];
       return { ...dim.bounds };
     }
@@ -981,7 +1028,7 @@ const Atlas = (function () {
   return {
     initMap, attachWorld, renderAllLayers, refreshFeature, setLayerVisibility,
     selectFeature, refreshProps, setTool, deleteFeature,
-    setTerrainVisible, zoomToFeature,
+    setTerrainVisible, zoomToFeature, goTo, fitWorld, refreshTiles, updateViewInfo, currentDimension,
     exportPNG, exportSVG, exportGeoJSON,
     get map() { return map; },
     get currentTool() { return currentTool; },

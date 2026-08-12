@@ -12,6 +12,7 @@ const nbt = require('../lib/nbt');
 const anvil = require('../lib/anvil');
 const tiler = require('../lib/tiler');
 const worldScan = require('../lib/worldScan');
+const renderJob = require('../lib/renderJob');
 const { colorFor } = require('../lib/blockColors');
 const book = require('../lib/book');
 const fixture = require('./make-test-world');
@@ -20,22 +21,26 @@ let passed = 0;
 let failed = 0;
 const failures = [];
 
+// Tests run in declaration order; async ones are chained onto `queue`.
+let queue = Promise.resolve();
 function test(name, fn) {
-  try {
-    fn();
-    passed++;
-    console.log(`  ✓ ${name}`);
-  } catch (err) {
-    failed++;
-    failures.push({ name, err });
-    console.log(`  ✗ ${name}\n      ${err.message}`);
-  }
+  queue = queue.then(async () => {
+    try {
+      await fn();
+      passed++;
+      console.log(`  ✓ ${name}`);
+    } catch (err) {
+      failed++;
+      failures.push({ name, err });
+      console.log(`  ✗ ${name}\n      ${err.message}`);
+    }
+  });
 }
 function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
 function assertEqual(actual, expected, msg) {
   if (actual !== expected) throw new Error(`${msg || 'not equal'}: atteso ${expected}, ottenuto ${actual}`);
 }
-function section(title) { console.log(`\n${title}`); }
+function section(title) { queue = queue.then(() => console.log(`\n${title}`)); }
 
 // ---------------------------------------------------------------------------
 section('NBT');
@@ -134,7 +139,7 @@ test('scanWorld riconosce il mondo e i suoi limiti', () => {
   assertEqual(info.levelName, 'Cube-Atlas Test World', 'nome del mondo');
   assertEqual(info.dimensions.length, 1, 'una sola dimensione');
   const ow = info.dimensions[0];
-  assertEqual(ow.dimension, 'overworld', 'dimensione overworld');
+  assertEqual(ow.id, 'overworld', 'id della dimensione');
   assertEqual(ow.regionCount, 1, 'una regione');
   assertEqual(ow.bounds.minX, 0, 'bound minX');
   assertEqual(ow.bounds.maxX, 511, 'bound maxX');
@@ -143,11 +148,19 @@ test('scanWorld riconosce il mondo e i suoi limiti', () => {
 test('scanWorld rifiuta una cartella qualunque', () => {
   const res = worldScan.scanWorld(path.join(__dirname));
   assert(!res.ok, 'una cartella non-mondo deve essere rifiutata');
-  assert(/level\.dat/.test(res.error), 'il messaggio deve spiegare cosa manca');
+  assert(/region|mondi/i.test(res.error), `messaggio poco chiaro: ${res.error}`);
 });
 
+test('scanWorld segnala un percorso inesistente', () => {
+  const res = worldScan.scanWorld(path.join(__dirname, 'non-esiste-affatto'));
+  assert(!res.ok, 'deve fallire');
+  assert(/inesistente/i.test(res.error), `messaggio poco chiaro: ${res.error}`);
+});
+
+const REGION_DIR = path.join(WORLD, 'region');
+
 test('readSurface ricostruisce le altezze generate', () => {
-  const g = anvil.readSurface(WORLD, 'overworld', 100, 100, 64, 64);
+  const g = anvil.readSurface(REGION_DIR, 100, 100, 64, 64);
   assertEqual(g.unparsedChunks, 0, 'nessun chunk illeggibile');
   assert(g.totalChunks > 0, 'chunk trovati');
   let checked = 0;
@@ -158,8 +171,7 @@ test('readSurface ricostruisce le altezze generate', () => {
       const actual = g.surfaceY[z * 64 + x];
       // Sopra l'acqua la superficie è il livello del mare, non il fondale.
       const isWater = fixture.kinds[wz * fixture.SIZE + wx] === 1;
-      const want = isWater ? fixture.SEA_LEVEL : expected;
-      assertEqual(actual, want, `altezza a (${wx},${wz})`);
+      assertEqual(actual, isWater ? fixture.SEA_LEVEL : expected, `altezza a (${wx},${wz})`);
       checked++;
     }
   }
@@ -167,7 +179,7 @@ test('readSurface ricostruisce le altezze generate', () => {
 });
 
 test('readSurface riconosce blocchi e biomi di superficie', () => {
-  const g = anvil.readSurface(WORLD, 'overworld', 0, 0, 512, 512);
+  const g = anvil.readSurface(REGION_DIR, 0, 0, 512, 512);
   const names = new Set(g.surfaceName);
   for (const expected of ['minecraft:grass_block', 'minecraft:water', 'minecraft:sand', 'minecraft:snow_block', 'minecraft:oak_leaves']) {
     assert(names.has(expected), `atteso ${expected} in superficie`);
@@ -179,8 +191,8 @@ test('readSurface riconosce blocchi e biomi di superficie', () => {
   assert(!biomes.has(null), 'ogni colonna deve avere un bioma');
 });
 
-test('sotto l\'acqua viene registrato il fondale', () => {
-  const g = anvil.readSurface(WORLD, 'overworld', 0, 0, 512, 512);
+test("sotto l'acqua viene registrato il fondale", () => {
+  const g = anvil.readSurface(REGION_DIR, 0, 0, 512, 512);
   let found = 0;
   for (let i = 0; i < g.surfaceName.length; i++) {
     if (g.surfaceName[i] !== 'minecraft:water') continue;
@@ -190,10 +202,53 @@ test('sotto l\'acqua viene registrato il fondale', () => {
   assert(found > 500, `attese molte colonne d'acqua, trovate ${found}`);
 });
 
-test('un\'area fuori dal mondo generato resta vuota', () => {
-  const g = anvil.readSurface(WORLD, 'overworld', 5000, 5000, 32, 32);
+test("un'area fuori dal mondo generato resta vuota", () => {
+  const g = anvil.readSurface(REGION_DIR, 5000, 5000, 32, 32);
   assertEqual(g.totalChunks, 0, 'nessun chunk');
   assert(g.surfaceY.every((v) => v === anvil.NO_DATA), 'tutte le colonne senza dati');
+});
+
+// ---------------------------------------------------------------------------
+section('Salvataggi con struttura di cartelle diversa');
+
+const NESTED = fixture.NESTED_WORLD_DIR;
+if (!fs.existsSync(path.join(NESTED, 'level.dat'))) fixture.generateNested({ quiet: true });
+
+test('le regioni vengono trovate anche annidate in dimensions/<ns>/<nome>', () => {
+  const info = worldScan.scanWorld(NESTED);
+  assert(info.ok, `scan fallito: ${info.error}`);
+  const ow = info.dimensions.find((d) => d.id === 'overworld');
+  assert(ow, `overworld non trovato fra: ${info.dimensions.map((d) => d.id).join(', ')}`);
+  assert(/dimensions/.test(ow.relativeDir), `atteso un percorso annidato, trovato ${ow.relativeDir}`);
+  assertEqual(ow.regionCount, 2, 'due regioni');
+});
+
+test('anche il Nether accanto ad esso viene riconosciuto', () => {
+  const info = worldScan.scanWorld(NESTED);
+  const nether = info.dimensions.find((d) => d.id === 'the_nether');
+  assert(nether, 'DIM-1 deve essere riconosciuto come Nether');
+  assertEqual(nether.label, 'Nether', 'etichetta');
+});
+
+test('lo spawn viene letto da level.dat', () => {
+  const info = worldScan.scanWorld(NESTED);
+  assertEqual(info.spawn.x, 128, 'spawn X');
+  assertEqual(info.spawn.z, 128, 'spawn Z');
+});
+
+test('i limiti coprono anche la regione lontana', () => {
+  const info = worldScan.scanWorld(NESTED);
+  const ow = info.dimensions.find((d) => d.id === 'overworld');
+  assertEqual(ow.bounds.minX, 0, 'minX');
+  assertEqual(ow.bounds.maxX, (fixture.FAR_REGION.x + 1) * 512 - 1, 'maxX arriva alla regione lontana');
+});
+
+test('una cartella che contiene più mondi propone i mondi trovati', () => {
+  const parent = path.dirname(NESTED); // data/, che contiene entrambi i mondi
+  const res = worldScan.scanWorld(parent);
+  assert(!res.ok, 'la cartella contenitore non è un mondo');
+  assert(Array.isArray(res.candidates) && res.candidates.length >= 2,
+    `attesi più mondi candidati, trovati ${res.candidates && res.candidates.length}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -229,10 +284,18 @@ test('un bioma sconosciuto non fa saltare il rendering', () => {
 section('Tile e piramide');
 
 const WORLD_ID = worldScan.worldId(WORLD);
+const OVERWORLD = worldScan.scanWorld(WORLD).dimensions[0];
+const REGION_SET = tiler.regionSetOf(OVERWORLD.regions);
 tiler.clearCache(WORLD_ID);
 
-function decodeTile(z, x, y) {
-  const t = tiler.getTile({ worldPath: WORLD, worldId: WORLD_ID, dimension: 'overworld', z, x, y });
+function tileArgs(z, x, y, extra) {
+  return {
+    regionDir: OVERWORLD.regionDir, worldId: WORLD_ID, dimId: 'overworld',
+    regionSet: REGION_SET, z, x, y, ...extra,
+  };
+}
+function decodeTile(z, x, y, extra) {
+  const t = tiler.getTile(tileArgs(z, x, y, { allowRender: true, ...extra }));
   return { ...t, png: PNG.sync.read(t.buffer) };
 }
 
@@ -243,7 +306,7 @@ test('un tile nativo ha la dimensione giusta ed è opaco sul terreno', () => {
   assertEqual(png.height, 256, 'altezza');
   let opaque = 0;
   for (let i = 3; i < png.data.length; i += 4) if (png.data[i] === 255) opaque++;
-  assertEqual(opaque, 256 * 256, 'tutti i pixel opachi dentro l\'area generata');
+  assertEqual(opaque, 256 * 256, "tutti i pixel opachi dentro l'area generata");
 });
 
 test('i quattro tile nativi coprono il mondo e sono diversi tra loro', () => {
@@ -253,8 +316,8 @@ test('i quattro tile nativi coprono il mondo e sono diversi tra loro', () => {
   assertEqual(new Set(hashes).size, 4, 'i 4 tile devono avere contenuti diversi');
 });
 
-test('un tile fuori dal mondo è vuoto e trasparente', () => {
-  const t = tiler.getTile({ worldPath: WORLD, worldId: WORLD_ID, dimension: 'overworld', z: 0, x: 40, y: 40 });
+test("un tile su una zona senza regioni è vuoto senza leggere il disco", () => {
+  const t = tiler.getTile(tileArgs(0, 40, 40, { allowRender: true }));
   assert(t.empty, 'deve risultare vuoto');
   const png = PNG.sync.read(t.buffer);
   let transparent = 0;
@@ -262,17 +325,32 @@ test('un tile fuori dal mondo è vuoto e trasparente', () => {
   assertEqual(transparent, 256 * 256, 'completamente trasparente');
 });
 
+test("l'indice delle regioni sa dire dove non c'è nulla", () => {
+  assert(tiler.boxHasRegions(REGION_SET, 0, 0, 511, 511), 'la regione 0,0 esiste');
+  assert(!tiler.boxHasRegions(REGION_SET, 100000, 100000, 100511, 100511), 'là non c\'è niente');
+});
+
 test('il livello zoom -1 riassume i quattro figli', () => {
   const parent = decodeTile(-1, 0, 0);
   assert(!parent.empty, 'il genitore non deve essere vuoto');
-  // A zoom -1 il mondo (512 blocchi) entra esattamente in un tile.
   let opaque = 0;
   for (let i = 3; i < parent.png.data.length; i += 4) if (parent.png.data[i] === 255) opaque++;
   assertEqual(opaque, 256 * 256, 'il mondo intero riempie il tile a zoom -1');
 });
 
+test('servire un tile molto zoomato non innesca un rendering enorme', () => {
+  // Questa è la regressione che rendeva la mappa vuota su un mondo vero:
+  // un tile a zoom -6 dipende da 4096 tile base, decine di minuti di lavoro.
+  tiler.clearCache(WORLD_ID);
+  const t0 = Date.now();
+  const t = tiler.serveTile(tileArgs(-6, 0, 0));
+  const ms = Date.now() - t0;
+  assert(ms < 1500, `servire il tile ha richiesto ${ms} ms: non deve renderizzare in profondità`);
+  assert(t.partial || t.empty, 'senza cache il tile va segnalato come parziale');
+});
+
 test('la cache restituisce lo stesso identico PNG', () => {
-  const args = { worldPath: WORLD, worldId: WORLD_ID, dimension: 'overworld', z: 0, x: 1, y: 1 };
+  const args = tileArgs(0, 1, 1, { allowRender: true });
   const first = tiler.getTile(args);
   const second = tiler.getTile(args);
   assert(second.cached, 'la seconda richiesta deve venire dalla cache');
@@ -290,6 +368,59 @@ test('il calcolo dei blocchi per tile segue lo zoom', () => {
   assertEqual(tiler.blocksPerTile(0), 256, 'zoom 0');
   assertEqual(tiler.blocksPerTile(-1), 512, 'zoom -1');
   assertEqual(tiler.blocksPerTile(-4), 4096, 'zoom -4');
+});
+
+// ---------------------------------------------------------------------------
+section('Generazione in background');
+
+test('il job elenca solo i tile che contengono regioni', () => {
+  const nested = worldScan.scanWorld(fixture.NESTED_WORLD_DIR);
+  const ow = nested.dimensions.find((d) => d.id === 'overworld');
+  const all = renderJob.baseTilesFor(ow, ow.bounds);
+  // Due regioni = 2 x (2x2 tile) = 8, non l'intero rettangolo fra di loro.
+  assertEqual(all.length, 8, 'solo i tile delle due regioni esistenti');
+  const spanning = Math.ceil((ow.bounds.maxX - ow.bounds.minX + 1) / 256) ** 2;
+  assert(spanning > 1000, 'il rettangolo fra le regioni è enorme');
+});
+
+test("limitare l'area riduce il lavoro alla zona scelta", () => {
+  const nested = worldScan.scanWorld(fixture.NESTED_WORLD_DIR);
+  const ow = nested.dimensions.find((d) => d.id === 'overworld');
+  const bounds = renderJob.effectiveBounds(ow, { minX: -100, minZ: -100, maxX: 400, maxZ: 400 });
+  const tiles = renderJob.baseTilesFor(ow, bounds);
+  assertEqual(tiles.length, 4, 'solo i tile della regione vicina');
+  for (const [tx, ty] of tiles) {
+    assert(tx >= 0 && tx <= 1 && ty >= 0 && ty <= 1, `tile inatteso ${tx},${ty}`);
+  }
+});
+
+test('la generazione completa produce i tile e li segna come pronti', async () => {
+  const nestedId = worldScan.worldId(fixture.NESTED_WORLD_DIR);
+  const nested = worldScan.scanWorld(fixture.NESTED_WORLD_DIR);
+  const ow = nested.dimensions.find((d) => d.id === 'overworld');
+  tiler.clearCache(nestedId, 'overworld');
+  renderJob.forget(nestedId, 'overworld');
+
+  renderJob.start({
+    worldId: nestedId, dimension: ow,
+    area: { minX: 0, minZ: 0, maxX: 511, maxZ: 511 },
+  });
+  const deadline = Date.now() + 60000;
+  let status = renderJob.status(nestedId, 'overworld');
+  while (status.state === 'running' && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 100));
+    status = renderJob.status(nestedId, 'overworld');
+  }
+  assertEqual(status.state, 'done', `job non completato: ${status.error || status.state}`);
+  assert(status.total > 0, 'il job aveva del lavoro da fare');
+  assert(tiler.cacheStats(nestedId, 'overworld').files > 4, 'tile scritti in cache');
+
+  // Ora un tile molto zoomato arriva dalla cache, subito.
+  const t = tiler.serveTile({
+    regionDir: ow.regionDir, worldId: nestedId, dimId: 'overworld',
+    regionSet: tiler.regionSetOf(ow.regions), z: -6, x: 0, y: 0,
+  });
+  assert(!t.empty, 'dopo la generazione il tile panoramico ha contenuto');
 });
 
 // ---------------------------------------------------------------------------
@@ -338,11 +469,13 @@ test('l\'export completo produce comando e mcfunction', () => {
 });
 
 // ---------------------------------------------------------------------------
-console.log(`\n${'='.repeat(52)}`);
-console.log(`Test superati: ${passed}   falliti: ${failed}`);
-if (failed) {
-  console.log('\nDettaglio fallimenti:');
-  for (const f of failures) console.log(`  - ${f.name}: ${f.err.stack.split('\n').slice(0, 3).join('\n    ')}`);
-  process.exit(1);
-}
-console.log('Tutti i test superati.');
+queue.then(() => {
+  console.log(`\n${'='.repeat(52)}`);
+  console.log(`Test superati: ${passed}   falliti: ${failed}`);
+  if (failed) {
+    console.log('\nDettaglio fallimenti:');
+    for (const f of failures) console.log(`  - ${f.name}: ${f.err.stack.split('\n').slice(0, 3).join('\n    ')}`);
+    process.exit(1);
+  }
+  console.log('Tutti i test superati.');
+});

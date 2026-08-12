@@ -213,14 +213,19 @@ function buildRegion(chunks) {
   return Buffer.concat([header, ...body]);
 }
 
-function generate({ quiet = false } = {}) {
-  fs.mkdirSync(REGION_DIR, { recursive: true });
-  ensureTerrain();
+function buildAllChunks(quiet) {
   const chunks = new Map();
   for (let cz = 0; cz < CHUNKS; cz++) {
     for (let cx = 0; cx < CHUNKS; cx++) chunks.set(`${cx},${cz}`, buildChunk(cx, cz));
     if (!quiet && cz % 8 === 0) process.stdout.write(`  ...righe di chunk ${cz}/${CHUNKS}\r`);
   }
+  return chunks;
+}
+
+function generate({ quiet = false } = {}) {
+  fs.mkdirSync(REGION_DIR, { recursive: true });
+  ensureTerrain();
+  const chunks = buildAllChunks(quiet);
   fs.writeFileSync(path.join(REGION_DIR, 'r.0.0.mca'), buildRegion(chunks));
 
   const levelDat = nbt.gzip(nbt.build('', {
@@ -238,7 +243,44 @@ function generate({ quiet = false } = {}) {
 
 if (require.main === module) generate();
 
+/*
+ * A save that mirrors the layouts people actually have: the region files live
+ * several folders below level.dat (dimensions/<ns>/<name>/region), and the
+ * world has one far-flung explored region besides the built-up area near the
+ * origin — so the map bounds are enormous while the interesting part is tiny.
+ */
+const NESTED_WORLD_DIR = path.join(__dirname, '..', 'data', 'testworld-nested');
+const FAR_REGION = { x: 20, z: 20 }; // blocks 10240..10751
+
+function generateNested({ quiet = true } = {}) {
+  const regionDir = path.join(NESTED_WORLD_DIR, 'dimensions', 'minecraft', 'overworld', 'region');
+  fs.mkdirSync(regionDir, { recursive: true });
+  ensureTerrain();
+  const chunks = buildAllChunks(quiet);
+  const region = buildRegion(chunks);
+  fs.writeFileSync(path.join(regionDir, 'r.0.0.mca'), region);
+  // The far region reuses the same terrain: only its position matters here.
+  fs.writeFileSync(path.join(regionDir, `r.${FAR_REGION.x}.${FAR_REGION.z}.mca`), region);
+
+  // A nether folder too, so dimension discovery has something to tell apart.
+  const netherDir = path.join(NESTED_WORLD_DIR, 'DIM-1', 'region');
+  fs.mkdirSync(netherDir, { recursive: true });
+  fs.writeFileSync(path.join(netherDir, 'r.0.0.mca'), region);
+
+  fs.writeFileSync(path.join(NESTED_WORLD_DIR, 'level.dat'), nbt.gzip(nbt.build('', {
+    Data: {
+      LevelName: 'Mondo Annidato',
+      DataVersion: DATA_VERSION,
+      SpawnX: 128, SpawnY: 100, SpawnZ: 128,
+      Version: { Name: '1.20.1', Id: DATA_VERSION },
+    },
+  })));
+  if (!quiet) console.log(`Mondo annidato generato in ${NESTED_WORLD_DIR}`);
+  return NESTED_WORLD_DIR;
+}
+
 module.exports = {
-  generate, ensureTerrain, WORLD_DIR, SIZE, SEA_LEVEL,
+  generate, generateNested, ensureTerrain,
+  WORLD_DIR, NESTED_WORLD_DIR, FAR_REGION, SIZE, SEA_LEVEL,
   heights, kinds, blockAt, biomeAt, packPadded, blockBits, biomeBits,
 };

@@ -5,6 +5,7 @@ node_modules/
 data/cache/
 data/projects/
 data/testworld/
+data/testworld-nested/
 data/worlds.json
 
 *.log

@@ -71,17 +71,53 @@
       </section>
 
       <section class="panel">
-        <h2><span class="num">3</span> Sfondo</h2>
+        <h2><span class="num">3</span> Generazione mappa</h2>
         <label style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="chk-terrain" checked> Mappa del terreno
+          <input type="checkbox" id="chk-terrain" checked> Mostra il terreno
         </label>
-        <div class="hint">La mappa viene disegnata dai file di salvataggio e messa in cache. Svuota la cache se hai modificato il mondo in gioco.</div>
-        <button class="btn btn-sm" id="btn-clear-cache">Rigenera mappa (svuota cache)</button>
+
+        <label>
+          <span class="lbl">Area da generare</span>
+          <select id="render-extent">
+            <option value="around">Intorno a un punto (consigliato)</option>
+            <option value="all">Tutto il mondo esplorato</option>
+          </select>
+        </label>
+        <div id="render-around">
+          <div class="row-3">
+            <label><span class="lbl">X</span><input type="number" id="render-x" value="0" step="16"></label>
+            <label><span class="lbl">Z</span><input type="number" id="render-z" value="0" step="16"></label>
+            <label><span class="lbl">Raggio</span><input type="number" id="render-radius" value="1024" min="256" step="256"></label>
+          </div>
+          <button class="btn btn-sm" id="btn-render-here">Usa il centro della vista</button>
+        </div>
+        <div class="hint" id="render-estimate"></div>
+
+        <button class="btn btn-primary" id="btn-render">Genera mappa</button>
+        <button class="btn btn-sm hidden" id="btn-render-cancel">Interrompi</button>
+        <div class="progress hidden" id="render-progress"><div class="bar" id="render-bar"></div></div>
+        <div id="render-status" class="status"></div>
+
+        <button class="btn btn-sm" id="btn-clear-cache">Svuota cache e rigenera</button>
         <div id="cache-status" class="status"></div>
       </section>
 
       <section class="panel">
-        <h2><span class="num">4</span> Layer</h2>
+        <h2><span class="num">4</span> Naviga</h2>
+        <div class="row-3">
+          <label><span class="lbl">X</span><input type="number" id="goto-x" placeholder="0"></label>
+          <label><span class="lbl">Z</span><input type="number" id="goto-z" placeholder="0"></label>
+          <label><span class="lbl">&nbsp;</span><button class="btn btn-sm" id="btn-goto" style="margin-top:0">Vai</button></label>
+        </div>
+        <div class="row">
+          <button class="btn btn-sm" id="btn-goto-spawn">Punto di spawn</button>
+          <button class="btn btn-sm" id="btn-goto-fit">Tutto il mondo</button>
+        </div>
+        <div class="hint" id="view-info"></div>
+      </section>
+
+      <section class="panel">
+        <h2><span class="num">5</span> Layer</h2>
         <ul class="layer-list" id="layer-list"></ul>
         <div class="row-3">
           <button class="btn btn-sm" data-add-layer="roads" title="Nuovo layer strade">+ Strade</button>
@@ -98,7 +134,7 @@
       </section>
 
       <section class="panel">
-        <h2><span class="num">5</span> Strumenti</h2>
+        <h2><span class="num">6</span> Strumenti</h2>
         <div class="tool-grid">
           <button class="tool" data-tool="draw" id="tool-draw" disabled>
             <span class="ico" id="tool-draw-ico">✏️</span><span id="tool-draw-label">Disegna</span>
@@ -117,12 +153,12 @@
       </section>
 
       <section class="panel">
-        <h2><span class="num">6</span> Proprietà</h2>
+        <h2><span class="num">7</span> Proprietà</h2>
         <div id="props"><div class="prop-empty">Nessun elemento selezionato.<br>Clicca un elemento sulla mappa.</div></div>
       </section>
 
       <section class="panel">
-        <h2><span class="num">7</span> Esporta mappa</h2>
+        <h2><span class="num">8</span> Esporta mappa</h2>
         <label>
           <span class="lbl">Area da esportare</span>
           <select id="export-extent">

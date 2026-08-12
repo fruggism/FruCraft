@@ -48,8 +48,12 @@ const Main = (function () {
       state.world = world;
       const dimSelect = el('world-dimension');
       dimSelect.innerHTML = world.dimensions.map((d) => {
-        const size = `${Math.round((d.bounds.maxX - d.bounds.minX + 1) / 16)}×${Math.round((d.bounds.maxZ - d.bounds.minZ + 1) / 16)} chunk`;
-        return `<option value="${d.dimension}">${DIM_LABELS[d.dimension] || d.dimension} — ${d.regionCount} regioni, ${size}</option>`;
+        const wKm = Math.round((d.bounds.maxX - d.bounds.minX + 1) / 1000);
+        const hKm = Math.round((d.bounds.maxZ - d.bounds.minZ + 1) / 1000);
+        const size = wKm || hKm
+          ? `estensione ~${wKm}k×${hKm}k blocchi`
+          : `${d.bounds.maxX - d.bounds.minX + 1}×${d.bounds.maxZ - d.bounds.minZ + 1} blocchi`;
+        return `<option value="${escapeHtml(d.id)}">${escapeHtml(d.label)} — ${d.regionCount} regioni, ${size}</option>`;
       }).join('');
       el('world-details').classList.remove('hidden');
       const mb = (world.dimensions.reduce((n, d) => n + d.bytes, 0) / 1048576).toFixed(0);
@@ -58,7 +62,24 @@ const Main = (function () {
     } catch (err) {
       state.world = null;
       CA.setStatus('world-status', err.message, 'err');
+      // The server tells us when the folder actually contains several worlds.
+      if (Array.isArray(err.candidates)) showCandidates(err.candidates);
     }
+  }
+
+  /** Render a pick-list when the chosen folder holds more than one world. */
+  function showCandidates(list) {
+    const host = el('world-picks');
+    host.classList.remove('hidden');
+    host.innerHTML = '<div class="hint">Mondi trovati in questa cartella:</div>' + list.map((w) => (
+      `<div class="world-pick" data-path="${escapeHtml(w.path)}"><b>${escapeHtml(w.name)}</b><small>${escapeHtml(w.path)}</small></div>`
+    )).join('');
+    host.querySelectorAll('.world-pick').forEach((node) => {
+      node.addEventListener('click', () => {
+        el('world-path').value = node.dataset.path;
+        scanWorld();
+      });
+    });
   }
 
   // --------------------------------------------------------------- project
@@ -120,7 +141,7 @@ const Main = (function () {
 
     el('project-name').value = project.name;
     el('project-name').disabled = false;
-    el('topbar-info').innerHTML = `<span>${escapeHtml(project.name)}</span> · ${escapeHtml(project.world.levelName || '')} · ${DIM_LABELS[project.world.dimension] || project.world.dimension}`;
+    el('topbar-info').innerHTML = `<span>${escapeHtml(project.name)}</span> · ${escapeHtml(project.world.levelName || '')} · ${escapeHtml(dimLabel(project))}`;
 
     // The world may not be the one currently scanned (e.g. after reopening
     // the app), so make sure the server knows about it before asking for tiles.
@@ -146,6 +167,21 @@ const Main = (function () {
     renderLayerList();
     Archive.onProjectLoaded();
     CA.setStatus('save-status', 'Atlante aperto', 'ok');
+
+    // Seed the "generate around" fields with somewhere useful, and tell the
+    // user whether this dimension has been rendered yet.
+    const spawn = state.world.spawn || { x: 0, z: 0 };
+    el('render-x').value = Math.round(spawn.x);
+    el('render-z').value = Math.round(spawn.z);
+    el('goto-x').value = Math.round(spawn.x);
+    el('goto-z').value = Math.round(spawn.z);
+    updateRenderEstimate();
+    pollRenderStatus(true);
+  }
+
+  function dimLabel(project) {
+    const dim = state.world && state.world.dimensions.find((d) => d.id === project.world.dimension);
+    return dim ? dim.label : (DIM_LABELS[project.world.dimension] || project.world.dimension);
   }
 
   async function deleteProject() {
@@ -312,6 +348,109 @@ const Main = (function () {
     toast('Layer eliminato');
   }
 
+
+  // --------------------------------------------------- map generation job
+  let renderPollTimer = null;
+
+  function renderArea() {
+    if (el('render-extent').value === 'all') return null;
+    const x = Number(el('render-x').value) || 0;
+    const z = Number(el('render-z').value) || 0;
+    const r = Math.max(256, Number(el('render-radius').value) || 1024);
+    return { minX: x - r, minZ: z - r, maxX: x + r, maxZ: z + r };
+  }
+
+  /** Rough "how long will this take" estimate, from tile count. */
+  function updateRenderEstimate() {
+    const node = el('render-estimate');
+    if (!state.project || !state.world) { node.textContent = ''; return; }
+    const dim = state.world.dimensions.find((d) => d.id === state.project.world.dimension);
+    if (!dim) { node.textContent = ''; return; }
+
+    const area = renderArea();
+    const b = dim.bounds;
+    const minX = area ? Math.max(b.minX, area.minX) : b.minX;
+    const maxX = area ? Math.min(b.maxX, area.maxX) : b.maxX;
+    const minZ = area ? Math.max(b.minZ, area.minZ) : b.minZ;
+    const maxZ = area ? Math.min(b.maxZ, area.maxZ) : b.maxZ;
+    if (minX > maxX || minZ > maxZ) {
+      node.textContent = "L'area scelta non tocca nessuna parte generata del mondo.";
+      return;
+    }
+    // One base tile is 256x256 blocks and takes roughly half a second.
+    const tiles = Math.ceil((maxX - minX + 1) / 256) * Math.ceil((maxZ - minZ + 1) / 256);
+    const seconds = Math.round(tiles * 0.6);
+    const pretty = seconds > 90 ? `~${Math.round(seconds / 60)} min` : `~${seconds} s`;
+    node.textContent = `Circa ${tiles} tile di dettaglio, ${pretty} di elaborazione.`;
+  }
+
+  async function startRender(force) {
+    if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
+    const dimId = state.project.world.dimension;
+    try {
+      CA.setStatus('render-status', 'Avvio generazione…', 'busy');
+      await CA.api.startRender(state.world.worldId, dimId, { area: renderArea(), force: !!force });
+      el('btn-render').disabled = true;
+      el('btn-render-cancel').classList.remove('hidden');
+      el('render-progress').classList.remove('hidden');
+      pollRenderStatus();
+    } catch (err) {
+      CA.setStatus('render-status', err.message, 'err');
+    }
+  }
+
+  async function pollRenderStatus(quiet) {
+    if (!state.project || !state.world) return;
+    clearTimeout(renderPollTimer);
+    const dimId = state.project.world.dimension;
+    let status;
+    try {
+      status = await CA.api.renderStatus(state.world.worldId, dimId);
+    } catch {
+      return;
+    }
+
+    const running = status.state === 'running';
+    el('btn-render').disabled = running;
+    el('btn-render-cancel').classList.toggle('hidden', !running);
+    el('render-progress').classList.toggle('hidden', !running && status.state !== 'done');
+    el('render-bar').style.width = `${status.percent || 0}%`;
+
+    if (running) {
+      const eta = status.etaMs != null ? ` — restano ~${formatDuration(status.etaMs)}` : '';
+      CA.setStatus('render-status', `${status.phase}: ${status.done}/${status.total} (${status.percent}%)${eta}`, 'busy');
+      Atlas.refreshTiles();
+      renderPollTimer = setTimeout(pollRenderStatus, 1500);
+      return;
+    }
+
+    if (status.state === 'done') {
+      // Say which area was generated: if only part of the world was rendered,
+      // the blank rest is a choice, not a failure.
+      const b = status.bounds;
+      const where = b
+        ? ` (area X ${Math.round(b.minX)}…${Math.round(b.maxX)}, Z ${Math.round(b.minZ)}…${Math.round(b.maxZ)})`
+        : '';
+      CA.setStatus('render-status', `Mappa generata${where}.`, 'ok');
+      Atlas.refreshTiles();
+    } else if (status.state === 'error') {
+      CA.setStatus('render-status', `Generazione fallita: ${status.error}`, 'err');
+    } else if (status.state === 'cancelled') {
+      CA.setStatus('render-status', 'Generazione interrotta (la parte già fatta resta).', 'busy');
+      Atlas.refreshTiles();
+    } else {
+      CA.setStatus('render-status',
+        'Questa dimensione non è ancora stata generata: scegli l\'area e premi "Genera mappa".', 'busy');
+    }
+  }
+
+  function formatDuration(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return `${s} s`;
+    const m = Math.floor(s / 60);
+    return `${m} min ${s % 60} s`;
+  }
+
   // ------------------------------------------------------------------ init
   function init() {
     Atlas.initMap();
@@ -342,14 +481,50 @@ const Main = (function () {
       Atlas.setTerrainVisible(el('chk-terrain').checked);
       if (state.project) { state.project.settings.showTerrain = el('chk-terrain').checked; CA.markDirty(); }
     });
+    el('render-extent').addEventListener('change', () => {
+      el('render-around').classList.toggle('hidden', el('render-extent').value === 'all');
+      updateRenderEstimate();
+    });
+    for (const id of ['render-x', 'render-z', 'render-radius']) {
+      el(id).addEventListener('input', CA.debounce(updateRenderEstimate, 250));
+    }
+    el('btn-render-here').addEventListener('click', () => {
+      if (!Atlas.map) return;
+      const c = CA.fromLatLng(Atlas.map.getCenter());
+      el('render-x').value = Math.round(c.x);
+      el('render-z').value = Math.round(c.z);
+      updateRenderEstimate();
+    });
+    el('btn-render').addEventListener('click', () => startRender(false));
+    el('btn-render-cancel').addEventListener('click', async () => {
+      if (!state.project || !state.world) return;
+      await CA.api.cancelRender(state.world.worldId, state.project.world.dimension);
+      pollRenderStatus();
+    });
+
+    el('btn-goto').addEventListener('click', () => {
+      Atlas.goTo(Number(el('goto-x').value) || 0, Number(el('goto-z').value) || 0, Math.max(Atlas.map.getZoom(), -2));
+    });
+    for (const id of ['goto-x', 'goto-z']) {
+      el(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') el('btn-goto').click(); });
+    }
+    el('btn-goto-spawn').addEventListener('click', () => {
+      const spawn = (state.world && state.world.spawn) || { x: 0, z: 0 };
+      el('goto-x').value = Math.round(spawn.x);
+      el('goto-z').value = Math.round(spawn.z);
+      Atlas.goTo(spawn.x, spawn.z, 0);
+    });
+    el('btn-goto-fit').addEventListener('click', () => Atlas.fitWorld());
+
     el('btn-clear-cache').addEventListener('click', async () => {
       if (!state.world) { toast('Nessun mondo caricato', 'err'); return; }
+      if (!state.project) { toast('Apri prima un atlante', 'err'); return; }
       CA.setStatus('cache-status', 'Svuoto la cache dei tile…', 'busy');
       try {
-        await CA.api.clearCache(state.world.worldId, state.project && state.project.world.dimension);
-        // Force Leaflet to refetch every tile currently on screen.
-        if (Atlas.map) Atlas.map.eachLayer((l) => { if (l instanceof L.TileLayer) l.redraw(); });
-        CA.setStatus('cache-status', 'Cache svuotata: la mappa si sta rigenerando.', 'ok');
+        await CA.api.clearCache(state.world.worldId, state.project.world.dimension);
+        Atlas.refreshTiles();
+        CA.setStatus('cache-status', 'Cache svuotata.', 'ok');
+        await startRender(true);
       } catch (err) {
         CA.setStatus('cache-status', err.message, 'err');
       }

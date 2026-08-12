@@ -13,6 +13,7 @@ const os = require('os');
 
 const anvil = require('./lib/anvil');
 const tiler = require('./lib/tiler');
+const renderJob = require('./lib/renderJob');
 const worldScan = require('./lib/worldScan');
 const projects = require('./lib/projects');
 const book = require('./lib/book');
@@ -25,16 +26,19 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------------------------------------------------------------------------
-// World registry: maps a worldId to its path so tile URLs stay clean and the
-// filesystem path is never round-tripped through the browser.
+// World registry
+//
+// Tile URLs carry only a world id, never a filesystem path. The registry maps
+// that id back to the save folder, and caches the scan so a tile request can
+// resolve its dimension's region directory without re-walking the disk.
 // ---------------------------------------------------------------------------
 const REGISTRY_FILE = path.join(__dirname, 'data', 'worlds.json');
-let worldRegistry = new Map();
+let worldRegistry = new Map();       // worldId -> worldPath
+const scanCache = new Map();         // worldId -> scan result
 
 function loadRegistry() {
   try {
-    const raw = JSON.parse(fs.readFileSync(REGISTRY_FILE, 'utf8'));
-    worldRegistry = new Map(Object.entries(raw));
+    worldRegistry = new Map(Object.entries(JSON.parse(fs.readFileSync(REGISTRY_FILE, 'utf8'))));
   } catch {
     worldRegistry = new Map();
   }
@@ -45,28 +49,83 @@ function saveRegistry() {
     fs.writeFileSync(REGISTRY_FILE, JSON.stringify(Object.fromEntries(worldRegistry), null, 2));
   } catch { /* best effort */ }
 }
-function registerWorld(worldPath) {
-  const id = worldScan.worldId(worldPath);
-  worldRegistry.set(id, path.resolve(worldPath));
+function registerWorld(scan) {
+  worldRegistry.set(scan.worldId, scan.worldPath);
+  scanCache.set(scan.worldId, scan);
   saveRegistry();
-  return id;
 }
 function worldPathFor(id) {
   const p = worldRegistry.get(id);
-  if (!p) throw new Error('Mondo non registrato: riapri il mondo dalla schermata iniziale');
+  if (!p) throw new Error('Mondo non registrato: riaprilo dalla schermata iniziale.');
   return p;
 }
+/** Scan result for a world, rescanning from disk if it isn't cached yet. */
+function scanFor(worldId) {
+  const cached = scanCache.get(worldId);
+  if (cached) return cached;
+  const scan = worldScan.scanWorld(worldPathFor(worldId));
+  if (!scan.ok) throw new Error(scan.error);
+  scanCache.set(worldId, scan);
+  return scan;
+}
+function dimensionFor(worldId, dimId) {
+  const scan = scanFor(worldId);
+  const dim = scan.dimensions.find((d) => d.id === dimId);
+  if (!dim) throw new Error(`Dimensione "${dimId}" non trovata in questo mondo.`);
+  return dim;
+}
+
+// Region index per dimension, built once and reused by every tile request.
+const regionSets = new Map();
+function regionSetFor(worldId, dim) {
+  const key = `${worldId}/${dim.id}`;
+  let set = regionSets.get(key);
+  if (!set) {
+    set = tiler.regionSetOf(dim.regions);
+    regionSets.set(key, set);
+  }
+  return set;
+}
+
+function invalidateWorld(worldId) {
+  scanCache.delete(worldId);
+  for (const key of [...regionSets.keys()]) {
+    if (key.startsWith(`${worldId}/`)) regionSets.delete(key);
+  }
+}
+
 loadRegistry();
 
 function fail(res, err, status = 400) {
   res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
 }
 
+/** Trim the scan down to what the browser needs (the region list can be huge). */
+function publicScan(scan) {
+  return {
+    ok: true,
+    worldId: scan.worldId,
+    worldPath: scan.worldPath,
+    levelName: scan.levelName,
+    version: scan.version,
+    dataVersion: scan.dataVersion,
+    spawn: scan.spawn || null,
+    dimensions: scan.dimensions.map((d) => ({
+      id: d.id,
+      label: d.label,
+      relativeDir: d.relativeDir,
+      regionCount: d.regionCount,
+      bytes: d.bytes,
+      bounds: d.bounds,
+    })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // World
 // ---------------------------------------------------------------------------
 
-/** Suggest where Minecraft saves usually live, to save the user some typing. */
+/** Where Minecraft saves usually live, so the user rarely has to type a path. */
 app.get('/api/world/suggestions', (req, res) => {
   const home = os.homedir();
   const candidates = [
@@ -74,28 +133,48 @@ app.get('/api/world/suggestions', (req, res) => {
     path.join(home, 'Library', 'Application Support', 'minecraft', 'saves'),
     path.join(home, 'AppData', 'Roaming', '.minecraft', 'saves'),
     path.join(home, 'curseforge', 'minecraft', 'Instances'),
+    path.join(home, 'Documents', 'PrismLauncher', 'instances'),
   ];
-  const found = [];
+  const worlds = [];
   for (const dir of candidates) {
-    let entries;
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
-    for (const e of entries) {
-      if (!e.isDirectory()) continue;
-      const full = path.join(dir, e.name);
-      if (worldScan.isWorldFolder(full)) found.push({ name: e.name, path: full });
+    for (const w of worldScan.listNestedWorlds(dir)) {
+      worlds.push(w);
+      if (worlds.length >= 60) break;
     }
   }
-  res.json({ savesDirs: candidates, worlds: found });
+  res.json({ savesDirs: candidates, worlds });
 });
 
 app.get('/api/world/scan', (req, res) => {
   try {
     const worldPath = req.query.path;
     if (!worldPath) throw new Error('Parametro "path" mancante');
-    const info = worldScan.scanWorld(String(worldPath));
-    if (!info.ok) return res.status(404).json(info);
-    registerWorld(String(worldPath));
-    res.json(info);
+    const scan = worldScan.scanWorld(String(worldPath));
+    if (!scan.ok) return res.status(404).json(scan);
+    registerWorld(scan);
+    res.json(publicScan(scan));
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+/** Point probe: what block is at this coordinate? */
+app.get('/api/world/:worldId/probe', (req, res) => {
+  try {
+    const dim = dimensionFor(req.params.worldId, req.query.dim);
+    const x = parseInt(req.query.x, 10);
+    const z = parseInt(req.query.z, 10);
+    if (![x, z].every(Number.isFinite)) throw new Error('Coordinate non valide');
+    const g = anvil.readSurface(dim.regionDir, x, z, 1, 1);
+    const missing = g.surfaceY[0] === anvil.NO_DATA;
+    res.json({
+      x, z,
+      y: missing ? null : g.surfaceY[0],
+      block: missing ? null : g.surfaceName[0],
+      biome: g.biome[0],
+      floorY: missing ? null : g.floorY[0],
+      generated: !missing,
+    });
   } catch (err) {
     fail(res, err);
   }
@@ -105,76 +184,97 @@ app.get('/api/world/scan', (req, res) => {
 // Tiles
 // ---------------------------------------------------------------------------
 
-app.get('/api/tiles/:worldId/:dimension/:z/:x/:y.png', (req, res) => {
+app.get('/api/tiles/:worldId/:dimId/:z/:x/:y.png', (req, res) => {
+  const sendEmpty = (reason) => {
+    res.set('Content-Type', 'image/png');
+    if (reason) res.set('X-Tile-Error', String(reason).slice(0, 200));
+    res.set('Cache-Control', 'no-store');
+    res.status(200).send(tiler.emptyTile());
+  };
   try {
-    const { worldId, dimension } = req.params;
+    const { worldId, dimId } = req.params;
     const z = parseInt(req.params.z, 10);
     const x = parseInt(req.params.x, 10);
     const y = parseInt(req.params.y, 10);
-    if (![z, x, y].every(Number.isFinite)) throw new Error('Coordinate tile non valide');
-    if (!Object.prototype.hasOwnProperty.call(anvil.DIMENSIONS, dimension)) {
-      throw new Error(`Dimensione sconosciuta: ${dimension}`);
-    }
+    if (![z, x, y].every(Number.isFinite)) return sendEmpty('Coordinate tile non valide');
 
-    const worldPath = worldPathFor(worldId);
-    const tile = tiler.getTile({
-      worldPath, worldId, dimension, z, x, y,
+    const dim = dimensionFor(worldId, dimId);
+    const tile = tiler.serveTile({
+      regionDir: dim.regionDir,
+      worldId, dimId, z, x, y,
+      regionSet: regionSetFor(worldId, dim),
       renderOptions: {
         shadeStrength: req.query.shade !== undefined ? Number(req.query.shade) : 1,
         waterDepthShading: req.query.waterDepth !== '0',
       },
     });
     res.set('Content-Type', 'image/png');
-    res.set('Cache-Control', 'no-cache'); // the on-disk tile cache is the real cache
+    // A tile composed while the background job is still running must not be
+    // cached by the browser, or the gaps would stay on screen.
+    res.set('Cache-Control', tile.partial ? 'no-store' : 'no-cache');
+    if (tile.partial) res.set('X-Tile-Partial', '1');
     res.send(tile.buffer);
   } catch (err) {
-    // A broken tile must not break the whole map: answer with a transparent
-    // tile and report the reason in a header for debugging.
-    res.set('Content-Type', 'image/png');
-    res.set('X-Tile-Error', String(err.message).slice(0, 200));
-    res.status(200).send(tiler.getTile({ z: 99, x: 0, y: 0 }).buffer);
+    sendEmpty(err.message);
   }
 });
 
-app.post('/api/tiles/:worldId/clear-cache', (req, res) => {
+app.get('/api/tiles/:worldId/:dimId/cache-stats', (req, res) => {
   try {
-    const { worldId } = req.params;
-    worldPathFor(worldId); // validate it is a known world
-    tiler.clearCache(worldId, req.body && req.body.dimension);
-    res.json({ ok: true, ...tiler.cacheStats(worldId) });
-  } catch (err) {
-    fail(res, err);
-  }
-});
-
-app.get('/api/tiles/:worldId/cache-stats', (req, res) => {
-  try {
-    res.json(tiler.cacheStats(req.params.worldId));
-  } catch (err) {
-    fail(res, err);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// World inspection
-// ---------------------------------------------------------------------------
-
-/** Point probe: what is at this block? Used by the map's inspector. */
-app.get('/api/world/:worldId/probe', (req, res) => {
-  try {
-    const worldPath = worldPathFor(req.params.worldId);
-    const dimension = req.query.dim || 'overworld';
-    const x = parseInt(req.query.x, 10);
-    const z = parseInt(req.query.z, 10);
-    if (![x, z].every(Number.isFinite)) throw new Error('Coordinate non valide');
-    const g = anvil.readSurface(worldPath, dimension, x, z, 1, 1);
     res.json({
-      x, z,
-      y: g.surfaceY[0] === anvil.NO_DATA ? null : g.surfaceY[0],
-      block: g.surfaceY[0] === anvil.NO_DATA ? null : g.surfaceName[0],
-      biome: g.biome[0],
-      floorY: g.floorY[0] === anvil.NO_DATA ? null : g.floorY[0],
+      ...tiler.cacheStats(req.params.worldId, req.params.dimId),
+      render: renderJob.completedInfo(req.params.worldId, req.params.dimId),
     });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.post('/api/tiles/:worldId/:dimId/clear-cache', (req, res) => {
+  try {
+    const { worldId, dimId } = req.params;
+    dimensionFor(worldId, dimId); // validate
+    renderJob.cancel(worldId, dimId);
+    renderJob.forget(worldId, dimId);
+    tiler.clearCache(worldId, dimId);
+    invalidateWorld(worldId);
+    res.json({ ok: true, ...tiler.cacheStats(worldId, dimId) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Map generation (background job)
+// ---------------------------------------------------------------------------
+
+app.post('/api/render/:worldId/:dimId', (req, res) => {
+  try {
+    const { worldId, dimId } = req.params;
+    // The save may have changed since it was scanned; re-read it so newly
+    // explored regions are picked up.
+    invalidateWorld(worldId);
+    const dim = dimensionFor(worldId, dimId);
+    const { area, force } = req.body || {};
+    const status = renderJob.start({ worldId, dimension: dim, area: area || null, force: !!force });
+    res.json({ ...status, dimensionBounds: dim.bounds, regionCount: dim.regionCount });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.get('/api/render/:worldId/:dimId', (req, res) => {
+  try {
+    res.json(renderJob.status(req.params.worldId, req.params.dimId));
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.post('/api/render/:worldId/:dimId/cancel', (req, res) => {
+  try {
+    const stopped = renderJob.cancel(req.params.worldId, req.params.dimId);
+    res.json({ ok: true, stopped });
   } catch (err) {
     fail(res, err);
   }

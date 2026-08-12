@@ -38,7 +38,11 @@ const CA = (function () {
     deleteProject: (id) => api(`/api/projects/${id}`, { method: 'DELETE' }),
     importProject: (body) => api('/api/projects/import', jsonPost(body)),
     probe: (worldId, params) => api(`/api/world/${worldId}/probe?${new URLSearchParams(params)}`),
-    clearCache: (worldId, dimension) => api(`/api/tiles/${worldId}/clear-cache`, jsonPost({ dimension })),
+    clearCache: (worldId, dimId) => api(`/api/tiles/${worldId}/${dimId}/clear-cache`, jsonPost({})),
+    cacheStats: (worldId, dimId) => api(`/api/tiles/${worldId}/${dimId}/cache-stats`),
+    startRender: (worldId, dimId, body) => api(`/api/render/${worldId}/${dimId}`, jsonPost(body)),
+    renderStatus: (worldId, dimId) => api(`/api/render/${worldId}/${dimId}`),
+    cancelRender: (worldId, dimId) => api(`/api/render/${worldId}/${dimId}/cancel`, jsonPost({})),
     exportBook: (body) => api('/api/books/export', jsonPost(body)),
   };
 
