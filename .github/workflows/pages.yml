@@ -1,10 +1,14 @@
-# Publishes the static app to GitHub Pages.
-# Enable it once in the repository: Settings -> Pages -> Source: GitHub Actions.
-name: Deploy Cube-Atlas
+# Tests every branch, and publishes the app to GitHub Pages from whichever
+# branch is the repository's default one.
+#
+# Pages has to be switched on once, by hand:
+#   Settings -> Pages -> Source: GitHub Actions
+name: Test e pubblica Cube-Atlas
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -18,16 +22,22 @@ concurrency:
 
 jobs:
   test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The project has no dependencies, so there is nothing to install.
       - run: npm test
 
   deploy:
+    name: Pubblica su Pages
     needs: test
+    # The github-pages environment only accepts deployments from the default
+    # branch, so don't even try from the others.
+    if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -37,7 +47,7 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          # The app is plain static files: no build step, nothing to compile.
+          # Static files: no build step, nothing to compile.
           path: web
       - id: deployment
         uses: actions/deploy-pages@v4

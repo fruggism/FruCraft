@@ -185,6 +185,9 @@ codice che gira nel browser, senza browser.
 
 ## Pubblicazione
 
-`.github/workflows/pages.yml` esegue i test e pubblica `web/` su GitHub Pages a
-ogni push su `main`. Va abilitato una volta nel repository:
-**Settings → Pages → Source: GitHub Actions**.
+`.github/workflows/pages.yml` esegue i test su ogni branch e pubblica `web/` su
+GitHub Pages dal branch predefinito del repository.
+
+Pages va acceso una volta sola, a mano:
+**Settings → Pages → Source: GitHub Actions**. Da quel momento ogni push al
+branch predefinito aggiorna il sito.
