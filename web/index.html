@@ -48,6 +48,23 @@
             <span class="lbl">Dimensione</span>
             <select id="world-dimension"></select>
           </label>
+
+          <details id="block-filter" class="sub">
+            <summary>Filtro blocchi</summary>
+            <div class="hint">Blocchi da ignorare come se fossero aria: sulla mappa
+              si vede quello che c'è sotto, invece di questo blocco. Sceglili prima di creare
+              l'atlante per partire già con il filtro attivo; se l'atlante è già aperto,
+              premi "Applica il filtro" per aggiornare la mappa già generata.</div>
+            <div id="block-presets"></div>
+            <label>
+              <span class="lbl">Altri blocchi (uno per riga)</span>
+              <textarea id="block-custom" rows="3" spellcheck="false"
+                placeholder="tinted_glass&#10;modpack:blocco"></textarea>
+            </label>
+            <button class="btn btn-sm" id="btn-apply-filter">Applica il filtro</button>
+            <div id="filter-status" class="status"></div>
+          </details>
+
           <button class="btn btn-primary" id="btn-new-project">Crea atlante da questo mondo</button>
         </div>
       </section>
@@ -84,20 +101,6 @@
         </label>
         <div class="hint">Le ferrovie vengono cercate a tutte le altezze: le gallerie
           compaiono comunque, disegnate più scure quanto più sono profonde.</div>
-
-        <details id="block-filter" class="sub">
-          <summary>Filtro blocchi</summary>
-          <div class="hint">Blocchi da attraversare come se fossero aria: sulla mappa
-            si vede quello che c'è sotto.</div>
-          <div id="block-presets"></div>
-          <label>
-            <span class="lbl">Altri blocchi (uno per riga)</span>
-            <textarea id="block-custom" rows="3" spellcheck="false"
-              placeholder="tinted_glass&#10;modpack:blocco"></textarea>
-          </label>
-          <button class="btn btn-sm" id="btn-apply-filter">Applica il filtro</button>
-          <div id="filter-status" class="status"></div>
-        </details>
 
         <label>
           <span class="lbl">Area da generare</span>

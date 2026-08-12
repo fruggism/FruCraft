@@ -47,6 +47,9 @@ async function openWorldFromInit(init, { silent = false } = {}) {
     state.world = scan;
     fillDimensions(scan);
     el('world-details').classList.remove('hidden');
+    // The filter now lives here, before the atlas exists, so it needs its
+    // own defaults rather than reading a project that may not be open yet.
+    renderBlockFilter();
     const mb = (scan.dimensions.reduce((n, d) => n + d.bytes, 0) / 1048576).toFixed(0);
     setStatus('world-status',
       `${scan.levelName}${scan.version ? ` (${scan.version})` : ''} — ${mb} MB di regioni`, 'ok');
@@ -166,6 +169,9 @@ async function createProject() {
         levelName: state.world.levelName,
         path: '',
       },
+      // The filter is chosen before the atlas exists (section "1 Mondo"),
+      // so a brand-new atlas starts already generating with it applied.
+      settings: { hiddenBlocks: currentHiddenBlocks() },
     });
     await openProject(project);
     await refreshProjectList(project.id);
@@ -480,7 +486,9 @@ function currentHiddenBlocks() {
 }
 
 function renderBlockFilter() {
-  const hidden = (state.project && state.project.settings.hiddenBlocks) || [];
+  // Before an atlas exists there is no project.settings to read yet, so the
+  // checkboxes fall back to the same defaults a brand-new project would get.
+  const hidden = state.project ? state.project.settings.hiddenBlocks : projects.DEFAULT_HIDDEN_BLOCKS;
   el('block-presets').innerHTML = BLOCK_PRESETS.map((p) => `
     <label class="check-row">
       <input type="checkbox" value="${p.name}" ${hidden.includes(p.name) ? 'checked' : ''}>
@@ -491,7 +499,13 @@ function renderBlockFilter() {
 }
 
 async function applyBlockFilter() {
-  if (!state.project) { toast('Apri prima un atlante', 'err'); return; }
+  // No atlas yet: nothing to push the filter into. The checkboxes are still
+  // read directly when the atlas is created (see createProject), so this
+  // button only matters for a project that's already open.
+  if (!state.project) {
+    toast('Il filtro è già pronto: verrà usato quando crei l\'atlante. Per un atlante già aperto, aprilo prima.', 'err');
+    return;
+  }
   const hiddenBlocks = currentHiddenBlocks();
   state.project.settings.hiddenBlocks = hiddenBlocks;
   markDirty();

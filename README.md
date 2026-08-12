@@ -48,13 +48,18 @@ dentro la cartella `web/`.
 
 1. **Mondo** — *Scegli la cartella del mondo…* e indica la cartella del
    salvataggio (quella con dentro `level.dat`). Se ne indichi una che contiene
-   più mondi, l'app ti chiede quale. Poi scegli la dimensione e crea l'atlante.
+   più mondi, l'app ti chiede quale. Poi scegli la dimensione.
+   - **Filtro blocchi**: prima di creare l'atlante, apri questa tendina per escludere
+     dal disegno blocchi come le barriere, che altrimenti apparirebbero come pareti
+     inesistenti — il tile mostra quello che c'è sotto. Scegliendolo qui, l'atlante
+     nasce già con il filtro attivo, senza dover rigenerare nulla dopo. Si può
+     cambiare anche più tardi, ma in quel caso le parti già generate vanno
+     rigenerate (*Svuota cache e rigenera*, nella sezione successiva) per aggiornarsi.
+   Poi crea l'atlante.
 2. **Genera la mappa** — la mappa si apre sul punto di spawn. Scegli l'area (di
    solito *intorno a un punto*, con le coordinate della tua città e un raggio) e
    premi **Genera mappa**: la barra mostra l'avanzamento e i tile compaiono man
    mano. È interrompibile, e quello che è già stato prodotto resta.
-   - **Filtro blocchi**: esclude dal disegno blocchi come le barriere, che altrimenti
-     apparirebbero come pareti inesistenti — il tile mostra quello che c'è sotto.
    - **Evidenzia le ferrovie**: un layer a parte, cercato a tutte le altezze, così
      anche le gallerie profonde compaiono (più scure quanto più sono in basso).
 3. **Naviga** — porta la mappa alle coordinate che scegli (le stesse che leggi
