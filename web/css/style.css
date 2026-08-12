@@ -471,6 +471,10 @@ details.sub > summary::-webkit-details-marker { display: none; }
 }
 .reader-empty h3 { color: var(--accent-bright); text-shadow: 2px 2px 0 #000; font-weight: normal; }
 
+.reader-map-view { flex: 1; position: relative; min-height: 0; }
+#reader-map { position: absolute; inset: 0; background: #10120e; }
+#reader-map .leaflet-tile-container img { image-rendering: pixelated; }
+
 .reader-image-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .reader-image-bar {
   flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 12px;

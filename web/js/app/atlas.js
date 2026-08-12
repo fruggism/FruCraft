@@ -1717,16 +1717,66 @@ function exportGeoJSON() {
   setStatus('export-status', `GeoJSON esportato (${features.length} elementi)`, 'ok');
 }
 
+export const READER_MAP_FORMAT = 'cube-atlas/map';
+
+/**
+ * Export for the Lettore: unlike "Immagine PNG" this does NOT bake the
+ * layers into the raster. The image is terrain (+ rails) only — flat pixels
+ * make sense for blocks — while the layers travel as data, so the Lettore
+ * can still hide/show them and show each feature's info on hover, the same
+ * as the Editor does.
+ */
+async function exportForReader() {
+  if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
+  const area = await pickExportArea();
+  if (!area) return;
+  const bounds = exportBounds(area);
+  const zoom = pickExportZoom(bounds);
+  const scale = Math.pow(2, zoom);
+  const w = Math.max(1, Math.round((bounds.maxX - bounds.minX + 1) * scale));
+  const h = Math.max(1, Math.round((bounds.maxZ - bounds.minZ + 1) * scale));
+
+  setStatus('export-status', `Composizione mappa per il Lettore ${w}×${h}…`, 'busy');
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#10120e';
+  ctx.fillRect(0, 0, w, h);
+
+  try {
+    if (el('chk-terrain').checked) await drawTerrain(ctx, bounds, zoom);
+    if (el('chk-rails').checked) await drawTerrain(ctx, bounds, zoom, 'rails');
+    const bundle = {
+      format: READER_MAP_FORMAT,
+      version: 1,
+      bounds,
+      image: canvas.toDataURL('image/png'),
+      layers: JSON.parse(JSON.stringify(state.project.layers)),
+    };
+    download(`${slugify(state.project.name)}.camap.json`, JSON.stringify(bundle), 'application/json');
+    setStatus('export-status', `Mappa per il Lettore esportata (${w}×${h} px)`, 'ok');
+  } catch (err) {
+    setStatus('export-status', `Export fallito: ${err.message}`, 'err');
+  }
+}
 
 export {
   initMap, attachWorld, renderAllLayers, refreshFeature, setLayerVisibility, applyLayerVisibility,
   selectFeature, refreshProps, setTool, deleteFeature,
   setTerrainVisible, setRailsVisible, zoomToFeature, goTo, fitWorld, refreshTiles, updateViewInfo,
-  currentDimension, exportPNG, exportSVG, exportGeoJSON,
+  currentDimension, exportPNG, exportSVG, exportGeoJSON, exportForReader,
   POI_SHAPES, POI_CATEGORIES, PALETTE,
   // Pure geometry helpers, exported mainly so the test suite can exercise
   // them without a browser (see test/run-tests.js).
   offsetTransitCoords, snapToStations,
+  // Read-only rendering pieces, shared with the Lettore so a feature looks
+  // and behaves (hover info) exactly the same whether it's being edited or
+  // just viewed: one definition of what a road/POI/area/transit/note/station
+  // looks like, not two that can drift apart.
+  styleOf, dashFor, poiSvg, noteSvg, stationSvg, popupHtml, lengthOf, areaOf,
+  bannerMarker, bannerAnchor, isPointLayer,
 };
 export function getMap() { return map; }
 export function getCurrentTool() { return currentTool; }

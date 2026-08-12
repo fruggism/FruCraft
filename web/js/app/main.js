@@ -736,6 +736,7 @@ async function init() {
     btn.addEventListener('click', () => Atlas.setTool(btn.dataset.tool));
   });
 
+  el('btn-export-reader-map').addEventListener('click', () => Atlas.exportForReader());
   el('btn-export-png').addEventListener('click', () => Atlas.exportPNG());
   el('btn-export-svg').addEventListener('click', () => Atlas.exportSVG());
   el('btn-export-geojson').addEventListener('click', () => Atlas.exportGeoJSON());

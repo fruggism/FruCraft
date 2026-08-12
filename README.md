@@ -16,9 +16,12 @@ L'app è divisa in due, cambiabile dai due bottoni in alto:
 - **✏️ Editor** — dove si fa tutto il lavoro: apri il mondo, disegni la mappa
   a layer, scrivi i documenti dell'Archivio. Richiede il mondo Minecraft.
 - **📖 Lettore** — un visualizzatore leggero per i file che l'Editor ha già
-  esportato: apri un'immagine della mappa, o un documento esportato con
-  *"Esporta per il Lettore"*. Non serve nessun mondo: è pensato per chi deve
-  solo *guardare* quello che hai fatto, anche su un altro computer.
+  esportato: apri una mappa esportata con *"📖 Esporta per il Lettore"* — il
+  terreno è un'immagine piatta, ma i layer restano vivi: si possono ancora
+  nascondere/mostrare uno per uno, e passandoci sopra col mouse se ne vedono
+  le informazioni — oppure un documento dell'Archivio. Non serve nessun
+  mondo: è pensato per chi deve solo *guardare* quello che hai fatto, anche
+  su un altro computer.
 
 ---
 
@@ -97,12 +100,18 @@ dentro la cartella `web/`.
    può avere un **banner** (un'immagine PNG/JPEG/WebP caricata dal proprietà),
    piantato come una bandierina sulla mappa e nell'anteprima al passaggio del
    mouse.
-6. **Esporta** — PNG (un'unica immagine piatta, con tutti i layer disegnati
-   sopra: è quello che vedi nell'app), SVG (**un gruppo per layer**, apribile
-   in Inkscape/Illustrator), GeoJSON, o il progetto completo
-   `.cubeatlas.json` che si riapre con *Importa* mantenendo i layer. PNG e
-   SVG chiedono prima l'area da esportare (vista attuale, o tutto il mondo
-   generato) invece di doverla impostare prima altrove.
+6. **Esporta** — cinque formati, tutti con un'area da scegliere prima (vista
+   attuale, o tutto il mondo generato):
+   - **📖 Esporta per il Lettore** (`.camap.json`) — pensato per il Lettore: il
+     terreno è un'immagine piatta (ha senso, sono blocchi), ma i layer restano
+     dati veri. Nel Lettore si possono ancora nascondere/mostrare uno per uno,
+     e passando il mouse su un elemento se ne vedono le informazioni — come
+     nell'Editor.
+   - **Immagine PNG** — un'unica immagine piatta con *tutto* disegnato sopra,
+     layer compresi: comoda da condividere o stampare, ma senza interattività.
+   - **SVG** (un gruppo per layer, apribile in Inkscape/Illustrator), **GeoJSON**,
+     o il progetto completo `.cubeatlas.json` che si riapre con *Importa*
+     mantenendo i layer.
 7. **Archivio** — scrivi i documenti del tuo impero, vedili impaginati come un
    libro di Minecraft ed esportali come comando `/give` (formato 1.20.5+ o
    precedenti), file `.mcfunction` o testo. *"📖 Esporta per il Lettore"*

@@ -197,7 +197,11 @@
         <h2><span class="num">8</span> Esporta mappa</h2>
         <div class="hint">Ogni esportazione chiede prima l'area: la vista attuale, o tutto
           il mondo generato.</div>
-        <button class="btn" id="btn-export-png">Immagine PNG (con i layer)</button>
+        <button class="btn btn-primary" id="btn-export-reader-map">📖 Esporta per il Lettore</button>
+        <div class="hint">Il terreno resta un'immagine piatta, ma i layer restano dati: nel
+          Lettore si possono ancora nascondere o mostrare solo alcuni, con le info di ogni
+          elemento al passaggio del mouse.</div>
+        <button class="btn" id="btn-export-png">Immagine PNG (tutto appiattito)</button>
         <button class="btn" id="btn-export-svg">Vettoriale SVG</button>
         <button class="btn" id="btn-export-geojson">Dati GeoJSON</button>
         <div id="export-status" class="status"></div>
@@ -283,11 +287,20 @@
     <aside class="sidebar">
       <section class="panel">
         <h2>Apri una mappa</h2>
-        <div class="hint">Apri un'immagine PNG esportata dall'Editor (Atlante → Esporta mappa).</div>
-        <button class="btn btn-primary" id="btn-reader-open-map">Apri immagine…</button>
-        <input type="file" id="reader-map-input" accept="image/png,image/jpeg,image/webp" class="hidden">
+        <div class="hint">Apri un file esportato dall'Editor con "📖 Esporta per il Lettore"
+          (.camap.json): i layer restano nascondibili/mostrabili, con le info al passaggio
+          del mouse. Una semplice immagine PNG/JPEG si apre anche, come immagine piatta.</div>
+        <button class="btn btn-primary" id="btn-reader-open-map">Apri mappa…</button>
+        <input type="file" id="reader-map-input" accept=".camap.json,.json,image/png,image/jpeg,image/webp,application/json" class="hidden">
         <div id="reader-map-status" class="status"></div>
       </section>
+
+      <section class="panel hidden" id="reader-map-layers">
+        <h2>Layer</h2>
+        <div class="hint">Nascondi o mostra i layer di questa mappa.</div>
+        <ul class="layer-list" id="reader-layer-list"></ul>
+      </section>
+
       <section class="panel">
         <h2>Apri un documento</h2>
         <div class="hint">Apri un documento esportato dall'Archivio con "Esporta per il Lettore"
@@ -303,6 +316,10 @@
         <h3>Cube-Atlas Lettore</h3>
         <p>Apri una mappa o un documento esportato dall'Editor per vederlo qui.</p>
         <p>Non serve aprire nessun mondo: il Lettore mostra solo file già esportati.</p>
+      </div>
+
+      <div class="reader-map-view hidden" id="reader-map-view">
+        <div id="reader-map"></div>
       </div>
 
       <div class="reader-image-view hidden" id="reader-image-view">
