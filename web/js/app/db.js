@@ -1,15 +1,17 @@
 /*
  * IndexedDB wrapper shared by the page and the worker.
  *
- * Four stores:
- *   projects  the atlases (layers, features, documents)
- *   tiles     rendered map tiles, one WebP blob per tile
- *   handles   the picked world folder, so it reopens next session
- *   meta      render bookkeeping ("this dimension was generated for this area")
+ * Five stores:
+ *   projects    the atlases (layers, features)
+ *   archiveDocs the Archivio's documents — independent of any atlas, each
+ *               entry one immutable, signed version (see app/documents.js)
+ *   tiles       rendered map tiles, one WebP blob per tile
+ *   handles     the picked world folder, so it reopens next session
+ *   meta        render bookkeeping ("this dimension was generated for this area")
  */
 
 const DB_NAME = 'cube-atlas';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -20,6 +22,7 @@ export function openDb() {
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('archiveDocs')) db.createObjectStore('archiveDocs', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('tiles')) db.createObjectStore('tiles');
       if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
       if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');

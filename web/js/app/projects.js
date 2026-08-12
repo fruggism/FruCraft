@@ -199,18 +199,6 @@ function sanitizeLayerTree(layers) {
   return layers;
 }
 
-export function normalizeDocument(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  return {
-    id: typeof raw.id === 'string' && raw.id ? raw.id : newId('doc'),
-    title: typeof raw.title === 'string' ? raw.title : 'Senza titolo',
-    author: typeof raw.author === 'string' ? raw.author : '',
-    body: typeof raw.body === 'string' ? raw.body : '',
-    tags: Array.isArray(raw.tags) ? raw.tags.filter((t) => typeof t === 'string') : [],
-    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
-  };
-}
-
 /* Blocks hidden by default: both are invisible in game, and both otherwise
  * draw solid walls across the map. */
 export const DEFAULT_HIDDEN_BLOCKS = ['minecraft:barrier', 'minecraft:light'];
@@ -288,9 +276,8 @@ export function normalizeProject(raw, existing) {
     view: normalizeView(raw, existing),
     settings: normalizeSettings(raw, existing),
     layers: layers.length ? layers : defaultLayers(),
-    documents: Array.isArray(raw && raw.documents)
-      ? raw.documents.map(normalizeDocument).filter(Boolean)
-      : (existing ? existing.documents : []),
+    // Documents used to live here, but the Archivio is independent of any
+    // atlas now (see app/documents.js) — a project no longer carries them.
     createdAt: (existing && existing.createdAt) || now,
     updatedAt: now,
   };
@@ -310,7 +297,6 @@ export async function listProjects() {
       world: p.world,
       layerCount: (p.layers || []).length,
       featureCount: (p.layers || []).reduce((n, l) => n + (l.features || []).length, 0),
-      documentCount: (p.documents || []).length,
     }))
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }

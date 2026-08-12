@@ -22,6 +22,7 @@ import { FileMapSource } from '../web/js/core/source.js';
 import { NodeSource, MemoryTileCache } from './node-source.js';
 import * as fixture from './make-test-world.js';
 import * as projects from '../web/js/app/projects.js';
+import * as documents from '../web/js/app/documents.js';
 
 let passed = 0;
 let failed = 0;
@@ -701,6 +702,60 @@ test('un\'area estrema non produce una tela degenere (0 o non finita)', () => {
   assert(Number.isFinite(plan.w) && plan.w >= 1, `larghezza non valida: ${plan.w}`);
   assert(Number.isFinite(plan.h) && plan.h >= 1, `altezza non valida: ${plan.h}`);
   assert(plan.w <= atlasGeom.MAX_EXPORT_PX && plan.h <= atlasGeom.MAX_EXPORT_PX, 'anche il caso estremo resta entro il limite');
+});
+
+// ---------------------------------------------------------------------------
+section('Archivio: documenti indipendenti e versionati');
+
+test('normalizeDocument assegna codice, data e autore la prima volta', () => {
+  const doc = documents.normalizeDocument({ title: 'Cronaca', author: 'Ricky', body: 'Un tempo...' }, null);
+  assert(doc.id, 'id assegnato');
+  assert(/^CA-/.test(doc.code), 'codice nel formato atteso');
+  assert(doc.createdAt, 'data di creazione presente');
+  assertEqual(doc.author, 'Ricky', 'autore preso da chi lo scrive');
+  assertEqual(doc.versionOf, null, 'un documento nuovo non è la versione di nient\'altro');
+});
+
+test('normalizeDocument non lascia mai cambiare codice, data, autore o versionOf di una versione esistente', () => {
+  const original = documents.normalizeDocument({ title: 'Cronaca', author: 'Ricky', body: 'v1' }, null);
+  const tampered = documents.normalizeDocument(
+    { title: 'Cronaca modificata', author: 'Qualcun altro', body: 'v2', code: 'CA-FINTO', versionOf: 'altro_id' },
+    original,
+  );
+  assertEqual(tampered.id, original.id, 'id invariato');
+  assertEqual(tampered.code, original.code, 'codice invariato anche se il chiamante prova a cambiarlo');
+  assertEqual(tampered.createdAt, original.createdAt, 'data di creazione invariata');
+  assertEqual(tampered.author, original.author, 'autore invariato: non lo si può riassegnare modificando');
+  assertEqual(tampered.versionOf, original.versionOf, 'versionOf invariato');
+  assertEqual(tampered.title, 'Cronaca modificata', 'il titolo invece è modificabile');
+  assertEqual(tampered.body, 'v2', 'il corpo invece è modificabile');
+});
+
+test('isLatest riconosce solo la versione senza fork', () => {
+  const v1 = documents.normalizeDocument({ title: 'A', author: 'Ricky', body: '1' }, null);
+  const v2 = documents.normalizeDocument({ title: 'A', author: 'Ricky', body: '2', versionOf: v1.id }, null);
+  const all = [v1, v2];
+  assertEqual(documents.isLatest(v1, all), false, 'v1 ha già un fork (v2): non è più la più recente');
+  assertEqual(documents.isLatest(v2, all), true, 'v2 non ha fork: è la più recente');
+});
+
+test('history ricostruisce la catena dalla radice alla versione data', () => {
+  const v1 = documents.normalizeDocument({ title: 'A', author: 'Ricky', body: '1' }, null);
+  const v2 = documents.normalizeDocument({ title: 'A', author: 'Ricky', body: '2', versionOf: v1.id }, null);
+  const v3 = documents.normalizeDocument({ title: 'A', author: 'Ricky', body: '3', versionOf: v2.id }, null);
+  const all = [v1, v2, v3];
+  const chain = documents.history(v3, all);
+  assertEqual(chain.map((d) => d.body).join(','), '1,2,3', 'la catena va dalla radice fino alla versione richiesta, in ordine');
+  assertEqual(documents.history(v1, all).length, 1, 'la radice ha una catena di un solo elemento: se stessa');
+});
+
+test('history non entra in loop su un versionOf ciclico', () => {
+  const a = documents.normalizeDocument({ title: 'A', author: 'Ricky', body: 'a' }, null);
+  const b = documents.normalizeDocument({ title: 'B', author: 'Ricky', body: 'b', versionOf: a.id }, null);
+  a.versionOf = b.id; // ciclo artificiale, non dovrebbe mai capitare ma non deve bloccare l'app
+  const all = [a, b];
+  const chain = documents.history(b, all);
+  assert(chain.length > 0 && chain.length <= all.length, 'la catena resta finita anche con un ciclo');
 });
 
 // ---------------------------------------------------------------------------

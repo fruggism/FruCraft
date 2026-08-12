@@ -165,7 +165,7 @@ async function refreshProjectList(selectId) {
   try {
     const list = await projects.listProjects();
     el('project-list').innerHTML = '<option value="">— nessuno —</option>' + list.map((p) => (
-      `<option value="${p.id}">${escapeHtml(p.name)} (${p.featureCount} elem., ${p.documentCount} doc.)</option>`
+      `<option value="${p.id}">${escapeHtml(p.name)} (${p.featureCount} elem.)</option>`
     )).join('');
     if (selectId) el('project-list').value = selectId;
   } catch (err) {
@@ -633,17 +633,30 @@ async function pollRenderStatus() {
 
 // -------------------------------------------------------------------- init
 async function init() {
-  Atlas.initMap();
-  Archive.init();
-  Reader.init();
-  el('picker-hint').textContent = pickerHint();
-
+  // Navigation is wired first and outside the try/catch below, on purpose:
+  // if literally anything else in this function throws (stale cached JS
+  // after a deploy, a corrupted saved project, whatever), the mode/screen
+  // tabs must still respond instead of leaving the whole page inert.
   document.querySelectorAll('#mode-tabs .tab').forEach((btn) => {
     btn.addEventListener('click', () => setMode(btn.dataset.mode));
   });
   document.querySelectorAll('#editor-tabs .tab, #reader-tabs .tab').forEach((tab) => {
     tab.addEventListener('click', () => showScreen(tab.dataset.screen));
   });
+
+  try {
+    await initRest();
+  } catch (err) {
+    console.error('Errore in fase di avvio:', err);
+    toast(`Errore di avvio (${err.message}). Prova a ricaricare la pagina con Ctrl+Shift+R / Cmd+Shift+R.`, 'err');
+  }
+}
+
+async function initRest() {
+  Atlas.initMap();
+  Archive.init();
+  Reader.init();
+  el('picker-hint').textContent = pickerHint();
 
   el('btn-pick-world').addEventListener('click', pickWorld);
   el('btn-reopen-world').addEventListener('click', reopenLastWorld);

@@ -132,6 +132,18 @@ dentro la cartella `web/`.
    stessa suddivisione in pagine, ma pensata per leggere a schermo, non per
    il limite delle pagine di un libro di Minecraft.
 
+   **L'Archivio è indipendente dagli atlanti**: si scrive senza aver aperto
+   (o anche senza avere) un mondo o un progetto. Ogni documento è una
+   *versione firmata*: quando lo crei, ti viene chiesto solo chi lo scrive —
+   il codice univoco e la data si generano da soli — e da quel momento
+   codice, data e firma non si possono più cambiare. Il titolo e il
+   contenuto restano modificabili finché quella versione è l'ultima; nel
+   momento in cui scegli *"🧬 Crea nuova versione"* per riprendere in mano un
+   documento, quello vecchio si blocca in sola lettura (con un avviso in
+   corsivo) e la nuova versione — firmata di nuovo, con la sua data — parte
+   editabile al suo posto. Niente viene mai sovrascritto: la cronologia
+   resta tutta nell'elenco a sinistra, versioni bloccate incluse (🔒).
+
 Il salvataggio è automatico: atlanti e documenti stanno nell'archiviazione
 locale del browser. Usa *Esporta .json* per averne una copia tua.
 
@@ -182,7 +194,8 @@ web/                       l'applicazione: file statici, nessuna build
   js/app/                  interfaccia: mappa, layer, archivio, storage
     main.js                app shell: cambio modalità (Editor/Lettore) e schermata
     atlas.js                schermata Atlante: mappa, layer, disegno, export
-    archive.js               schermata Archivio: documenti ed export libri
+    archive.js               schermata Archivio: interfaccia ed export libri
+    documents.js             modello dei documenti: indipendenti, versionati e firmati
     reader.js                schermata Lettore: apre mappe e documenti già esportati
 tools/
   serve.js                 server statico per lo sviluppo
@@ -234,7 +247,7 @@ i blocchi sbagliati.
 ## Test
 
 ```bash
-npm test           # 63 test, nessuna dipendenza
+npm test           # 68 test, nessuna dipendenza
 npm run world      # rigenera i mondi sintetici di prova
 npm run textures   # rigenera le texture dell'interfaccia
 ```

@@ -231,7 +231,9 @@
     <aside class="sidebar">
       <section class="panel">
         <h2>Documenti</h2>
-        <div class="hint">L'archivio del tuo impero. Ogni documento si esporta come libro di Minecraft.</div>
+        <div class="hint">L'archivio del tuo impero — indipendente dagli atlanti, non serve
+          aprirne uno. Ogni documento si esporta come libro di Minecraft. Una volta scritta,
+          una versione non si modifica più: per cambiarla se ne crea una nuova, firmata di nuovo.</div>
         <button class="btn btn-primary" id="btn-new-doc">+ Nuovo documento</button>
         <label style="margin-top:8px">
           <span class="lbl">Cerca</span>
@@ -248,9 +250,16 @@
           <p>Seleziona un documento a sinistra,<br>oppure creane uno nuovo.</p>
         </div>
         <div id="editor-fields" class="hidden" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0">
+          <div class="doc-meta" id="doc-meta"></div>
+          <div class="hint doc-locked-banner hidden" id="doc-locked-banner">
+            🔒 Questa è una versione precedente: codice, data e firma non si possono cambiare,
+            e nemmeno il contenuto. Crea una nuova versione per continuare a scriverci.
+          </div>
           <div class="grid-2">
             <label><span class="lbl">Titolo</span><input type="text" id="doc-title"></label>
-            <label><span class="lbl">Autore</span><input type="text" id="doc-author"></label>
+            <label><span class="lbl">&nbsp;</span>
+              <button class="btn btn-sm" id="btn-doc-fork" style="margin-top:0">🧬 Crea nuova versione</button>
+            </label>
           </div>
           <label style="flex:1;display:flex;flex-direction:column;min-height:0">
             <span class="lbl">Contenuto</span>
@@ -258,7 +267,7 @@
               placeholder="Scrivi qui la cronaca del tuo impero…&#10;&#10;Una riga vuota separa i paragrafi."></textarea>
           </label>
           <div class="row">
-            <button class="btn btn-sm btn-danger btn-inline" id="btn-delete-doc">Elimina documento</button>
+            <button class="btn btn-sm btn-danger btn-inline" id="btn-delete-doc">Elimina questa versione</button>
             <div class="status" id="doc-status" style="flex:2;text-align:right"></div>
           </div>
         </div>
