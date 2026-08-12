@@ -1,0 +1,17 @@
+{
+  "name": "Cube-Atlas",
+  "short_name": "Cube-Atlas",
+  "description": "Mappa il tuo mondo Minecraft nel browser, in locale.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#2b2b2b",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%236b4a2a'/%3E%3Crect width='512' height='192' fill='%235fa839'/%3E%3Crect y='192' width='512' height='64' fill='%234a7a2a'/%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,212 +1,190 @@
 # Cube-Atlas
 
-Un'app **locale** per disegnare la mappa del tuo mondo Minecraft Java Edition,
-annotarla a layer come una mappa topografica, esportarla — e tenere l'archivio
-scritto del tuo impero, esportabile come libro di Minecraft.
+Disegna la mappa del tuo mondo Minecraft Java Edition, annotala a layer come
+una mappa topografica, esportala — e tieni l'archivio scritto del tuo impero,
+esportabile come libro di gioco.
 
-Tutto gira sul tuo computer: il server ascolta solo su `127.0.0.1`, il mondo
-viene letto dai file di salvataggio e niente esce dalla macchina.
-
----
-
-## Cosa fa
-
-**1. Rende la mappa del mondo (come unMINED)**
-
-Legge direttamente i file di regione `.mca` del salvataggio e disegna la mappa
-vista dall'alto: colore del blocco di superficie, tinta per bioma (erba,
-fogliame e acqua cambiano come in gioco), ombreggiatura del rilievo e acqua
-scurita in base alla profondità. La mappa è navigabile con zoom continuo grazie
-a una piramide di tile messa in cache su disco.
-
-Le cartelle delle regioni vengono **cercate dentro il salvataggio**, quindi
-funzionano sia il layout classico (`region/`, `DIM-1/`, `DIM1/`) sia quelli in
-cui i file stanno più in profondità, per esempio
-`dimensions/minecraft/overworld/region/`.
-
-La generazione avviene come **lavoro in background con barra di avanzamento** e
-si può **limitare a un'area** — in un mondo molto esplorato interessa quasi
-sempre solo la zona in cui hai costruito.
-
-**2. Editor a layer**
-
-Sopra la mappa crei quanti layer vuoi, di tre tipi:
-
-| Tipo | Cosa disegna | Stile personalizzabile |
-|---|---|---|
-| **Strade** | tracciati a vertici successivi | colore, spessore, tratteggio (continuo / tratteggiato / punteggiato / tratto-punto), colore e spessore del bordo (abbinamento a due colori), nome |
-| **Punti di interesse** | un simbolo sul punto | forma (cerchio, quadrato, triangolo, rombo, stella, segnaposto), colore, dimensione, categoria, descrizione |
-| **Aree** | poligoni chiusi che delimitano zone | colore e opacità del riempimento, colore/spessore/tratteggio del bordo |
-
-Ogni elemento si può **rinominare, descrivere, ristilizzare, spostare** (i punti
-si trascinano, i vertici di strade e aree si spostano con *Modifica nodi*) ed
-**eliminare**. Passando il mouse sopra un elemento compare il suo nome con le
-informazioni; il nome può anche restare sempre visibile sulla mappa.
-
-I layer si mostrano e nascondono singolarmente, si rinominano e si eliminano.
-
-**3. Export e riapertura**
-
-- **PNG** — mappa e layer appiattiti in un'immagine
-- **SVG** — vettoriale, con **un gruppo per layer** (apribile in Inkscape/Illustrator)
-- **GeoJSON** — solo i dati, con stile e proprietà
-- **Progetto `.cubeatlas.json`** — tutto (layer, elementi, stili, documenti):
-  si riapre con **Importa** mantenendo i layer
-
-L'export copre la vista attuale oppure tutto il mondo generato.
-
-**4. Archivio**
-
-Una seconda schermata per scrivere i documenti del tuo impero. Ogni documento
-si vede in anteprima impaginato come un libro di Minecraft e si esporta come:
-
-- comando `/give` (formato **1.20.5+** o **1.20.4 e precedenti**)
-- file `.mcfunction`
-- testo `.txt`
-
-L'interfaccia è in stile Minecraft, con texture pixel generate proceduralmente.
+**Gira interamente nel browser.** Niente da installare, niente server, e
+soprattutto: il salvataggio **non viene caricato da nessuna parte**. La pagina
+legge la cartella del mondo sul tuo computer e fa tutto lì, anche quando l'app
+è aperta da un indirizzo web.
 
 ---
+
+## Come si apre
+
+**Da un indirizzo (consigliato).** Apri il link dell'app in Chrome o Edge. Se
+vuoi averla come applicazione sul Mac, dalla barra degli indirizzi scegli
+*Installa Cube-Atlas*: finisce nel dock con la sua icona, si apre in una
+finestra sua e funziona anche senza rete.
+
+**In locale, dal repository.** Serve solo Node (nessuna dipendenza da
+installare):
+
+```bash
+npm run web        # poi apri http://127.0.0.1:5173
+```
+
+Qualunque altro server statico va bene, per esempio `python3 -m http.server`
+dentro la cartella `web/`.
+
+> Un doppio clic diretto su `web/index.html` **non** funziona: da `file://` il
+> browser blocca i Web Worker e l'archiviazione locale, che sono ciò su cui
+> l'app si regge. Serve un indirizzo `http://` o `https://` — anche locale.
 
 ## Requisiti
 
-- **Node.js 18 o successivo**
-- Un mondo **Minecraft Java Edition 1.13 o successivo**
+- **Chrome o Edge** per l'esperienza piena (il browser ricorda la cartella del
+  mondo). Su **Safari** e **Firefox** funziona tutto, ma la cartella va
+  riselezionata a ogni avvio.
+- Un mondo **Minecraft Java Edition 1.13 o successivo**.
 
-> Le versioni 1.13–1.17 sono lette, ma la tinta per bioma si applica solo dalla
-> 1.18 in poi (prima i biomi erano salvati come id numerici). I mondi
-> anteriori alla 1.13 non hanno la palette dei blocchi e non sono supportati.
-> Bedrock Edition non è supportata (usa un formato diverso).
-
-## Installazione e avvio
-
-```bash
-npm install
-npm start
-```
-
-Poi apri **http://127.0.0.1:5173** nel browser.
-
-Per cambiare porta: `PORT=8080 npm start`.
+> Le versioni 1.13–1.17 sono lette, ma la tinta per bioma si applica dalla 1.18
+> in poi (prima i biomi erano id numerici). I mondi anteriori alla 1.13 non
+> hanno la palette dei blocchi e non sono supportati. Bedrock Edition usa un
+> formato diverso e non è supportata.
 
 ## Come si usa
 
-1. **Mondo** — incolla il percorso della cartella del salvataggio (quella che
-   contiene `level.dat`). Se Cube-Atlas trova i mondi nelle posizioni standard
-   te li propone già in elenco; se indichi una cartella che ne contiene diversi,
-   ti chiede quale. Premi *Analizza mondo*, scegli la dimensione e crea l'atlante.
-2. **Genera la mappa** — la mappa si apre sul punto di spawn. Nel pannello
-   *Generazione mappa* scegli l'area (di solito *intorno a un punto*, con le
-   coordinate della tua città e un raggio) e premi **Genera mappa**: la barra
-   mostra l'avanzamento e i tile compaiono man mano.
-3. **Naviga** — il pannello *Naviga* porta la mappa alle coordinate che scegli
-   (le stesse che leggi in gioco con F3), al punto di spawn o su tutto il mondo.
-4. **Layer** — seleziona un layer (o creane uno con `+ Strade`, `+ Punti`, `+ Aree`).
-5. **Strumenti** — *Disegna* per aggiungere un elemento, *Seleziona* per
-   sceglierlo, *Modifica nodi* per spostarne i vertici, *Cancella* per
-   eliminarlo cliccandolo. `Esc` annulla, `Canc` elimina l'elemento selezionato.
-6. **Proprietà** — nome, descrizione e stile dell'elemento selezionato.
-7. **Esporta** — PNG, SVG, GeoJSON o il progetto completo.
-8. **Archivio** — scrivi i documenti e copia il comando `/give`.
+1. **Mondo** — *Scegli la cartella del mondo…* e indica la cartella del
+   salvataggio (quella con dentro `level.dat`). Se ne indichi una che contiene
+   più mondi, l'app ti chiede quale. Poi scegli la dimensione e crea l'atlante.
+2. **Genera la mappa** — la mappa si apre sul punto di spawn. Scegli l'area (di
+   solito *intorno a un punto*, con le coordinate della tua città e un raggio) e
+   premi **Genera mappa**: la barra mostra l'avanzamento e i tile compaiono man
+   mano. È interrompibile, e quello che è già stato prodotto resta.
+3. **Naviga** — porta la mappa alle coordinate che scegli (le stesse che leggi
+   in gioco con F3), al punto di spawn o su tutto il mondo.
+4. **Layer** — creane quanti vuoi, di tre tipi:
 
-Il salvataggio è **automatico** (e viene forzato anche se chiudi la scheda
-subito dopo una modifica).
+| Tipo | Cosa disegna | Stile |
+|---|---|---|
+| **Strade** | tracciati a vertici successivi | colore, spessore, tratteggio (continuo / tratteggiato / punteggiato / tratto-punto), colore e spessore del bordo, nome |
+| **Punti di interesse** | un simbolo sul punto | forma (cerchio, quadrato, triangolo, rombo, stella, segnaposto), colore, dimensione, categoria, descrizione |
+| **Aree** | poligoni chiusi che delimitano zone | colore e opacità del riempimento, colore/spessore/tratteggio del bordo |
+
+5. **Strumenti** — *Disegna* per aggiungere, *Seleziona* per scegliere,
+   *Modifica nodi* per spostare i vertici, *Cancella* per eliminare cliccando.
+   `Esc` annulla, `Canc` elimina l'elemento selezionato. I punti si spostano
+   trascinandoli. Passando il mouse su un elemento compaiono le sue
+   informazioni; il nome può restare sempre visibile sulla mappa.
+6. **Esporta** — PNG, SVG (**un gruppo per layer**, apribile in
+   Inkscape/Illustrator), GeoJSON, o il progetto completo `.cubeatlas.json`
+   che si riapre con *Importa* mantenendo i layer.
+7. **Archivio** — scrivi i documenti del tuo impero, vedili impaginati come un
+   libro di Minecraft ed esportali come comando `/give` (formato 1.20.5+ o
+   precedenti), file `.mcfunction` o testo.
+
+Il salvataggio è automatico: atlanti e documenti stanno nell'archiviazione
+locale del browser. Usa *Esporta .json* per averne una copia tua.
 
 ### Dove trovo la cartella del mondo?
 
-- **Windows** — `%APPDATA%\.minecraft\saves\NomeMondo`
 - **macOS** — `~/Library/Application Support/minecraft/saves/NomeMondo`
+- **Windows** — `%APPDATA%\.minecraft\saves\NomeMondo`
 - **Linux** — `~/.minecraft/saves/NomeMondo`
+
+Le cartelle delle regioni vengono cercate dentro il salvataggio, quindi
+funzionano sia il layout classico (`region/`, `DIM-1/`, `DIM1/`) sia quelli in
+cui i file stanno più in profondità, come `dimensions/minecraft/overworld/region/`.
 
 ## Quanto ci mette
 
-Un tile di dettaglio copre 256×256 blocchi e richiede circa mezzo secondo. Il
-pannello di generazione stima il tempo prima di partire. Per orientarsi: un
-raggio di 1024 blocchi intorno alla propria città sono una manciata di secondi,
-mentre l'intero mondo esplorato di una partita lunga può richiedere parecchi
-minuti — per questo l'area è limitabile e la generazione è interrompibile
-(quello che è già stato prodotto resta).
+Un tile di dettaglio copre 256×256 blocchi e richiede meno di un secondo; il
+pannello stima il tempo prima di partire. Un raggio di 1024 blocchi intorno
+alla propria città sono pochi secondi; l'intero mondo esplorato di una partita
+lunga può richiedere parecchi minuti — per questo l'area è limitabile.
 
 ## Se cambi il mondo in gioco
 
-I tile renderizzati restano in cache. Dopo aver costruito qualcosa premi
-**Svuota cache e rigenera** per rileggere il salvataggio.
+I tile restano in cache nel browser. Dopo aver costruito qualcosa premi
+**Svuota cache e rigenera**.
 
-> Conviene chiudere Minecraft (o almeno uscire dal mondo) prima di rigenerare:
-> i chunk non ancora salvati su disco non possono essere letti.
+> Conviene uscire dal mondo in Minecraft prima di rigenerare: i chunk non
+> ancora salvati su disco non possono essere letti.
 
 ---
 
-## Struttura del progetto
+## Struttura
 
 ```
-server.js                 server Express locale (API + file statici)
-lib/
-  nbt.js                  lettore/scrittore NBT (gzip, zlib, non compresso)
-  anvil.js                file di regione .mca, sezioni, palette, biomi
-  blockColors.js          colori dei blocchi + tinte per bioma
-  tiler.js                piramide di tile con cache su disco
-  worldScan.js            ricerca delle cartelle region, dimensioni, level.dat
-  renderJob.js            generazione della mappa in background, con avanzamento
-  projects.js             progetti: layer, elementi, documenti
-  book.js                 impaginazione e comandi /give per i libri
-public/
-  index.html              le due schermate (Atlante / Archivio)
-  css/style.css           tema Minecraft
-  css/textures.css        texture pixel generate (data URI)
-  js/core.js              stato condiviso, client API, dialog, salvataggio
-  js/atlas.js             mappa, layer vettoriali, strumenti, export
-  js/archive.js           documenti e anteprima libro
-  js/main.js              avvio e collegamento dei controlli
-tools/make-textures.js    genera le texture pixel
+web/                       l'applicazione: file statici, nessuna build
+  index.html
+  css/style.css            tema Minecraft
+  css/textures.css         texture pixel generate (data URI)
+  js/core/                 il motore, indipendente dall'ambiente
+    nbt.js                 lettore NBT (decompressione nativa del browser)
+    anvil.js               file di regione .mca, sezioni, palette, biomi
+    blockColors.js         colori dei blocchi + tinte per bioma
+    worldScan.js           ricerca delle cartelle region e delle dimensioni
+    tiler.js               piramide di tile (pixel RGBA grezzi)
+    renderJob.js           generazione della mappa, con avanzamento
+    book.js                impaginazione e comandi /give
+    source.js              accesso al salvataggio (cartella o elenco file)
+  js/worker.js             il motore fuori dal thread dell'interfaccia
+  js/app/                  interfaccia: mappa, layer, archivio, storage
+tools/
+  serve.js                 server statico per lo sviluppo
+  make-textures.js         genera le texture (con encoder PNG incluso)
 test/
-  make-test-world.js      mondi sintetici di prova (non serve Minecraft)
-  run-tests.js            suite di test
+  run-tests.js             suite di test
+  make-test-world.js       mondi sintetici di prova
 ```
+
+Il progetto **non ha dipendenze**: `npm test` e `npm run web` funzionano su una
+copia appena clonata, senza `npm install`. Leaflet è incluso in `web/vendor/`.
 
 ### Come funzionano le coordinate
 
-Una sola convenzione attraversa tutto il progetto: **le coordinate sono blocchi
-Minecraft `[x, z]`**, mai pixel. Leaflet usa `CRS.Simple` con `lng = x` e
-`lat = -z`, così il nord è in alto e allo zoom `0` un blocco è un pixel. Per
-questo un progetto resta valido a qualsiasi zoom e i dati esportati sono
-direttamente confrontabili con le coordinate che leggi in gioco con F3.
+Una sola convenzione attraversa tutto: **le coordinate sono blocchi Minecraft
+`[x, z]`**, mai pixel. Leaflet usa `CRS.Simple` con `lng = x` e `lat = -z`,
+così il nord è in alto e allo zoom `0` un blocco è un pixel. Per questo un
+progetto resta valido a qualsiasi zoom e i dati esportati sono confrontabili
+con le coordinate che leggi in gioco con F3.
 
-## Test
+### Perché un Web Worker
 
-```bash
-npm test
-```
-
-La suite genera due mondi sintetici — uno con il layout classico e uno con le
-regioni annidate in `dimensions/minecraft/overworld/`, una regione lontanissima
-e un Nether accanto — e verifica NBT, bit-packing delle palette, ricerca delle
-cartelle region, lettura del mondo, colori/biomi, tile e piramide di zoom,
-generazione in background ed export dei libri. Non serve avere Minecraft
-installato.
-
-```bash
-npm run world      # rigenera solo il mondo di prova
-npm run textures   # rigenera le texture dell'interfaccia
-```
+Aprire una regione e dipingerne i tile è lavoro pesante: sul thread
+dell'interfaccia bloccherebbe lo scorrimento e il disegno. Tutto ciò che legge
+il salvataggio vive quindi in `js/worker.js`, e i tile tornano alla pagina come
+`ImageBitmap`, trasferiti invece che copiati.
 
 ### Perché la mappa si genera in background
 
-Un tile panoramico (zoom -6) copre 16 384 blocchi per lato: costruirlo
-ricorsivamente vuol dire produrre 4096 tile di dettaglio, cioè decine di minuti
-di lavoro. Farlo dentro una richiesta HTTP significa, in pratica, una mappa che
-non compare mai. Quindi: servendo un tile si renderizza solo ciò che è
-economico (zoom 0 e -1) e per il resto si compone da ciò che è già in cache,
-mentre la piramide completa la produce il job in background. In più, l'elenco
-dei file di regione permette di rispondere «qui non c'è niente» senza toccare
-il disco, ed è ciò che rende scorrevole lo spostamento in un mondo esplorato a
-macchia di leopardo.
+Un tile panoramico (zoom −6) copre 16 384 blocchi per lato: costruirlo
+ricorsivamente vuol dire produrre 4096 tile di dettaglio, decine di minuti di
+lavoro. Farlo mentre si serve un tile significa, in pratica, una mappa che non
+compare mai. Quindi: nell'immediato si renderizza solo ciò che è economico
+(zoom 0 e −1) e il resto si compone da ciò che è già in cache, mentre la
+piramide completa la produce il job in background. In più, l'elenco dei file di
+regione permette di rispondere «qui non c'è niente» senza leggere nulla, ed è
+ciò che rende scorrevole un mondo esplorato a macchia di leopardo.
 
 ### Una nota sul bit-packing
 
 È il punto in cui è più facile sbagliare leggendo i salvataggi: fino alla
 **1.15** gli indici della palette sono impacchettati fitti e un valore può
-essere spezzato tra due `long`; dalla **1.16** ogni `long` è riempito solo per
+essere spezzato fra due `long`; dalla **1.16** ogni `long` è riempito solo per
 `floor(64 / bit)` valori e nessun valore attraversa il confine. Cube-Atlas
-sceglie il lettore giusto in base al `DataVersion` del chunk, e i test
-verificano che i due schemi non coincidano.
+sceglie il lettore in base al `DataVersion` del chunk, e i test verificano che
+i due schemi non coincidano — sbagliando, la mappa uscirebbe plausibile ma con
+i blocchi sbagliati.
+
+## Test
+
+```bash
+npm test           # 42 test, nessuna dipendenza
+npm run world      # rigenera i mondi sintetici di prova
+npm run textures   # rigenera le texture dell'interfaccia
+```
+
+Il motore in `web/js/core/` è scritto per non dipendere dall'ambiente: gli
+serve solo una *sorgente* da cui leggere. Nel browser è la cartella scelta
+dall'utente, nei test è il filesystem — quindi la suite prova esattamente il
+codice che gira nel browser, senza browser.
+
+## Pubblicazione
+
+`.github/workflows/pages.yml` esegue i test e pubblica `web/` su GitHub Pages a
+ogni push su `main`. Va abilitato una volta nel repository:
+**Settings → Pages → Source: GitHub Actions**.

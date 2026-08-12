@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cube-Atlas</title>
+<meta name="description" content="Mappa il tuo mondo Minecraft nel browser: tutto in locale, niente caricamenti.">
+<meta name="theme-color" content="#2b2b2b">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%236b4a2a'/%3E%3Crect width='16' height='6' fill='%235fa839'/%3E%3Crect y='6' width='16' height='2' fill='%234a7a2a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="vendor/leaflet.draw.css">
@@ -14,7 +17,6 @@
 
 <div id="app">
 
-  <!-- ================================================================ -->
   <header id="topbar">
     <div class="logo"><span class="cube"></span><span>CUBE<b>-ATLAS</b></span></div>
     <nav class="tabs">
@@ -31,13 +33,15 @@
 
       <section class="panel">
         <h2><span class="num">1</span> Mondo</h2>
-        <div id="world-picks" class="world-picks hidden"></div>
-        <label>
-          <span class="lbl">Cartella del salvataggio</span>
-          <input type="text" id="world-path" placeholder="…/.minecraft/saves/IlMioMondo" spellcheck="false">
-        </label>
-        <button class="btn" id="btn-scan">Analizza mondo</button>
+        <div class="hint" id="privacy-note">
+          Il mondo viene letto <b>sul tuo computer</b>: nessun file viene caricato da nessuna parte.
+        </div>
+        <button class="btn btn-primary" id="btn-pick-world">Scegli la cartella del mondo…</button>
+        <button class="btn btn-sm hidden" id="btn-reopen-world">Riapri l'ultimo mondo</button>
+        <input type="file" id="world-input" webkitdirectory directory multiple class="hidden">
+        <div class="hint" id="picker-hint"></div>
         <div id="world-status" class="status"></div>
+        <div id="world-picks" class="world-picks hidden"></div>
 
         <div id="world-details" class="hidden">
           <label>
@@ -180,8 +184,8 @@
       <div class="map-overlay" id="map-overlay">
         <div class="inner">
           <h3>Benvenuto in Cube-Atlas</h3>
-          <p>Indica la cartella del tuo mondo Minecraft nel pannello a sinistra e crea un atlante.</p>
-          <p>La mappa viene generata leggendo direttamente i file di salvataggio, sul tuo computer.</p>
+          <p>Scegli la cartella del tuo mondo Minecraft nel pannello a sinistra e crea un atlante.</p>
+          <p>La mappa viene disegnata leggendo i file di salvataggio direttamente nel browser: nulla lascia il tuo computer.</p>
         </div>
       </div>
     </main>
@@ -253,9 +257,9 @@
 
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/leaflet.draw.js"></script>
-<script src="js/core.js"></script>
-<script src="js/atlas.js"></script>
-<script src="js/archive.js"></script>
-<script src="js/main.js"></script>
+<script type="module" src="js/app/main.js"></script>
+<noscript>
+  <p style="padding:20px">Cube-Atlas ha bisogno di JavaScript: tutta l'elaborazione avviene nel browser.</p>
+</noscript>
 </body>
 </html>

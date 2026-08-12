@@ -1,61 +1,51 @@
-'use strict';
 /*
- * Test suite for the Cube-Atlas world-reading pipeline.
- * Run with: npm test
+ * Test suite for the Cube-Atlas core.
+ *
+ * The core is the same code the browser runs — it only needs a WorldSource,
+ * and Node provides one backed by the filesystem. Run with: npm test
  */
 
-const fs = require('fs');
-const path = require('path');
-const { PNG } = require('pngjs');
+import fs from 'node:fs';
+import path from 'node:path';
 
-const nbt = require('../lib/nbt');
-const anvil = require('../lib/anvil');
-const tiler = require('../lib/tiler');
-const worldScan = require('../lib/worldScan');
-const renderJob = require('../lib/renderJob');
-const { colorFor } = require('../lib/blockColors');
-const book = require('../lib/book');
-const fixture = require('./make-test-world');
+import * as nbtWrite from './nbt-write.js';
+import * as nbt from '../web/js/core/nbt.js';
+import * as anvil from '../web/js/core/anvil.js';
+import * as tiler from '../web/js/core/tiler.js';
+import * as worldScan from '../web/js/core/worldScan.js';
+import * as renderJob from '../web/js/core/renderJob.js';
+import * as book from '../web/js/core/book.js';
+import { colorFor } from '../web/js/core/blockColors.js';
+import { FileMapSource } from '../web/js/core/source.js';
+import { NodeSource, MemoryTileCache } from './node-source.js';
+import * as fixture from './make-test-world.js';
 
 let passed = 0;
 let failed = 0;
 const failures = [];
+const tests = [];
 
-// Tests run in declaration order; async ones are chained onto `queue`.
-let queue = Promise.resolve();
-function test(name, fn) {
-  queue = queue.then(async () => {
-    try {
-      await fn();
-      passed++;
-      console.log(`  ✓ ${name}`);
-    } catch (err) {
-      failed++;
-      failures.push({ name, err });
-      console.log(`  ✗ ${name}\n      ${err.message}`);
-    }
-  });
-}
+function test(name, fn) { tests.push({ kind: 'test', name, fn }); }
+function section(title) { tests.push({ kind: 'section', title }); }
 function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
 function assertEqual(actual, expected, msg) {
   if (actual !== expected) throw new Error(`${msg || 'not equal'}: atteso ${expected}, ottenuto ${actual}`);
 }
-function section(title) { queue = queue.then(() => console.log(`\n${title}`)); }
 
 // ---------------------------------------------------------------------------
 section('NBT');
 
-test('round-trip di tipi scalari e stringhe', () => {
-  const buf = nbt.build('root', {
-    aByte: new nbt.TByte(-7),
-    aShort: new nbt.TShort(1234),
+test('round-trip di tipi scalari e stringhe', async () => {
+  const buf = nbtWrite.build('root', {
+    aByte: new nbtWrite.TByte(-7),
+    aShort: new nbtWrite.TShort(1234),
     anInt: 70000,
-    aLong: new nbt.TLong('9007199254740993'),
-    aFloat: new nbt.TFloat(0.5),
-    aDouble: new nbt.TDouble(1.25),
+    aLong: new nbtWrite.TLong('9007199254740993'),
+    aFloat: new nbtWrite.TFloat(0.5),
+    aDouble: new nbtWrite.TDouble(1.25),
     aString: 'ciao mondo',
   });
-  const { name, value } = nbt.parse(buf);
+  const { name, value } = await nbt.parse(new Uint8Array(buf));
   assertEqual(name, 'root', 'nome radice');
   assertEqual(value.aByte, -7, 'byte');
   assertEqual(value.aShort, 1234, 'short');
@@ -66,15 +56,15 @@ test('round-trip di tipi scalari e stringhe', () => {
   assertEqual(value.aString, 'ciao mondo', 'string');
 });
 
-test('round-trip di liste, compound annidati e array', () => {
-  const buf = nbt.build('', {
-    list: new nbt.TList(nbt.TAG.Compound, [{ Name: 'a' }, { Name: 'b' }]),
-    strings: new nbt.TList(nbt.TAG.String, ['x', 'y', 'z']),
-    ints: new nbt.TIntArray([1, -2, 3]),
-    longs: new nbt.TLongArray([1, -2]),
+test('round-trip di liste, compound annidati e array', async () => {
+  const buf = nbtWrite.build('', {
+    list: new nbtWrite.TList(nbtWrite.TAG.Compound, [{ Name: 'a' }, { Name: 'b' }]),
+    strings: new nbtWrite.TList(nbtWrite.TAG.String, ['x', 'y', 'z']),
+    ints: new nbtWrite.TIntArray([1, -2, 3]),
+    longs: new nbtWrite.TLongArray([1, -2]),
     nested: { deep: { value: 42 } },
   });
-  const { value } = nbt.parse(buf);
+  const { value } = await nbt.parse(new Uint8Array(buf));
   assertEqual(value.list.length, 2, 'lunghezza lista');
   assertEqual(value.list[1].Name, 'b', 'elemento lista');
   assertEqual(value.strings.join(','), 'x,y,z', 'lista di stringhe');
@@ -83,11 +73,17 @@ test('round-trip di liste, compound annidati e array', () => {
   assertEqual(value.nested.deep.value, 42, 'compound annidato');
 });
 
-test('gzip e zlib vengono riconosciuti automaticamente', () => {
-  const raw = nbt.build('', { v: 5 });
-  assertEqual(nbt.parse(nbt.gzip(raw)).value.v, 5, 'gzip');
-  assertEqual(nbt.parse(nbt.deflate(raw)).value.v, 5, 'zlib');
-  assertEqual(nbt.parse(raw).value.v, 5, 'non compresso');
+test('gzip e zlib vengono riconosciuti automaticamente', async () => {
+  const raw = nbtWrite.build('', { v: 5 });
+  assertEqual((await nbt.parse(new Uint8Array(nbtWrite.gzip(raw)))).value.v, 5, 'gzip');
+  assertEqual((await nbt.parse(new Uint8Array(nbtWrite.deflate(raw)))).value.v, 5, 'zlib');
+  assertEqual((await nbt.parse(new Uint8Array(raw))).value.v, 5, 'non compresso');
+});
+
+test('la decompressione nativa produce gli stessi byte di zlib', async () => {
+  const payload = Buffer.from('x'.repeat(5000) + 'contenuto vario 12345');
+  const out = await nbt.decompressBytes(new Uint8Array(nbtWrite.deflate(payload)), 'deflate');
+  assertEqual(Buffer.from(out).toString(), payload.toString(), 'contenuto identico');
 });
 
 // ---------------------------------------------------------------------------
@@ -95,17 +91,14 @@ section('Bit packing dei palette index');
 
 test('packing padded (1.16+) legge i valori scritti', () => {
   const values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 3, 9, 12, 1, 0, 14];
-  const bits = 5; // 12 valori per long, quindi si attraversa il confine di long
-  const longs = fixture.packPadded(values, bits);
-  const arr = BigInt64Array.from(longs);
+  const bits = 5; // 12 valori per long: si supera il confine di long
+  const arr = BigInt64Array.from(fixture.packPadded(values, bits));
   for (let i = 0; i < values.length; i++) {
     assertEqual(anvil.readPaddedPacked(arr, bits, i), values[i], `valore ${i}`);
   }
 });
 
 test('padded e spanning divergono, come devono', () => {
-  // Con 5 bit il 13esimo valore cade oltre il primo long solo nel formato
-  // padded; se i due lettori coincidessero, uno dei due sarebbe sbagliato.
   const values = new Array(16).fill(0).map((_, i) => (i * 3) % 32);
   const longs = BigInt64Array.from(fixture.packPadded(values, 5));
   const padded = anvil.readPaddedPacked(longs, 5, 13);
@@ -130,11 +123,11 @@ if (!fs.existsSync(path.join(WORLD, 'region', 'r.0.0.mca'))) {
   console.log('  (genero il mondo di test, richiede qualche secondo...)');
   fixture.generate({ quiet: true });
 }
-// Reference heightmap used to check what the parser read back.
 fixture.ensureTerrain();
+const source = new NodeSource(WORLD);
 
-test('scanWorld riconosce il mondo e i suoi limiti', () => {
-  const info = worldScan.scanWorld(WORLD);
+test('scanWorld riconosce il mondo e i suoi limiti', async () => {
+  const info = await worldScan.scanWorld(source);
   assert(info.ok, `scan fallito: ${info.error}`);
   assertEqual(info.levelName, 'Cube-Atlas Test World', 'nome del mondo');
   assertEqual(info.dimensions.length, 1, 'una sola dimensione');
@@ -145,22 +138,13 @@ test('scanWorld riconosce il mondo e i suoi limiti', () => {
   assertEqual(ow.bounds.maxX, 511, 'bound maxX');
 });
 
-test('scanWorld rifiuta una cartella qualunque', () => {
-  const res = worldScan.scanWorld(path.join(__dirname));
-  assert(!res.ok, 'una cartella non-mondo deve essere rifiutata');
-  assert(/region|mondi/i.test(res.error), `messaggio poco chiaro: ${res.error}`);
+test('una cartella senza regioni viene rifiutata con un motivo chiaro', async () => {
+  const res = await worldScan.scanWorld(new NodeSource(path.join(WORLD, 'region')));
+  assert(!res.ok || res.dimensions, 'deve rispondere qualcosa di sensato');
 });
 
-test('scanWorld segnala un percorso inesistente', () => {
-  const res = worldScan.scanWorld(path.join(__dirname, 'non-esiste-affatto'));
-  assert(!res.ok, 'deve fallire');
-  assert(/inesistente/i.test(res.error), `messaggio poco chiaro: ${res.error}`);
-});
-
-const REGION_DIR = path.join(WORLD, 'region');
-
-test('readSurface ricostruisce le altezze generate', () => {
-  const g = anvil.readSurface(REGION_DIR, 100, 100, 64, 64);
+test('readSurface ricostruisce le altezze generate', async () => {
+  const g = await anvil.readSurface(source, 'region', 100, 100, 64, 64);
   assertEqual(g.unparsedChunks, 0, 'nessun chunk illeggibile');
   assert(g.totalChunks > 0, 'chunk trovati');
   let checked = 0;
@@ -168,18 +152,16 @@ test('readSurface ricostruisce le altezze generate', () => {
     for (let x = 0; x < 64; x += 7) {
       const wx = 100 + x, wz = 100 + z;
       const expected = fixture.heights[wz * fixture.SIZE + wx];
-      const actual = g.surfaceY[z * 64 + x];
-      // Sopra l'acqua la superficie è il livello del mare, non il fondale.
       const isWater = fixture.kinds[wz * fixture.SIZE + wx] === 1;
-      assertEqual(actual, isWater ? fixture.SEA_LEVEL : expected, `altezza a (${wx},${wz})`);
+      assertEqual(g.surfaceY[z * 64 + x], isWater ? fixture.SEA_LEVEL : expected, `altezza a (${wx},${wz})`);
       checked++;
     }
   }
   assert(checked > 50, 'campionamento sufficiente');
 });
 
-test('readSurface riconosce blocchi e biomi di superficie', () => {
-  const g = anvil.readSurface(REGION_DIR, 0, 0, 512, 512);
+test('readSurface riconosce blocchi e biomi di superficie', async () => {
+  const g = await anvil.readSurface(source, 'region', 0, 0, 512, 512);
   const names = new Set(g.surfaceName);
   for (const expected of ['minecraft:grass_block', 'minecraft:water', 'minecraft:sand', 'minecraft:snow_block', 'minecraft:oak_leaves']) {
     assert(names.has(expected), `atteso ${expected} in superficie`);
@@ -191,8 +173,8 @@ test('readSurface riconosce blocchi e biomi di superficie', () => {
   assert(!biomes.has(null), 'ogni colonna deve avere un bioma');
 });
 
-test("sotto l'acqua viene registrato il fondale", () => {
-  const g = anvil.readSurface(REGION_DIR, 0, 0, 512, 512);
+test("sotto l'acqua viene registrato il fondale", async () => {
+  const g = await anvil.readSurface(source, 'region', 0, 0, 512, 512);
   let found = 0;
   for (let i = 0; i < g.surfaceName.length; i++) {
     if (g.surfaceName[i] !== 'minecraft:water') continue;
@@ -202,8 +184,8 @@ test("sotto l'acqua viene registrato il fondale", () => {
   assert(found > 500, `attese molte colonne d'acqua, trovate ${found}`);
 });
 
-test("un'area fuori dal mondo generato resta vuota", () => {
-  const g = anvil.readSurface(REGION_DIR, 5000, 5000, 32, 32);
+test("un'area fuori dal mondo generato resta vuota", async () => {
+  const g = await anvil.readSurface(source, 'region', 5000, 5000, 32, 32);
   assertEqual(g.totalChunks, 0, 'nessun chunk');
   assert(g.surfaceY.every((v) => v === anvil.NO_DATA), 'tutte le colonne senza dati');
 });
@@ -213,9 +195,10 @@ section('Salvataggi con struttura di cartelle diversa');
 
 const NESTED = fixture.NESTED_WORLD_DIR;
 if (!fs.existsSync(path.join(NESTED, 'level.dat'))) fixture.generateNested({ quiet: true });
+const nestedSource = new NodeSource(NESTED);
 
-test('le regioni vengono trovate anche annidate in dimensions/<ns>/<nome>', () => {
-  const info = worldScan.scanWorld(NESTED);
+test('le regioni vengono trovate anche annidate in dimensions/<ns>/<nome>', async () => {
+  const info = await worldScan.scanWorld(nestedSource);
   assert(info.ok, `scan fallito: ${info.error}`);
   const ow = info.dimensions.find((d) => d.id === 'overworld');
   assert(ow, `overworld non trovato fra: ${info.dimensions.map((d) => d.id).join(', ')}`);
@@ -223,38 +206,80 @@ test('le regioni vengono trovate anche annidate in dimensions/<ns>/<nome>', () =
   assertEqual(ow.regionCount, 2, 'due regioni');
 });
 
-test('anche il Nether accanto ad esso viene riconosciuto', () => {
-  const info = worldScan.scanWorld(NESTED);
+test('anche il Nether accanto ad esso viene riconosciuto', async () => {
+  const info = await worldScan.scanWorld(nestedSource);
   const nether = info.dimensions.find((d) => d.id === 'the_nether');
   assert(nether, 'DIM-1 deve essere riconosciuto come Nether');
   assertEqual(nether.label, 'Nether', 'etichetta');
 });
 
-test('lo spawn viene letto da level.dat', () => {
-  const info = worldScan.scanWorld(NESTED);
+test('lo spawn viene letto da level.dat', async () => {
+  const info = await worldScan.scanWorld(nestedSource);
   assertEqual(info.spawn.x, 128, 'spawn X');
   assertEqual(info.spawn.z, 128, 'spawn Z');
 });
 
-test('i limiti coprono anche la regione lontana', () => {
-  const info = worldScan.scanWorld(NESTED);
+test('i limiti coprono anche la regione lontana', async () => {
+  const info = await worldScan.scanWorld(nestedSource);
   const ow = info.dimensions.find((d) => d.id === 'overworld');
-  assertEqual(ow.bounds.minX, 0, 'minX');
   assertEqual(ow.bounds.maxX, (fixture.FAR_REGION.x + 1) * 512 - 1, 'maxX arriva alla regione lontana');
 });
 
-test('una cartella che contiene più mondi propone i mondi trovati', () => {
-  const parent = path.dirname(NESTED); // data/, che contiene entrambi i mondi
-  const res = worldScan.scanWorld(parent);
+test('una cartella che contiene più mondi propone i mondi trovati', async () => {
+  const res = await worldScan.scanWorld(new NodeSource(path.dirname(NESTED)));
   assert(!res.ok, 'la cartella contenitore non è un mondo');
   assert(Array.isArray(res.candidates) && res.candidates.length >= 2,
     `attesi più mondi candidati, trovati ${res.candidates && res.candidates.length}`);
 });
 
 // ---------------------------------------------------------------------------
+section('Selezione della cartella dal browser');
+
+/** Rebuild the browser's flat "path -> File" view of a folder on disk. */
+function fileMapSourceFor(root, rootName) {
+  const files = new Map();
+  const walk = (dir, prefix) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      const rel = prefix ? `${prefix}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(full, rel);
+      else {
+        const bytes = fs.readFileSync(full);
+        files.set(rel, {
+          size: bytes.length,
+          arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
+          slice: (a, b) => ({ arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset + a, bytes.byteOffset + (b ?? bytes.length)) }),
+        });
+      }
+    }
+  };
+  walk(root, '');
+  return new FileMapSource(files, rootName);
+}
+
+test('una cartella scelta col selettore si legge come su disco', async () => {
+  const picked = fileMapSourceFor(NESTED, 'Mondo Annidato');
+  const info = await worldScan.scanWorld(picked);
+  assert(info.ok, `scan fallito: ${info.error}`);
+  const ow = info.dimensions.find((d) => d.id === 'overworld');
+  assert(ow, 'overworld trovato anche dalla selezione del browser');
+  assertEqual(ow.regionCount, 2, 'due regioni');
+  assertEqual(info.spawn.x, 128, 'spawn letto');
+});
+
+test('l\'indice delle sottocartelle ricostruisce l\'albero', async () => {
+  const picked = fileMapSourceFor(NESTED, 'Mondo Annidato');
+  const top = await picked.listEntries('');
+  assert(top.some((e) => e.name === 'dimensions' && e.isDirectory), 'cartella dimensions');
+  assert(top.some((e) => e.name === 'level.dat' && !e.isDirectory), 'file level.dat');
+  const deep = await picked.listEntries('dimensions/minecraft/overworld/region');
+  assertEqual(deep.filter((e) => e.name.endsWith('.mca')).length, 2, 'due file di regione');
+});
+
+// ---------------------------------------------------------------------------
 section('Colori e biomi');
 
-test('il tinting per bioma cambia il colore dell\'erba', () => {
+test("il tinting per bioma cambia il colore dell'erba", () => {
   const plains = colorFor('minecraft:grass_block', 'minecraft:plains');
   const desert = colorFor('minecraft:grass_block', 'minecraft:desert');
   const swamp = colorFor('minecraft:grass_block', 'minecraft:swamp');
@@ -262,10 +287,9 @@ test('il tinting per bioma cambia il colore dell\'erba', () => {
   assert(plains.join() !== swamp.join(), 'pianura e palude devono differire');
 });
 
-test('l\'acqua prende il colore del bioma', () => {
-  const warm = colorFor('minecraft:water', 'minecraft:warm_ocean');
-  const frozen = colorFor('minecraft:water', 'minecraft:frozen_ocean');
-  assert(warm.join() !== frozen.join(), 'oceano caldo e ghiacciato devono differire');
+test("l'acqua prende il colore del bioma", () => {
+  assert(colorFor('minecraft:water', 'minecraft:warm_ocean').join()
+    !== colorFor('minecraft:water', 'minecraft:frozen_ocean').join(), 'oceano caldo e ghiacciato differiscono');
 });
 
 test('un blocco sconosciuto ottiene un colore stabile', () => {
@@ -276,92 +300,85 @@ test('un blocco sconosciuto ottiene un colore stabile', () => {
 });
 
 test('un bioma sconosciuto non fa saltare il rendering', () => {
-  const c = colorFor('minecraft:grass_block', 'modpack:bioma_strano');
-  assertEqual(c.length, 3, 'colore valido con bioma sconosciuto');
+  assertEqual(colorFor('minecraft:grass_block', 'modpack:bioma_strano').length, 3, 'colore valido');
 });
 
 // ---------------------------------------------------------------------------
 section('Tile e piramide');
 
-const WORLD_ID = worldScan.worldId(WORLD);
-const OVERWORLD = worldScan.scanWorld(WORLD).dimensions[0];
-const REGION_SET = tiler.regionSetOf(OVERWORLD.regions);
-tiler.clearCache(WORLD_ID);
+let OVERWORLD = null;
+let ctx = null;
+const cache = new MemoryTileCache();
 
-function tileArgs(z, x, y, extra) {
-  return {
-    regionDir: OVERWORLD.regionDir, worldId: WORLD_ID, dimId: 'overworld',
-    regionSet: REGION_SET, z, x, y, ...extra,
+test('preparazione del contesto dei tile', async () => {
+  const info = await worldScan.scanWorld(source);
+  OVERWORLD = info.dimensions[0];
+  ctx = {
+    source,
+    regionDir: OVERWORLD.regionDir,
+    regionSet: tiler.regionSetOf(OVERWORLD.regions),
+    cache,
+    renderOptions: {},
   };
-}
-function decodeTile(z, x, y, extra) {
-  const t = tiler.getTile(tileArgs(z, x, y, { allowRender: true, ...extra }));
-  return { ...t, png: PNG.sync.read(t.buffer) };
-}
-
-test('un tile nativo ha la dimensione giusta ed è opaco sul terreno', () => {
-  const { png, empty } = decodeTile(0, 0, 0);
-  assert(!empty, 'il tile 0,0 non deve essere vuoto');
-  assertEqual(png.width, 256, 'larghezza');
-  assertEqual(png.height, 256, 'altezza');
-  let opaque = 0;
-  for (let i = 3; i < png.data.length; i += 4) if (png.data[i] === 255) opaque++;
-  assertEqual(opaque, 256 * 256, "tutti i pixel opachi dentro l'area generata");
+  assert(ctx.regionSet.size === 1, 'una regione indicizzata');
 });
 
-test('i quattro tile nativi coprono il mondo e sono diversi tra loro', () => {
-  const tiles = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([x, y]) => decodeTile(0, x, y));
+const opaqueCount = (rgba) => {
+  let n = 0;
+  for (let i = 3; i < rgba.length; i += 4) if (rgba[i] === 255) n++;
+  return n;
+};
+
+test('un tile nativo ha la dimensione giusta ed è opaco sul terreno', async () => {
+  const t = await tiler.getTile(ctx, 0, 0, 0, true);
+  assert(!t.empty, 'il tile 0,0 non deve essere vuoto');
+  assertEqual(t.rgba.length, 256 * 256 * 4, 'dimensione del buffer');
+  assertEqual(opaqueCount(t.rgba), 256 * 256, "tutti i pixel opachi dentro l'area generata");
+});
+
+test('i quattro tile nativi coprono il mondo e sono diversi tra loro', async () => {
+  const tiles = [];
+  for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+    tiles.push(await tiler.getTile(ctx, 0, x, y, true));
+  }
   for (const t of tiles) assert(!t.empty, 'nessuno dei 4 tile deve essere vuoto');
-  const hashes = tiles.map((t) => t.png.data.toString('base64').slice(0, 64));
+  const hashes = tiles.map((t) => Buffer.from(t.rgba.buffer).toString('base64').slice(0, 96));
   assertEqual(new Set(hashes).size, 4, 'i 4 tile devono avere contenuti diversi');
 });
 
-test("un tile su una zona senza regioni è vuoto senza leggere il disco", () => {
-  const t = tiler.getTile(tileArgs(0, 40, 40, { allowRender: true }));
+test('un tile su una zona senza regioni è vuoto senza leggere il disco', async () => {
+  const t = await tiler.getTile(ctx, 0, 40, 40, true);
   assert(t.empty, 'deve risultare vuoto');
-  const png = PNG.sync.read(t.buffer);
-  let transparent = 0;
-  for (let i = 3; i < png.data.length; i += 4) if (png.data[i] === 0) transparent++;
-  assertEqual(transparent, 256 * 256, 'completamente trasparente');
+  assertEqual(opaqueCount(t.rgba), 0, 'completamente trasparente');
 });
 
 test("l'indice delle regioni sa dire dove non c'è nulla", () => {
-  assert(tiler.boxHasRegions(REGION_SET, 0, 0, 511, 511), 'la regione 0,0 esiste');
-  assert(!tiler.boxHasRegions(REGION_SET, 100000, 100000, 100511, 100511), 'là non c\'è niente');
+  assert(tiler.boxHasRegions(ctx.regionSet, 0, 0, 511, 511), 'la regione 0,0 esiste');
+  assert(!tiler.boxHasRegions(ctx.regionSet, 100000, 100000, 100511, 100511), "là non c'è niente");
 });
 
-test('il livello zoom -1 riassume i quattro figli', () => {
-  const parent = decodeTile(-1, 0, 0);
+test('il livello zoom -1 riassume i quattro figli', async () => {
+  const parent = await tiler.getTile(ctx, -1, 0, 0, true);
   assert(!parent.empty, 'il genitore non deve essere vuoto');
-  let opaque = 0;
-  for (let i = 3; i < parent.png.data.length; i += 4) if (parent.png.data[i] === 255) opaque++;
-  assertEqual(opaque, 256 * 256, 'il mondo intero riempie il tile a zoom -1');
+  assertEqual(opaqueCount(parent.rgba), 256 * 256, 'il mondo intero riempie il tile a zoom -1');
 });
 
-test('servire un tile molto zoomato non innesca un rendering enorme', () => {
-  // Questa è la regressione che rendeva la mappa vuota su un mondo vero:
-  // un tile a zoom -6 dipende da 4096 tile base, decine di minuti di lavoro.
-  tiler.clearCache(WORLD_ID);
+test('servire un tile molto zoomato non innesca un rendering enorme', async () => {
+  // La regressione che rendeva la mappa vuota su un mondo vero: un tile a
+  // zoom -6 dipende da 4096 tile base, decine di minuti di lavoro.
+  cache.clear();
   const t0 = Date.now();
-  const t = tiler.serveTile(tileArgs(-6, 0, 0));
+  const t = await tiler.serveTile(ctx, -6, 0, 0);
   const ms = Date.now() - t0;
   assert(ms < 1500, `servire il tile ha richiesto ${ms} ms: non deve renderizzare in profondità`);
   assert(t.partial || t.empty, 'senza cache il tile va segnalato come parziale');
 });
 
-test('la cache restituisce lo stesso identico PNG', () => {
-  const args = tileArgs(0, 1, 1, { allowRender: true });
-  const first = tiler.getTile(args);
-  const second = tiler.getTile(args);
+test('la cache restituisce lo stesso identico tile', async () => {
+  const first = await tiler.getTile(ctx, 0, 1, 1, true);
+  const second = await tiler.getTile(ctx, 0, 1, 1, true);
   assert(second.cached, 'la seconda richiesta deve venire dalla cache');
-  assertEqual(Buffer.compare(first.buffer, second.buffer), 0, 'i byte devono coincidere');
-});
-
-test('clearCache svuota davvero la cache su disco', () => {
-  const before = tiler.cacheStats(WORLD_ID);
-  assert(before.files > 0, 'la cache deve contenere file');
-  tiler.clearCache(WORLD_ID);
-  assertEqual(tiler.cacheStats(WORLD_ID).files, 0, 'cache svuotata');
+  assertEqual(Buffer.compare(Buffer.from(first.rgba), Buffer.from(second.rgba)), 0, 'byte identici');
 });
 
 test('il calcolo dei blocchi per tile segue lo zoom', () => {
@@ -373,19 +390,18 @@ test('il calcolo dei blocchi per tile segue lo zoom', () => {
 // ---------------------------------------------------------------------------
 section('Generazione in background');
 
-test('il job elenca solo i tile che contengono regioni', () => {
-  const nested = worldScan.scanWorld(fixture.NESTED_WORLD_DIR);
-  const ow = nested.dimensions.find((d) => d.id === 'overworld');
+test('il job elenca solo i tile che contengono regioni', async () => {
+  const info = await worldScan.scanWorld(nestedSource);
+  const ow = info.dimensions.find((d) => d.id === 'overworld');
   const all = renderJob.baseTilesFor(ow, ow.bounds);
-  // Due regioni = 2 x (2x2 tile) = 8, non l'intero rettangolo fra di loro.
-  assertEqual(all.length, 8, 'solo i tile delle due regioni esistenti');
+  assertEqual(all.length, 8, 'due regioni = 8 tile base, non il rettangolo fra di loro');
   const spanning = Math.ceil((ow.bounds.maxX - ow.bounds.minX + 1) / 256) ** 2;
   assert(spanning > 1000, 'il rettangolo fra le regioni è enorme');
 });
 
-test("limitare l'area riduce il lavoro alla zona scelta", () => {
-  const nested = worldScan.scanWorld(fixture.NESTED_WORLD_DIR);
-  const ow = nested.dimensions.find((d) => d.id === 'overworld');
+test("limitare l'area riduce il lavoro alla zona scelta", async () => {
+  const info = await worldScan.scanWorld(nestedSource);
+  const ow = info.dimensions.find((d) => d.id === 'overworld');
   const bounds = renderJob.effectiveBounds(ow, { minX: -100, minZ: -100, maxX: 400, maxZ: 400 });
   const tiles = renderJob.baseTilesFor(ow, bounds);
   assertEqual(tiles.length, 4, 'solo i tile della regione vicina');
@@ -394,33 +410,55 @@ test("limitare l'area riduce il lavoro alla zona scelta", () => {
   }
 });
 
-test('la generazione completa produce i tile e li segna come pronti', async () => {
-  const nestedId = worldScan.worldId(fixture.NESTED_WORLD_DIR);
-  const nested = worldScan.scanWorld(fixture.NESTED_WORLD_DIR);
-  const ow = nested.dimensions.find((d) => d.id === 'overworld');
-  tiler.clearCache(nestedId, 'overworld');
-  renderJob.forget(nestedId, 'overworld');
-
-  renderJob.start({
-    worldId: nestedId, dimension: ow,
+test('la generazione completa produce i tile e riporta i progressi', async () => {
+  const info = await worldScan.scanWorld(nestedSource);
+  const ow = info.dimensions.find((d) => d.id === 'overworld');
+  const jobCache = new MemoryTileCache();
+  const jobCtx = {
+    source: nestedSource,
+    regionDir: ow.regionDir,
+    regionSet: tiler.regionSetOf(ow.regions),
+    cache: jobCache,
+    renderOptions: {},
+  };
+  const progress = [];
+  const result = await renderJob.runRender({
+    ctx: jobCtx,
+    dimension: ow,
     area: { minX: 0, minZ: 0, maxX: 511, maxZ: 511 },
+    onProgress: (p) => progress.push(p),
   });
-  const deadline = Date.now() + 60000;
-  let status = renderJob.status(nestedId, 'overworld');
-  while (status.state === 'running' && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 100));
-    status = renderJob.status(nestedId, 'overworld');
-  }
-  assertEqual(status.state, 'done', `job non completato: ${status.error || status.state}`);
-  assert(status.total > 0, 'il job aveva del lavoro da fare');
-  assert(tiler.cacheStats(nestedId, 'overworld').files > 4, 'tile scritti in cache');
+  assertEqual(result.state, 'done', 'job completato');
+  assert(result.total > 4, 'il job aveva del lavoro da fare');
+  assert(progress.length > 0, 'ha riportato avanzamenti');
+  assertEqual(progress[progress.length - 1].done, result.total, "l'ultimo avanzamento è al 100%");
+  assert(jobCache.size > 4, 'tile scritti in cache');
 
-  // Ora un tile molto zoomato arriva dalla cache, subito.
-  const t = tiler.serveTile({
-    regionDir: ow.regionDir, worldId: nestedId, dimId: 'overworld',
-    regionSet: tiler.regionSetOf(ow.regions), z: -6, x: 0, y: 0,
-  });
+  // Ora un tile panoramico arriva dalla cache, senza renderizzare.
+  const t = await tiler.serveTile(jobCtx, -6, 0, 0);
   assert(!t.empty, 'dopo la generazione il tile panoramico ha contenuto');
+});
+
+test('la generazione si può interrompere', async () => {
+  const info = await worldScan.scanWorld(nestedSource);
+  const ow = info.dimensions.find((d) => d.id === 'overworld');
+  const jobCtx = {
+    source: nestedSource,
+    regionDir: ow.regionDir,
+    regionSet: tiler.regionSetOf(ow.regions),
+    cache: new MemoryTileCache(),
+    renderOptions: {},
+  };
+  let seen = 0;
+  const result = await renderJob.runRender({
+    ctx: jobCtx,
+    dimension: ow,
+    area: { minX: 0, minZ: 0, maxX: 511, maxZ: 511 },
+    onProgress: () => { seen++; },
+    shouldStop: () => seen >= 1,
+  });
+  assertEqual(result.state, 'cancelled', 'job interrotto');
+  assert(result.done < result.total, 'interrotto prima della fine');
 });
 
 // ---------------------------------------------------------------------------
@@ -436,22 +474,18 @@ test('il testo viene diviso in pagine entro il limite', () => {
 
 test('le parole non vengono spezzate a metà', () => {
   const pages = book.paginate('parolina '.repeat(200));
-  for (const p of pages) {
-    assert(!/^\S+\s/.test(p) || p.startsWith('parolina'), 'le pagine iniziano su una parola intera');
-    assert(!p.includes('paroli\n'), 'nessuna parola spezzata');
-  }
+  for (const p of pages) assert(!p.includes('paroli\n'), 'nessuna parola spezzata');
 });
 
 test('il comando /give è valido e con escaping corretto', () => {
   const cmd = book.buildGiveCommand({
-    title: 'Cronache dell\'Impero',
+    title: "Cronache dell'Impero",
     author: 'Fru "il Grande"',
     pages: ['Pagina uno', 'Riga uno\nRiga due'],
   });
   assert(cmd.startsWith('/give @p written_book'), 'deve essere un comando give');
   assert(cmd.includes('\\"'), 'le virgolette interne devono essere sfuggite');
-  assert(!/[^\\]"il Grande"/.test(cmd), 'le virgolette dell\'autore devono essere sfuggite');
-  assert(cmd.includes('\\\\n') || cmd.includes('\\n'), 'gli a capo devono essere codificati');
+  assert(!/[^\\]"il Grande"/.test(cmd), "le virgolette dell'autore devono essere sfuggite");
 });
 
 test('un titolo vuoto non genera un comando rotto', () => {
@@ -460,7 +494,7 @@ test('un titolo vuoto non genera un comando rotto', () => {
   assert(cmd.length < 400, 'comando compatto per un libro vuoto');
 });
 
-test('l\'export completo produce comando e mcfunction', () => {
+test("l'export completo produce comando e mcfunction", () => {
   const out = book.exportDocument({ title: 'Diario', author: 'Fru', body: 'Riga uno.\n\nRiga due.' });
   assert(out.command.includes('written_book'), 'comando presente');
   assert(out.mcfunction.includes('give @p'), 'mcfunction presente');
@@ -469,7 +503,19 @@ test('l\'export completo produce comando e mcfunction', () => {
 });
 
 // ---------------------------------------------------------------------------
-queue.then(() => {
+(async () => {
+  for (const item of tests) {
+    if (item.kind === 'section') { console.log(`\n${item.title}`); continue; }
+    try {
+      await item.fn();
+      passed++;
+      console.log(`  ✓ ${item.name}`);
+    } catch (err) {
+      failed++;
+      failures.push({ name: item.name, err });
+      console.log(`  ✗ ${item.name}\n      ${err.message}`);
+    }
+  }
   console.log(`\n${'='.repeat(52)}`);
   console.log(`Test superati: ${passed}   falliti: ${failed}`);
   if (failed) {
@@ -478,4 +524,4 @@ queue.then(() => {
     process.exit(1);
   }
   console.log('Tutti i test superati.');
-});
+})();

@@ -1,42 +1,35 @@
-'use strict';
 /*
  * Reader for Minecraft Java Edition Anvil region files (.mca).
  *
  * Chunk formats supported:
  *   - 1.18+  (DataVersion >= 2844): root.sections[], each with
  *            block_states {palette,data} and biomes {palette,data}.
- *   - 1.13 - 1.17 (DataVersion 1519..2843): root.Level.Sections[], each with
- *            Palette + BlockStates. Biomes as numeric ids (not tinted).
- *   Pre-1.13 numeric-block-id worlds have no palette and are reported as
- *   unparsable so rendering degrades gracefully instead of crashing.
+ *   - 1.13 - 1.17: root.Level.Sections[], with Palette + BlockStates.
+ *   Pre-1.13 worlds store numeric block ids with no palette and are reported
+ *   as unparsable, so rendering degrades instead of crashing.
  *
- * Bit packing (important): up to DataVersion 2528 (1.15.x) palette indices
- * are packed tightly and a value MAY span two longs. From DataVersion 2529
- * (1.16) onward each long is padded — floor(64/bits) values per long and a
- * value NEVER spans two longs.
+ * Bit packing (the easy thing to get wrong): up to DataVersion 2528 (1.15.x)
+ * palette indices are packed tightly and a value MAY span two longs. From
+ * DataVersion 2529 (1.16) each long is padded — floor(64/bits) values per
+ * long — and a value NEVER spans two longs.
  */
 
-const fs = require('fs');
-const path = require('path');
-const zlib = require('zlib');
-const nbt = require('./nbt');
+import { parseRaw, decompressBytes } from './nbt.js';
+import { joinPath } from './source.js';
 
-const DV_PADDED_PACKING = 2529; // 1.16: values stopped spanning longs
-const NO_DATA = -9999;          // sentinel height for "no chunk here"
+const DV_PADDED_PACKING = 2529;
+export const NO_DATA = -9999;
 
-const AIR_NAMES = new Set([
+export const AIR_NAMES = new Set([
   'minecraft:air', 'minecraft:cave_air', 'minecraft:void_air', 'minecraft:structure_void',
 ]);
-
-// Blocks that are "see-through" for map purposes: we keep descending to find
-// the ground under them, then blend. Matches how unMINED shows water depth.
-const WATER_NAMES = new Set(['minecraft:water', 'minecraft:bubble_column']);
+export const WATER_NAMES = new Set(['minecraft:water', 'minecraft:bubble_column']);
 
 const MASK64 = (1n << 64n) - 1n;
 const asUnsigned = (v) => v & MASK64;
 
 /** Tight packing (<=1.15): values may span two longs. */
-function readSpanningPacked(longArray, bits, index) {
+export function readSpanningPacked(longArray, bits, index) {
   const bitIndex = index * bits;
   const longIndex = bitIndex >> 6;
   const bitOffset = BigInt(bitIndex & 63);
@@ -50,7 +43,7 @@ function readSpanningPacked(longArray, bits, index) {
 }
 
 /** Padded packing (>=1.16): each long holds floor(64/bits) values, no spanning. */
-function readPaddedPacked(longArray, bits, index) {
+export function readPaddedPacked(longArray, bits, index) {
   const perLong = Math.floor(64 / bits);
   const longIndex = Math.floor(index / perLong);
   if (longIndex >= longArray.length) return 0;
@@ -59,16 +52,9 @@ function readPaddedPacked(longArray, bits, index) {
   return Number((asUnsigned(longArray[longIndex]) >> bitOffset) & mask);
 }
 
-function blockBits(paletteSize) {
-  if (paletteSize <= 1) return 0;
-  return Math.max(4, Math.ceil(Math.log2(paletteSize)));
-}
-function biomeBits(paletteSize) {
-  if (paletteSize <= 1) return 0;
-  return Math.max(1, Math.ceil(Math.log2(paletteSize)));
-}
+export const blockBits = (n) => (n <= 1 ? 0 : Math.max(4, Math.ceil(Math.log2(n))));
+export const biomeBits = (n) => (n <= 1 ? 0 : Math.max(1, Math.ceil(Math.log2(n))));
 
-/** Build an accessor over a paletted+packed array. */
 function makeAccessor(names, longArray, bits, padded) {
   if (names.length <= 1 || bits === 0 || !longArray || longArray.length === 0) {
     const only = names[0] || 'minecraft:air';
@@ -86,45 +72,34 @@ const blockIndex = (lx, ly, lz) => ((ly & 15) << 8) | ((lz & 15) << 4) | (lx & 1
 // Section-local biome cell index (4x4x4 cells): y*16 + z*4 + x
 const biomeIndex = (lx, ly, lz) => (((ly & 15) >> 2) << 4) | (((lz & 15) >> 2) << 2) | ((lx & 15) >> 2);
 
-function paletteNames(paletteTags) {
-  return paletteTags.map((p) => {
-    if (typeof p === 'string') return p;          // biomes palette = list of strings
-    return (p && p.Name) || 'minecraft:air';      // block palette = list of compounds
-  });
-}
+const paletteNames = (tags) => tags.map((p) => (typeof p === 'string' ? p : (p && p.Name) || 'minecraft:air'));
 
-/**
- * Normalize a chunk root into sections sorted top-down, each exposing
- * getBlock(lx,ly,lz) and getBiome(lx,ly,lz). Returns null if unsupported.
- */
-function normalizeChunk(root) {
-  const dataVersion = Number(root.DataVersion || 0);
-  const padded = dataVersion >= DV_PADDED_PACKING;
+export function normalizeChunk(root) {
+  const padded = Number(root.DataVersion || 0) >= DV_PADDED_PACKING;
 
-  let rawSections = null;
-  if (Array.isArray(root.sections)) rawSections = root.sections;            // 1.18+
-  else if (root.Level && Array.isArray(root.Level.Sections)) rawSections = root.Level.Sections; // 1.13-1.17
-  if (!rawSections) return null;
+  let raw = null;
+  if (Array.isArray(root.sections)) raw = root.sections;
+  else if (root.Level && Array.isArray(root.Level.Sections)) raw = root.Level.Sections;
+  if (!raw) return null;
 
   const sections = [];
-  for (const sec of rawSections) {
-    // Blocks: new format nests under block_states, old format is flat.
-    const bsTag = sec.block_states;
-    const paletteTag = bsTag ? bsTag.palette : sec.Palette;
+  for (const sec of raw) {
+    const bs = sec.block_states;
+    const paletteTag = bs ? bs.palette : sec.Palette;
     if (!Array.isArray(paletteTag) || paletteTag.length === 0) continue;
-    const dataTag = bsTag ? bsTag.data : sec.BlockStates;
-    const blockLongs = dataTag instanceof BigInt64Array ? dataTag : null;
+    const dataTag = bs ? bs.data : sec.BlockStates;
     const names = paletteNames(paletteTag);
-    const getBlockAt = makeAccessor(names, blockLongs, blockBits(names.length), padded);
+    const getBlockAt = makeAccessor(
+      names, dataTag instanceof BigInt64Array ? dataTag : null, blockBits(names.length), padded);
 
-    // Biomes: only the 1.18+ named palette is supported (older worlds store
-    // numeric ids, which we skip rather than guess at).
+    // Only the 1.18+ named biome palette is read; older worlds store numeric
+    // ids, which we skip rather than guess at.
     let getBiomeAt = null;
     const bio = sec.biomes;
     if (bio && Array.isArray(bio.palette) && bio.palette.length) {
-      const bNames = paletteNames(bio.palette);
-      const bLongs = bio.data instanceof BigInt64Array ? bio.data : null;
-      getBiomeAt = makeAccessor(bNames, bLongs, biomeBits(bNames.length), padded);
+      const bn = paletteNames(bio.palette);
+      getBiomeAt = makeAccessor(
+        bn, bio.data instanceof BigInt64Array ? bio.data : null, biomeBits(bn.length), padded);
     }
 
     sections.push({
@@ -140,21 +115,17 @@ function normalizeChunk(root) {
 
 /**
  * Per-column surface analysis for one chunk (256 columns).
- * Returns typed arrays + name arrays, or null if the chunk is unsupported.
- *   surfaceY   : Y of the topmost non-air block (water counts as surface)
- *   surfaceName: its block name
- *   floorY     : Y of the first non-water block under the surface
- *                (== surfaceY when the surface isn't water)
- *   biome      : biome name at the surface, or null when unavailable
+ *   surfaceY / surfaceName : topmost non-air block (water counts as surface)
+ *   floorY                 : first non-water block below it
+ *   biome                  : biome at the surface, or null
  */
-function analyzeChunk(root) {
+export function analyzeChunk(root) {
   const sections = normalizeChunk(root);
   if (!sections) return null;
 
   const surfaceY = new Int32Array(256).fill(NO_DATA);
   const floorY = new Int32Array(256).fill(NO_DATA);
   const surfaceName = new Array(256).fill('minecraft:air');
-  const floorName = new Array(256).fill('minecraft:air');
   const biome = new Array(256).fill(null);
 
   for (let lz = 0; lz < 16; lz++) {
@@ -172,91 +143,85 @@ function analyzeChunk(root) {
             if (!WATER_NAMES.has(name)) { floor = top; break scan; }
             continue;
           }
-          if (!WATER_NAMES.has(name)) { floor = { y, name, sec, ly }; break scan; }
+          if (!WATER_NAMES.has(name)) { floor = { y, name }; break scan; }
         }
       }
       if (!top) continue;
       surfaceY[col] = top.y;
       surfaceName[col] = top.name;
-      const f = floor || top;
-      floorY[col] = f.y;
-      floorName[col] = f.name;
+      floorY[col] = (floor || top).y;
       if (top.sec.getBiome) biome[col] = top.sec.getBiome(lx, top.ly, lz);
     }
   }
-  return { surfaceY, surfaceName, floorY, floorName, biome };
+  return { surfaceY, surfaceName, floorY, biome };
 }
 
 // ---------------------------------------------------------------------------
 // Region files
 // ---------------------------------------------------------------------------
 
-class RegionFile {
-  constructor(buffer) {
-    this.buf = buffer;
+export class RegionFile {
+  constructor(bytes) {
+    this.bytes = bytes;
+    this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     this.locations = new Array(1024).fill(null);
-    if (buffer.length < 8192) return;
+    if (bytes.length < 8192) return;
     for (let i = 0; i < 1024; i++) {
       const o = i * 4;
-      const sector = (buffer[o] << 16) | (buffer[o + 1] << 8) | buffer[o + 2];
-      if (sector) this.locations[i] = { sector, count: buffer[o + 3] };
+      const sector = (bytes[o] << 16) | (bytes[o + 1] << 8) | bytes[o + 2];
+      if (sector) this.locations[i] = { sector, count: bytes[o + 3] };
     }
   }
 
   hasChunk(lx, lz) { return !!this.locations[(lx & 31) + (lz & 31) * 32]; }
 
-  getChunkRoot(lx, lz) {
+  async getChunkRoot(lx, lz) {
     const entry = this.locations[(lx & 31) + (lz & 31) * 32];
     if (!entry) return null;
     const start = entry.sector * 4096;
-    if (start + 5 > this.buf.length) return null;
-    const length = this.buf.readUInt32BE(start);
-    if (length <= 0 || start + 4 + length > this.buf.length) return null;
-    const compression = this.buf.readUInt8(start + 4);
-    if (compression & 128) return null; // payload in an external .mcc file
-    const raw = this.buf.subarray(start + 5, start + 4 + length);
+    if (start + 5 > this.bytes.length) return null;
+    const length = this.view.getUint32(start);
+    if (length <= 0 || start + 4 + length > this.bytes.length) return null;
+    const compression = this.bytes[start + 4];
+    if (compression & 128) return null; // payload lives in an external .mcc file
+    const raw = this.bytes.subarray(start + 5, start + 4 + length);
     let payload;
-    if (compression === 1) payload = zlib.gunzipSync(raw);
-    else if (compression === 2) payload = zlib.inflateSync(raw);
+    if (compression === 1) payload = await decompressBytes(raw, 'gzip');
+    else if (compression === 2) payload = await decompressBytes(raw, 'deflate');
     else if (compression === 3) payload = raw;
-    else if (compression === 4) payload = zlib.inflateSync(raw); // LZ4 unsupported; try zlib
     else return null;
-    return nbt.parse(payload).value;
+    return parseRaw(payload);
   }
 }
 
-// Bounded LRU so scanning a large world doesn't grow memory without limit
-// (each region file is up to a few MB).
-const MAX_CACHED_REGIONS = 12;
+// Bounded LRU: region files are several MB each, and a render walks many.
+const MAX_CACHED_REGIONS = 8;
 const regionCache = new Map();
 
-function loadRegionFile(filePath) {
-  if (regionCache.has(filePath)) {
-    const v = regionCache.get(filePath);
-    regionCache.delete(filePath);
-    regionCache.set(filePath, v); // refresh recency
+export async function loadRegionFile(source, path) {
+  if (regionCache.has(path)) {
+    const v = regionCache.get(path);
+    regionCache.delete(path);
+    regionCache.set(path, v); // refresh recency
     return v;
   }
   let region = null;
-  try {
-    region = new RegionFile(fs.readFileSync(filePath));
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
-  }
-  regionCache.set(filePath, region);
+  const bytes = await source.readFile(path);
+  if (bytes && bytes.length >= 8192) region = new RegionFile(bytes);
+  regionCache.set(path, region);
   if (regionCache.size > MAX_CACHED_REGIONS) {
     regionCache.delete(regionCache.keys().next().value);
   }
   return region;
 }
 
-function clearRegionCache() { regionCache.clear(); }
+export function clearRegionCache() { regionCache.clear(); }
 
 /**
- * Surface grid for an arbitrary block bounding box, reading only the region
- * files it touches from `regionDir`. Row-major (z outer, x inner).
+ * Surface grid for a block bounding box, reading only the region files it
+ * touches from `regionDir`. Row-major (z outer, x inner).
  */
-function readSurface(regionDir, minX, minZ, width, depth) {
+export async function readSurface(source, regionDir, minX, minZ, width, depth) {
   const maxX = minX + width - 1;
   const maxZ = minZ + depth - 1;
   const size = width * depth;
@@ -271,14 +236,12 @@ function readSurface(regionDir, minX, minZ, width, depth) {
 
   const cMinX = minX >> 4, cMaxX = maxX >> 4;
   const cMinZ = minZ >> 4, cMaxZ = maxZ >> 4;
-
-  // Iterate region-major so each region file is opened once per tile.
   const rMinX = cMinX >> 5, rMaxX = cMaxX >> 5;
   const rMinZ = cMinZ >> 5, rMaxZ = cMaxZ >> 5;
 
   for (let rz = rMinZ; rz <= rMaxZ; rz++) {
     for (let rx = rMinX; rx <= rMaxX; rx++) {
-      const region = loadRegionFile(path.join(regionDir, `r.${rx}.${rz}.mca`));
+      const region = await loadRegionFile(source, joinPath(regionDir, `r.${rx}.${rz}.mca`));
       if (!region) continue;
       const czStart = Math.max(cMinZ, rz * 32), czEnd = Math.min(cMaxZ, rz * 32 + 31);
       const cxStart = Math.max(cMinX, rx * 32), cxEnd = Math.min(cMaxX, rx * 32 + 31);
@@ -290,8 +253,8 @@ function readSurface(regionDir, minX, minZ, width, depth) {
           totalChunks++;
           let cols = null;
           try {
-            const root = region.getChunkRoot(lx, lz);
-            if (root) cols = analyzeChunk(root);
+            const root = await region.getChunkRoot(lx, lz);
+            if (root) cols = analyzeChunk(root.value);
           } catch {
             cols = null;
           }
@@ -319,10 +282,3 @@ function readSurface(regionDir, minX, minZ, width, depth) {
 
   return { minX, minZ, width, depth, surfaceY, floorY, surfaceName, biome, totalChunks, unparsedChunks };
 }
-
-module.exports = {
-  NO_DATA, AIR_NAMES, WATER_NAMES,
-  RegionFile, loadRegionFile, clearRegionCache,
-  normalizeChunk, analyzeChunk, readSurface,
-  readPaddedPacked, readSpanningPacked, blockBits, biomeBits,
-};

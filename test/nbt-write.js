@@ -1,127 +1,15 @@
-'use strict';
 /*
- * Minimal NBT (Named Binary Tag) reader/writer for Minecraft Java Edition.
- * Supports both gzip and zlib compressed buffers (region-file chunk payloads
- * are zlib; some other files, e.g. level.dat, are gzip).
- *
- * Decoded shape: { name, value } where value is a plain JS tree:
- *   TAG_Byte/Short/Int/Float/Double -> number
- *   TAG_Long                        -> BigInt
- *   TAG_String                      -> string
- *   TAG_ByteArray                   -> Int8Array
- *   TAG_IntArray                    -> Int32Array
- *   TAG_LongArray                   -> BigInt64Array
- *   TAG_List                        -> Array (each element already unwrapped)
- *   TAG_Compound                    -> plain object { key: value, ... }
- * (Type information beyond this is not needed by this project, so it is not
- * preserved on decode. The writer below infers types from JS values / a
- * small set of wrapper classes for the ambiguous cases used by test fixtures.)
+ * NBT writer, used only to build the synthetic world saves the test suite
+ * runs against. The app itself never writes NBT, so this lives with the
+ * fixtures rather than in the shared core.
  */
 
-const zlib = require('zlib');
+import zlib from 'node:zlib';
 
 const TAG = {
   End: 0, Byte: 1, Short: 2, Int: 3, Long: 4, Float: 5, Double: 6,
   ByteArray: 7, String: 8, List: 9, Compound: 10, IntArray: 11, LongArray: 12,
 };
-
-function isGzip(buf) {
-  return buf.length > 2 && buf[0] === 0x1f && buf[1] === 0x8b;
-}
-function isZlib(buf) {
-  return buf.length > 2 && buf[0] === 0x78;
-}
-
-function decompress(buf) {
-  if (isGzip(buf)) return zlib.gunzipSync(buf);
-  if (isZlib(buf)) return zlib.inflateSync(buf);
-  return buf; // uncompressed
-}
-
-class Reader {
-  constructor(buf) {
-    this.buf = buf;
-    this.off = 0;
-  }
-  byte() { const v = this.buf.readInt8(this.off); this.off += 1; return v; }
-  ubyte() { const v = this.buf.readUInt8(this.off); this.off += 1; return v; }
-  short() { const v = this.buf.readInt16BE(this.off); this.off += 2; return v; }
-  int() { const v = this.buf.readInt32BE(this.off); this.off += 4; return v; }
-  long() { const v = this.buf.readBigInt64BE(this.off); this.off += 8; return v; }
-  float() { const v = this.buf.readFloatBE(this.off); this.off += 4; return v; }
-  double() { const v = this.buf.readDoubleBE(this.off); this.off += 8; return v; }
-  string() {
-    const len = this.buf.readUInt16BE(this.off); this.off += 2;
-    const s = this.buf.toString('utf8', this.off, this.off + len);
-    this.off += len;
-    return s;
-  }
-  bytes(n) { const v = this.buf.subarray(this.off, this.off + n); this.off += n; return v; }
-}
-
-function readTagPayload(r, type) {
-  switch (type) {
-    case TAG.Byte: return r.byte();
-    case TAG.Short: return r.short();
-    case TAG.Int: return r.int();
-    case TAG.Long: return r.long();
-    case TAG.Float: return r.float();
-    case TAG.Double: return r.double();
-    case TAG.ByteArray: {
-      const len = r.int();
-      const out = new Int8Array(len);
-      for (let i = 0; i < len; i++) out[i] = r.byte();
-      return out;
-    }
-    case TAG.String: return r.string();
-    case TAG.List: {
-      const itemType = r.ubyte();
-      const len = r.int();
-      const out = new Array(len);
-      for (let i = 0; i < len; i++) out[i] = readTagPayload(r, itemType);
-      out.__listType = itemType;
-      return out;
-    }
-    case TAG.Compound: {
-      const obj = {};
-      for (;;) {
-        const t = r.ubyte();
-        if (t === TAG.End) break;
-        const name = r.string();
-        obj[name] = readTagPayload(r, t);
-      }
-      return obj;
-    }
-    case TAG.IntArray: {
-      const len = r.int();
-      const out = new Int32Array(len);
-      for (let i = 0; i < len; i++) out[i] = r.int();
-      return out;
-    }
-    case TAG.LongArray: {
-      const len = r.int();
-      const out = new BigInt64Array(len);
-      for (let i = 0; i < len; i++) out[i] = r.long();
-      return out;
-    }
-    default:
-      throw new Error(`Unsupported/unknown NBT tag type ${type} at offset ${r.off}`);
-  }
-}
-
-function parse(buf) {
-  const raw = decompress(buf);
-  const r = new Reader(raw);
-  const rootType = r.ubyte();
-  if (rootType === TAG.End) return { name: '', value: {} };
-  const name = r.string();
-  const value = readTagPayload(r, rootType);
-  return { name, value };
-}
-
-// ---------------------------------------------------------------------------
-// Writer (used only by the synthetic test-world generator).
-// ---------------------------------------------------------------------------
 
 class Writer {
   constructor() { this.chunks = []; }
@@ -232,7 +120,7 @@ function build(name, rootObj) {
 function gzip(buf) { return zlib.gzipSync(buf); }
 function deflate(buf) { return zlib.deflateSync(buf); }
 
-module.exports = {
-  TAG, parse, build, gzip, deflate,
+export {
+  TAG, build, gzip, deflate,
   TLong, TFloat, TDouble, TByte, TShort, TIntArray, TLongArray, TList,
 };

@@ -1,4 +1,3 @@
-'use strict';
 /*
  * Generates a synthetic Java-Edition world save used by the test suite, so
  * the parser/renderer can be exercised without a Minecraft install.
@@ -12,9 +11,12 @@
  * current Minecraft actually writes.
  */
 
-const fs = require('fs');
-const path = require('path');
-const nbt = require('../lib/nbt');
+import fs from 'node:fs';
+import path from 'node:path';
+import url from 'node:url';
+import * as nbt from './nbt-write.js';
+
+const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
 const WORLD_DIR = path.join(__dirname, '..', 'data', 'testworld');
 const REGION_DIR = path.join(WORLD_DIR, 'region');
@@ -241,7 +243,7 @@ function generate({ quiet = false } = {}) {
   return WORLD_DIR;
 }
 
-if (require.main === module) generate();
+if (process.argv[1] && process.argv[1].endsWith('make-test-world.js')) generate();
 
 /*
  * A save that mirrors the layouts people actually have: the region files live
@@ -279,7 +281,7 @@ function generateNested({ quiet = true } = {}) {
   return NESTED_WORLD_DIR;
 }
 
-module.exports = {
+export {
   generate, generateNested, ensureTerrain,
   WORLD_DIR, NESTED_WORLD_DIR, FAR_REGION, SIZE, SEA_LEVEL,
   heights, kinds, blockAt, biomeAt, packPadded, blockBits, biomeBits,

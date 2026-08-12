@@ -1,16 +1,68 @@
-'use strict';
 /*
  * Generates the tileable 16x16 pixel textures that give Cube-Atlas its
- * Minecraft look, and writes them into public/css/textures.css as data URIs.
+ * Minecraft look, and writes them into web/css/textures.css as data URIs.
  * Keeping them inline means the UI needs no external asset requests and works
  * fully offline. Re-run with: npm run textures
  */
 
-const fs = require('fs');
-const path = require('path');
-const { PNG } = require('pngjs');
+import fs from 'node:fs';
+import path from 'node:path';
+import zlib from 'node:zlib';
+import url from 'node:url';
 
-const OUT_CSS = path.join(__dirname, '..', 'public', 'css', 'textures.css');
+const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
+const OUT_CSS = path.join(__dirname, '..', 'web', 'css', 'textures.css');
+
+/*
+ * Minimal PNG encoder, so generating the textures needs no dependency at all.
+ * Only what this tool emits is supported: 8-bit RGBA, no interlacing.
+ */
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i++) {
+    c ^= buf[i];
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+  }
+  return ~c >>> 0;
+}
+
+function chunk(type, data) {
+  const out = Buffer.alloc(8 + data.length + 4);
+  out.writeUInt32BE(data.length, 0);
+  out.write(type, 4, 'ascii');
+  data.copy(out, 8);
+  out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
+  return out;
+}
+
+function encodePng({ width, height, data }) {
+  // Each scanline is prefixed with its filter type (0 = none).
+  const raw = Buffer.alloc(height * (width * 4 + 1));
+  for (let y = 0; y < height; y++) {
+    raw[y * (width * 4 + 1)] = 0;
+    data.copy(raw, y * (width * 4 + 1) + 1, y * width * 4, (y + 1) * width * 4);
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;   // bit depth
+  ihdr[9] = 6;   // colour type: RGBA
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/** Stand-in for the pngjs image object the generators below fill in. */
+class Image {
+  constructor(width, height) {
+    this.width = width;
+    this.height = height;
+    this.data = Buffer.alloc(width * height * 4);
+  }
+}
 
 /** Deterministic PRNG so regenerating the textures never churns the CSS file. */
 function makeRandom(seed) {
@@ -29,7 +81,7 @@ const clamp = (v) => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v));
  *  Minecraft's dirt/stone/sand blocks. */
 function noiseTexture({ size = 16, base, jitter = 22, seed = 1, coarse = 1 }) {
   const rnd = makeRandom(seed);
-  const png = new PNG({ width: size, height: size });
+  const png = new Image(size, size);
   const cells = size / coarse;
   const values = new Float32Array(cells * cells);
   for (let i = 0; i < values.length; i++) values[i] = (rnd() - 0.5) * 2 * jitter;
@@ -49,7 +101,7 @@ function noiseTexture({ size = 16, base, jitter = 22, seed = 1, coarse = 1 }) {
 /** Plank texture: horizontal boards with darker seams and grain. */
 function plankTexture({ size = 16, base, seed = 7 }) {
   const rnd = makeRandom(seed);
-  const png = new PNG({ width: size, height: size });
+  const png = new Image(size, size);
   const boardHeight = size / 4;
   for (let y = 0; y < size; y++) {
     const inBoard = y % boardHeight;
@@ -72,7 +124,7 @@ function plankTexture({ size = 16, base, seed = 7 }) {
 /** Grass-block top: noisy green with a couple of darker speckles. */
 function grassTexture({ size = 16, seed = 3 }) {
   const rnd = makeRandom(seed);
-  const png = new PNG({ width: size, height: size });
+  const png = new Image(size, size);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const d = (rnd() - 0.5) * 34;
@@ -97,7 +149,7 @@ const TEXTURES = {
 };
 
 function toDataURI(png) {
-  return `data:image/png;base64,${PNG.sync.write(png).toString('base64')}`;
+  return `data:image/png;base64,${encodePng(png).toString('base64')}`;
 }
 
 function main() {
@@ -119,6 +171,6 @@ function main() {
   console.log(`Texture scritte in ${OUT_CSS} (${kb} KB)`);
 }
 
-if (require.main === module) main();
+main();
 
-module.exports = { noiseTexture, plankTexture, grassTexture, toDataURI, TEXTURES };
+export { noiseTexture, plankTexture, grassTexture, toDataURI, encodePng, TEXTURES };

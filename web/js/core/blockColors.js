@@ -1,4 +1,3 @@
-'use strict';
 /*
  * Top-down map colors for Minecraft blocks, plus per-biome tinting for the
  * blocks the game itself tints (grass, foliage, water). Coverage of the ~1000
@@ -6,7 +5,7 @@
  * hash-derived color so it still reads as a distinct surface on the map.
  */
 
-const COLORS = Object.create(null);
+export const COLORS = Object.create(null);
 
 function set(names, rgb) {
   for (const n of [].concat(names)) COLORS[`minecraft:${n}`] = rgb;
@@ -212,20 +211,20 @@ set(['decorated_pot'], [170, 100, 78]);
 // ---------------------------------------------------------------------------
 // Blocks the game tints by biome. Values are multiplied against the biome's
 // grass/foliage/water color rather than used literally.
-const GRASS_TINTED = new Set([
+export const GRASS_TINTED = new Set([
   'minecraft:grass_block', 'minecraft:short_grass', 'minecraft:grass',
   'minecraft:tall_grass', 'minecraft:fern', 'minecraft:large_fern',
   'minecraft:sugar_cane', 'minecraft:potted_fern',
 ]);
-const FOLIAGE_TINTED = new Set([
+export const FOLIAGE_TINTED = new Set([
   'minecraft:oak_leaves', 'minecraft:jungle_leaves', 'minecraft:acacia_leaves',
   'minecraft:dark_oak_leaves', 'minecraft:mangrove_leaves', 'minecraft:vine',
 ]);
-const WATER_TINTED = new Set(['minecraft:water', 'minecraft:bubble_column']);
+export const WATER_TINTED = new Set(['minecraft:water', 'minecraft:bubble_column']);
 
 // grass / foliage / water per biome. Unlisted biomes use the default.
 const DEFAULT_TINT = { grass: [145, 189, 89], foliage: [119, 171, 47], water: [63, 118, 228] };
-const BIOME_TINTS = {
+export const BIOME_TINTS = {
   'minecraft:plains': { grass: [145, 189, 89], foliage: [119, 171, 47] },
   'minecraft:sunflower_plains': { grass: [145, 189, 89], foliage: [119, 171, 47] },
   'minecraft:meadow': { grass: [131, 187, 87], foliage: [110, 166, 42] },
@@ -299,7 +298,7 @@ function hashColor(name) {
   ];
 }
 
-function baseColor(blockName) {
+export function baseColor(blockName) {
   const c = COLORS[blockName];
   if (c) return c;
   let f = fallbackCache.get(blockName);
@@ -317,7 +316,7 @@ function tintFor(biomeName, channel) {
  * Final map color for a surface block, applying biome tint where the game
  * would. `biomeName` may be null (older worlds) — the default tint is used.
  */
-function colorFor(blockName, biomeName) {
+export function colorFor(blockName, biomeName) {
   const base = baseColor(blockName);
   if (GRASS_TINTED.has(blockName)) return mix(base, tintFor(biomeName, 'grass'));
   if (FOLIAGE_TINTED.has(blockName)) return mix(base, tintFor(biomeName, 'foliage'));
@@ -333,5 +332,3 @@ function mix(base, tint) {
     Math.round((base[2] * tint[2]) / 255),
   ];
 }
-
-module.exports = { colorFor, baseColor, COLORS, BIOME_TINTS, GRASS_TINTED, FOLIAGE_TINTED, WATER_TINTED };
