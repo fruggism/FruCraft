@@ -8,7 +8,7 @@
 
 import {
   state, el, escapeHtml, toast, toLatLng, fromLatLng, roundCoord,
-  debounce, newId, confirmDialog, promptDialog, download, slugify, setStatus, markDirty,
+  debounce, newId, confirmDialog, promptDialog, pickDialog, download, slugify, setStatus, markDirty,
   findLayer, selectedLayer, findFeature, selectedFeature, engine,
 } from './ui-core.js';
 
@@ -1533,9 +1533,23 @@ function drawPoiShape(ctx, shape, cx, cy, size, color) {
   ctx.stroke();
 }
 
+/** Asked once per export, instead of a preset dropdown that's easy to
+ *  forget to change before clicking. Resolves null if the user cancels. */
+function pickExportArea() {
+  return pickDialog({
+    title: 'Area da esportare',
+    options: [
+      { value: 'view', label: 'Vista attuale' },
+      { value: 'all', label: 'Tutto il mondo generato' },
+    ],
+  });
+}
+
 async function exportPNG() {
   if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
-  const bounds = exportBounds(el('export-extent').value);
+  const area = await pickExportArea();
+  if (!area) return;
+  const bounds = exportBounds(area);
   const zoom = pickExportZoom(bounds);
   const scale = Math.pow(2, zoom);
   const w = Math.max(1, Math.round((bounds.maxX - bounds.minX + 1) * scale));
@@ -1567,7 +1581,9 @@ async function exportPNG() {
 
 async function exportSVG() {
   if (!state.project) { toast('Apri prima un atlante', 'err'); return; }
-  const bounds = exportBounds(el('export-extent').value);
+  const area = await pickExportArea();
+  if (!area) return;
+  const bounds = exportBounds(area);
   const zoom = pickExportZoom(bounds);
   const scale = Math.pow(2, zoom);
   const w = Math.round((bounds.maxX - bounds.minX + 1) * scale);

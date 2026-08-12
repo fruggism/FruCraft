@@ -12,6 +12,7 @@ import {
 } from './ui-core.js';
 import * as Atlas from './atlas.js';
 import * as Archive from './archive.js';
+import * as Reader from './reader.js';
 import {
   supportsHandles, pickDirectory, restoreLastWorld, sourceFromFileList, pickerHint, forgetWorld,
 } from './worldPicker.js';
@@ -24,11 +25,28 @@ const LAYER_KIND_LABEL = { roads: 'Strade', pois: 'Punti', areas: 'Aree', transi
 let openWorldInit = null;
 
 // ---------------------------------------------------------------- screens
+// The app is really two programs sharing one page: the Editor (Atlante +
+// Archivio, everything that touches a world/project) and the Lettore, a
+// standalone viewer for files the Editor has already exported. Switching
+// mode never touches world/project state — only which screen is visible.
+let lastEditorScreen = 'atlas';
+
 function showScreen(name) {
-  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.screen === name));
+  // Scoped to the Atlante/Archivio sub-tabs: the mode tabs are also `.tab`
+  // elements, but have no `data-screen`, so a bare `.tab` selector here
+  // would wrongly clear their active state on every screen switch.
+  document.querySelectorAll('#editor-tabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.screen === name));
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === `screen-${name}`));
+  if (name === 'atlas' || name === 'archive') lastEditorScreen = name;
   if (name === 'atlas' && Atlas.getMap()) setTimeout(() => Atlas.getMap().invalidateSize(), 60);
   if (name === 'archive') Archive.renderList();
+}
+
+function setMode(mode) {
+  document.querySelectorAll('#mode-tabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.mode === mode));
+  el('editor-tabs').classList.toggle('hidden', mode !== 'editor');
+  el('mode-label').textContent = mode === 'reader' ? ' Lettore' : ' Editor';
+  showScreen(mode === 'reader' ? 'reader' : lastEditorScreen);
 }
 
 // ------------------------------------------------------------------ world
@@ -612,9 +630,13 @@ async function pollRenderStatus() {
 async function init() {
   Atlas.initMap();
   Archive.init();
+  Reader.init();
   el('picker-hint').textContent = pickerHint();
 
-  document.querySelectorAll('.tab').forEach((tab) => {
+  document.querySelectorAll('#mode-tabs .tab').forEach((btn) => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  });
+  document.querySelectorAll('#editor-tabs .tab').forEach((tab) => {
     tab.addEventListener('click', () => showScreen(tab.dataset.screen));
   });
 

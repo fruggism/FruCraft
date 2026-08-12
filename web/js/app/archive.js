@@ -181,6 +181,27 @@ function downloadTxt() {
   download(`${slugify(doc.title)}.txt`, text, 'text/plain');
 }
 
+/* The format the Lettore (Cube-Atlas reader) opens: paragraphs rather than
+ * 255-char in-game book pages, since this is read on a screen, not in a
+ * Minecraft book. */
+export const READER_DOC_FORMAT = 'cube-atlas/document';
+
+function exportForReader() {
+  const doc = selected();
+  if (!doc) { toast('Nessun documento selezionato', 'err'); return; }
+  const pages = String(doc.body || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const bundle = {
+    format: READER_DOC_FORMAT,
+    version: 1,
+    title: doc.title || 'Senza titolo',
+    author: doc.author || '',
+    pages: pages.length ? pages : [''],
+    exportedAt: new Date().toISOString(),
+  };
+  download(`${slugify(doc.title)}.cadoc.json`, JSON.stringify(bundle, null, 2), 'application/json');
+  toast('Documento esportato per il Lettore', 'ok');
+}
+
 // ------------------------------------------------------------------ init
 function init() {
   el('btn-new-doc').addEventListener('click', createDoc);
@@ -193,6 +214,7 @@ function init() {
   el('btn-copy-cmd').addEventListener('click', copyCommand);
   el('btn-download-mcfunction').addEventListener('click', downloadMcfunction);
   el('btn-export-doc-txt').addEventListener('click', downloadTxt);
+  el('btn-export-doc-reader').addEventListener('click', exportForReader);
 }
 
 /** Called when a project is opened so the archive reflects it. */

@@ -9,6 +9,17 @@ soprattutto: il salvataggio **non viene caricato da nessuna parte**. La pagina
 legge la cartella del mondo sul tuo computer e fa tutto lì, anche quando l'app
 è aperta da un indirizzo web.
 
+## Editor e Lettore
+
+L'app è divisa in due, cambiabile dai due bottoni in alto:
+
+- **✏️ Editor** — dove si fa tutto il lavoro: apri il mondo, disegni la mappa
+  a layer, scrivi i documenti dell'Archivio. Richiede il mondo Minecraft.
+- **📖 Lettore** — un visualizzatore leggero per i file che l'Editor ha già
+  esportato: apri un'immagine della mappa, o un documento esportato con
+  *"Esporta per il Lettore"*. Non serve nessun mondo: è pensato per chi deve
+  solo *guardare* quello che hai fatto, anche su un altro computer.
+
 ---
 
 ## Come si apre
@@ -86,12 +97,18 @@ dentro la cartella `web/`.
    può avere un **banner** (un'immagine PNG/JPEG/WebP caricata dal proprietà),
    piantato come una bandierina sulla mappa e nell'anteprima al passaggio del
    mouse.
-6. **Esporta** — PNG, SVG (**un gruppo per layer**, apribile in
-   Inkscape/Illustrator), GeoJSON, o il progetto completo `.cubeatlas.json`
-   che si riapre con *Importa* mantenendo i layer.
+6. **Esporta** — PNG (un'unica immagine piatta, con tutti i layer disegnati
+   sopra: è quello che vedi nell'app), SVG (**un gruppo per layer**, apribile
+   in Inkscape/Illustrator), GeoJSON, o il progetto completo
+   `.cubeatlas.json` che si riapre con *Importa* mantenendo i layer. PNG e
+   SVG chiedono prima l'area da esportare (vista attuale, o tutto il mondo
+   generato) invece di doverla impostare prima altrove.
 7. **Archivio** — scrivi i documenti del tuo impero, vedili impaginati come un
    libro di Minecraft ed esportali come comando `/give` (formato 1.20.5+ o
-   precedenti), file `.mcfunction` o testo.
+   precedenti), file `.mcfunction` o testo. *"📖 Esporta per il Lettore"*
+   salva invece un file `.cadoc.json` pensato per essere aperto nel Lettore:
+   stessa suddivisione in pagine, ma pensata per leggere a schermo, non per
+   il limite delle pagine di un libro di Minecraft.
 
 Il salvataggio è automatico: atlanti e documenti stanno nell'archiviazione
 locale del browser. Usa *Esporta .json* per averne una copia tua.
@@ -141,6 +158,10 @@ web/                       l'applicazione: file statici, nessuna build
     source.js              accesso al salvataggio (cartella o elenco file)
   js/worker.js             il motore fuori dal thread dell'interfaccia
   js/app/                  interfaccia: mappa, layer, archivio, storage
+    main.js                app shell: cambio modalità (Editor/Lettore) e schermata
+    atlas.js                schermata Atlante: mappa, layer, disegno, export
+    archive.js               schermata Archivio: documenti ed export libri
+    reader.js                schermata Lettore: apre mappe e documenti già esportati
 tools/
   serve.js                 server statico per lo sviluppo
   make-textures.js         genera le texture (con encoder PNG incluso)

@@ -18,8 +18,12 @@
 <div id="app">
 
   <header id="topbar">
-    <div class="logo"><span class="cube"></span><span>CUBE<b>-ATLAS</b></span></div>
-    <nav class="tabs">
+    <div class="logo"><span class="cube"></span><span>CUBE<b>-ATLAS</b></span><small id="mode-label"> Editor</small></div>
+    <nav class="tabs" id="mode-tabs">
+      <button class="tab active" data-mode="editor" title="Crea e modifica atlanti e documenti">✏️ Editor</button>
+      <button class="tab" data-mode="reader" title="Apri mappe e documenti già esportati">📖 Lettore</button>
+    </nav>
+    <nav class="tabs sub-tabs" id="editor-tabs">
       <button class="tab active" data-screen="atlas">Atlante</button>
       <button class="tab" data-screen="archive">Archivio</button>
     </nav>
@@ -191,14 +195,9 @@
 
       <section class="panel">
         <h2><span class="num">8</span> Esporta mappa</h2>
-        <label>
-          <span class="lbl">Area da esportare</span>
-          <select id="export-extent">
-            <option value="view">Vista attuale</option>
-            <option value="all">Tutto il mondo generato</option>
-          </select>
-        </label>
-        <button class="btn" id="btn-export-png">Immagine PNG</button>
+        <div class="hint">Ogni esportazione chiede prima l'area: la vista attuale, o tutto
+          il mondo generato.</div>
+        <button class="btn" id="btn-export-png">Immagine PNG (con i layer)</button>
         <button class="btn" id="btn-export-svg">Vettoriale SVG</button>
         <button class="btn" id="btn-export-geojson">Dati GeoJSON</button>
         <div id="export-status" class="status"></div>
@@ -274,8 +273,55 @@
         <button class="btn btn-sm" id="btn-copy-cmd">Copia comando</button>
         <button class="btn btn-sm" id="btn-download-mcfunction">Scarica .mcfunction</button>
         <button class="btn btn-sm" id="btn-export-doc-txt">Scarica testo .txt</button>
+        <button class="btn btn-sm btn-primary" id="btn-export-doc-reader">📖 Esporta per il Lettore</button>
       </aside>
     </div>
+  </div>
+
+  <!-- ============================== LETTORE ========================== -->
+  <div class="screen" id="screen-reader">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>Apri una mappa</h2>
+        <div class="hint">Apri un'immagine PNG esportata dall'Editor (Atlante → Esporta mappa).</div>
+        <button class="btn btn-primary" id="btn-reader-open-map">Apri immagine…</button>
+        <input type="file" id="reader-map-input" accept="image/png,image/jpeg,image/webp" class="hidden">
+        <div id="reader-map-status" class="status"></div>
+      </section>
+      <section class="panel">
+        <h2>Apri un documento</h2>
+        <div class="hint">Apri un documento esportato dall'Archivio con "Esporta per il Lettore"
+          (.cadoc.json). Un semplice .txt si apre anche, come testo normale.</div>
+        <button class="btn btn-primary" id="btn-reader-open-doc">Apri documento…</button>
+        <input type="file" id="reader-doc-input" accept=".cadoc.json,.json,.txt,application/json,text/plain" class="hidden">
+        <div id="reader-doc-status" class="status"></div>
+      </section>
+    </aside>
+
+    <main class="reader-main">
+      <div class="reader-empty" id="reader-empty">
+        <h3>Cube-Atlas Lettore</h3>
+        <p>Apri una mappa o un documento esportato dall'Editor per vederlo qui.</p>
+        <p>Non serve aprire nessun mondo: il Lettore mostra solo file già esportati.</p>
+      </div>
+
+      <div class="reader-image-view hidden" id="reader-image-view">
+        <div class="reader-image-bar">
+          <span id="reader-image-name"></span>
+          <button class="btn btn-sm" id="btn-reader-image-fit">Adatta alla finestra</button>
+          <button class="btn btn-sm" id="btn-reader-image-full">Dimensione reale</button>
+        </div>
+        <div class="reader-image-scroll" id="reader-image-scroll">
+          <img id="reader-image" alt="Mappa esportata">
+        </div>
+      </div>
+
+      <div class="reader-doc-view hidden" id="reader-doc-view">
+        <h3 class="book-title" id="reader-doc-title"></h3>
+        <p class="book-author" id="reader-doc-author"></p>
+        <div id="reader-doc-pages"></div>
+      </div>
+    </main>
   </div>
 
 </div>
