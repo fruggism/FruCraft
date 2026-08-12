@@ -390,6 +390,31 @@ test('il calcolo dei blocchi per tile segue lo zoom', () => {
   assertEqual(tiler.blocksPerTile(-4), 4096, 'zoom -4');
 });
 
+test('il filtro blocchi nasconde davvero un blocco dal tile renderizzato', async () => {
+  // Regressione: renderBaseTile passava le opzioni a readSurface solo per il
+  // rilevamento delle ferrovie, non per hiddenBlocks — il filtro cambiava lo
+  // stato in worker.js ma non aveva alcun effetto sui pixel prodotti.
+  const { x, z } = fixture.TEST_BARRIER;
+  const tx = Math.floor(x / tiler.TILE_SIZE);
+  const ty = Math.floor(z / tiler.TILE_SIZE);
+  const px = x - tx * tiler.TILE_SIZE;
+  const py = z - ty * tiler.TILE_SIZE;
+  const pixelAt = (rgba) => {
+    const o = (py * tiler.TILE_SIZE + px) * 4;
+    return [rgba[o], rgba[o + 1], rgba[o + 2]];
+  };
+
+  const withoutFilter = await tiler.renderBaseTile(source, OVERWORLD.regionDir, tx, ty, {});
+  const withFilter = await tiler.renderBaseTile(source, OVERWORLD.regionDir, tx, ty, {
+    hiddenBlocks: new Set(['minecraft:barrier']),
+  });
+
+  const a = pixelAt(withoutFilter.rgba);
+  const b = pixelAt(withFilter.rgba);
+  assert(a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2],
+    `il pixel sul blocco nascosto deve cambiare quando è nel filtro: senza=${a} con=${b}`);
+});
+
 // ---------------------------------------------------------------------------
 section('Generazione in background');
 

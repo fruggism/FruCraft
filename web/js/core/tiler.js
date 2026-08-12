@@ -80,7 +80,9 @@ export async function renderBaseTile(source, regionDir, tx, ty, options = {}) {
 
   // Read one extra row/column to the north and west so the relief shading at
   // the tile edge matches its neighbour and no seam shows.
-  const grid = await readSurface(source, regionDir, minX - 1, minZ - 1, span + 1, span + 1);
+  const grid = await readSurface(source, regionDir, minX - 1, minZ - 1, span + 1, span + 1, {
+    hiddenBlocks: options.hiddenBlocks,
+  });
   if (grid.totalChunks === 0) return { rgba: emptyTile(), empty: true };
 
   const gw = grid.width;

@@ -94,10 +94,19 @@ function ensureTerrain() {
 }
 
 
+// A single barrier sitting right on top of the surface, away from every
+// other feature (river/lake/forest/desert/peak). Used by the block-filter
+// regression test: with 'minecraft:barrier' hidden it must be skipped like
+// air, revealing the real surface block underneath.
+const TEST_BARRIER = { x: 450, z: 450 };
+
 function blockAt(x, y, z) {
   const i = z * SIZE + x;
   const surface = heights[i];
   const kind = kinds[i];
+  if (x === TEST_BARRIER.x && z === TEST_BARRIER.z && y === surface + 1) {
+    return 'minecraft:barrier';
+  }
   if (kind === 1) {
     if (y > SEA_LEVEL) return 'minecraft:air';
     if (y > surface) return 'minecraft:water';
@@ -283,6 +292,6 @@ function generateNested({ quiet = true } = {}) {
 
 export {
   generate, generateNested, ensureTerrain,
-  WORLD_DIR, NESTED_WORLD_DIR, FAR_REGION, SIZE, SEA_LEVEL,
+  WORLD_DIR, NESTED_WORLD_DIR, FAR_REGION, SIZE, SEA_LEVEL, TEST_BARRIER,
   heights, kinds, blockAt, biomeAt, packPadded, blockBits, biomeBits,
 };
