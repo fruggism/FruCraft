@@ -37,11 +37,11 @@ export const DEFAULT_AREA_STYLE = {
  * running side by side ("linee adiacenti") tell themselves apart by colour. */
 export const DEFAULT_TRANSIT_STYLE = {
   color: '#4fa3d1', width: 5, dash: 'solid', opacity: 1, showName: true,
-  // How every station in the layer is drawn (a per-layer choice, not
-  // per-station: a metro map reads best when all its stops match). An
-  // interchange (2+ lines) always keeps its colour stripes regardless of
-  // shape — only the outline follows stationShape.
-  stationShape: 'circle', stationSize: 14,
+  // The default look for every station in the layer — small dots, so a
+  // station doesn't outshine the lines. A single station can still override
+  // shape/size for itself (see normalizeStation), which is when this
+  // matters: it's what a station falls back to when it hasn't.
+  stationShape: 'circle', stationSize: 10,
 };
 export const DEFAULT_NOTE_STYLE = {
   color: '#f5e14a', size: 16, showName: true,
@@ -150,6 +150,8 @@ export function normalizeFeature(raw, layerType) {
  * same layer can reference the same station id, which is how two metro lines
  * "share a stop" ("passare sulle stazioni per far fermare le linee anche
  * lì") without duplicating its position or name. */
+const STATION_SHAPES = ['circle', 'square', 'rectangle'];
+
 export function normalizeStation(raw) {
   if (!raw || typeof raw !== 'object') return null;
   if (!isNum(raw.x) || !isNum(raw.z)) return null;
@@ -161,6 +163,11 @@ export function normalizeStation(raw) {
     name: typeof raw.name === 'string' ? raw.name : '',
     description: typeof raw.description === 'string' ? raw.description : '',
     labelOffset: Array.isArray(off) && off.length === 2 && isNum(off[0]) && isNum(off[1]) ? [off[0], off[1]] : null,
+    // null/absent means "use the layer's default symbol" (see
+    // DEFAULT_TRANSIT_STYLE) — only set when this one station has been
+    // customized individually from its own editor.
+    shape: STATION_SHAPES.includes(raw.shape) ? raw.shape : null,
+    size: isNum(raw.size) && raw.size > 0 ? raw.size : null,
   };
 }
 

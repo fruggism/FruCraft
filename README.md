@@ -107,9 +107,14 @@ dentro la cartella `web/`.
    Selezionando un layer trasporti si apre anche *"Linee visibili"*, un
    elenco con una casella per linea per mostrarne solo alcune sulla mappa.
    Il simbolo delle stazioni (cerchio, quadrato o rettangolo, e la sua
-   dimensione) si sceglie per l'intero layer in *"Simbolo delle stazioni"*:
-   una stazione con più linee resta comunque riconoscibile, allargata con
-   una striscia colorata per ogni linea, nella stessa forma scelta.
+   dimensione) si sceglie per l'intero layer in *"Simbolo delle stazioni"*
+   — per default piccoli pallini, per non sovrastare le linee. Selezionando
+   una singola stazione con *Seleziona* si apre il suo editor: nome,
+   descrizione e — spuntando *"Simbolo personalizzato per questa
+   stazione"* — una forma e una dimensione solo per lei, senza cambiare il
+   default del layer. Una stazione con più linee resta comunque
+   riconoscibile, allargata con una striscia colorata per ogni linea, nella
+   forma scelta (di layer o personalizzata).
 | **Punti di interesse** | un simbolo sul punto | forma, colore, dimensione, categoria (abitazione, negozio, istituzioni, fiume, montagna, lago…), descrizione |
 | **Note** | promemoria sulla mappa, per le cose da costruire | colore, dimensione, descrizione libera |
 | **Aree** | poligoni chiusi che delimitano zone | colore e opacità del riempimento, colore/spessore/tratteggio del bordo |

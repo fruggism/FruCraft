@@ -14,6 +14,7 @@ export const state = {
   project: null,      // the open project (source of truth for layers/docs)
   selectedLayerId: null,
   selectedFeature: null, // { layerId, featureId }
+  selectedStation: null, // { layerId, stationId } — mutually exclusive with selectedFeature
   map: null,
   dirty: false,
 };
@@ -211,6 +212,17 @@ export function findFeature(layerId, featureId) {
 export function selectedFeature() {
   if (!state.selectedFeature) return null;
   return findFeature(state.selectedFeature.layerId, state.selectedFeature.featureId);
+}
+
+export function findStation(layerId, stationId) {
+  const layer = findLayer(layerId);
+  if (!layer) return null;
+  return (layer.stations || []).find((s) => s.id === stationId) || null;
+}
+
+export function selectedStation() {
+  if (!state.selectedStation) return null;
+  return findStation(state.selectedStation.layerId, state.selectedStation.stationId);
 }
 
 // Autosave: coalesce rapid edits into a single PUT.

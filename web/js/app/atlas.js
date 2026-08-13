@@ -9,7 +9,7 @@
 import {
   state, el, escapeHtml, toast, toLatLng, fromLatLng, roundCoord,
   debounce, newId, confirmDialog, promptDialog, pickDialog, alertDialog, download, slugify, setStatus, markDirty,
-  findLayer, selectedLayer, findFeature, selectedFeature, engine,
+  findLayer, selectedLayer, findFeature, selectedFeature, findStation, selectedStation, engine,
 } from './ui-core.js';
 
 const DASHES = {
@@ -744,8 +744,11 @@ function linesAtStation(station, layer) {
  *  by any one line. */
 function buildStationMarker(station, layer) {
   const layerStyle = layer.defaultStyle || {};
-  const shape = STATION_SHAPES.includes(layerStyle.stationShape) ? layerStyle.stationShape : 'circle';
-  const size = Number(layerStyle.stationSize) || 14;
+  // A station's own shape/size (set from its editor) wins; otherwise it
+  // falls back to the layer's default symbol (small dots, normally).
+  const shape = STATION_SHAPES.includes(station.shape) ? station.shape
+    : (STATION_SHAPES.includes(layerStyle.stationShape) ? layerStyle.stationShape : 'circle');
+  const size = Number(station.size) || Number(layerStyle.stationSize) || 14;
   const lines = linesAtStation(station, layer);
   const colors = lines.map((f) => styleOf(f, layer).color || '#4fa3d1');
   const [w, h] = stationIconSize(size, colors.length, shape);
@@ -790,7 +793,8 @@ function buildStationMarker(station, layer) {
   marker.on('click', (e) => {
     if (e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
     if (placingStation) { placeStationAt(e.latlng); return; }
-    if (currentTool === 'delete') deleteStation(layer.id, station.id);
+    if (currentTool === 'delete') { deleteStation(layer.id, station.id); return; }
+    if (currentTool === 'select') selectStation(layer.id, station.id);
   });
   return group;
 }
@@ -826,6 +830,7 @@ function deleteStation(layerId, stationId) {
   for (const f of layer.features) f.stationIds = (f.stationIds || []).filter((id) => id !== stationId);
   refreshStations(layerId);
   markDirty();
+  if (state.selectedStation && state.selectedStation.stationId === stationId) selectStation(null);
   if (state.selectedFeature && state.selectedFeature.layerId === layerId) refreshProps();
   toast('Stazione eliminata');
 }
@@ -989,6 +994,17 @@ function selectFeature(layerId, featureId) {
   // Drop any half-finished vertex editing on the previous selection.
   if (editingFeatureId && editingFeatureId !== featureId) toggleVertexEditing(editingFeatureId, false);
   state.selectedFeature = layerId && featureId ? { layerId, featureId } : null;
+  state.selectedStation = null; // a station and a feature are never selected at once
+  refreshProps();
+}
+
+/** Selects a station for editing (name/description/symbol) in the
+ *  Properties panel — clicking a station with "Seleziona" active, the same
+ *  way clicking a line or a point opens its own properties. */
+function selectStation(layerId, stationId) {
+  if (editingFeatureId) toggleVertexEditing(editingFeatureId, false);
+  state.selectedFeature = null;
+  state.selectedStation = layerId && stationId ? { layerId, stationId } : null;
   refreshProps();
 }
 
@@ -1283,6 +1299,8 @@ function onDrawCreated(e) {
 // ----------------------------------------------------- properties panel
 function refreshProps() {
   const host = el('props');
+  const station = selectedStation();
+  if (station) { renderStationProps(host, station); return; }
   const feature = selectedFeature();
   if (!feature) {
     host.innerHTML = '<div class="prop-empty">Nessun elemento selezionato.<br>Clicca un elemento sulla mappa.</div>';
@@ -1404,6 +1422,117 @@ function refreshProps() {
     </div>`;
 
   wireProps(host, feature, layer);
+}
+
+/** A station's own Properties panel — reached by selecting it on the map
+ *  with "Seleziona" active. Name/description were only ever settable at
+ *  creation before this; shape/size default to the layer's symbol (see
+ *  "Simbolo delle stazioni" on the layer panel) until customized here. */
+function renderStationProps(host, station) {
+  const layerId = state.selectedStation.layerId;
+  const layer = findLayer(layerId);
+  if (!layer) {
+    host.innerHTML = '<div class="prop-empty">Nessun elemento selezionato.<br>Clicca un elemento sulla mappa.</div>';
+    return;
+  }
+  const layerStyle = layer.defaultStyle || {};
+  const custom = STATION_SHAPES.includes(station.shape) || !!station.size;
+  const shape = custom ? station.shape : (layerStyle.stationShape || 'circle');
+  const size = custom ? (station.size || layerStyle.stationSize || 14) : (layerStyle.stationSize || 14);
+  const lines = linesAtStation(station, layer);
+  const lineChips = lines.map((f) => (
+    `<span class="line-chip" style="background:${styleOf(f, layer).color || '#4fa3d1'}"></span>${escapeHtml(f.name || '(senza nome)')}`
+  )).join('<br>');
+
+  host.innerHTML = `
+    <label><span class="lbl">Nome</span><input type="text" class="st-name" value="${escapeHtml(station.name)}"></label>
+    <label><span class="lbl">Descrizione</span><textarea class="st-description" rows="3">${escapeHtml(station.description)}</textarea></label>
+    <label style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" class="st-custom" ${custom ? 'checked' : ''}> Simbolo personalizzato per questa stazione
+    </label>
+    <div class="st-custom-fields" ${custom ? '' : 'style="display:none"'}>
+      <label><span class="lbl">Simbolo</span>
+        <select class="st-shape">
+          <option value="circle" ${shape === 'circle' ? 'selected' : ''}>Cerchio</option>
+          <option value="square" ${shape === 'square' ? 'selected' : ''}>Quadrato</option>
+          <option value="rectangle" ${shape === 'rectangle' ? 'selected' : ''}>Rettangolo</option>
+        </select>
+      </label>
+      <label><span class="lbl">Dimensione: <b class="st-size-v">${size}</b> px</span>
+        <input type="range" class="st-size" min="8" max="28" step="1" value="${size}"></label>
+    </div>
+    <div class="hint">${lines.length ? 'Linee collegate:' : 'Nessuna linea collegata a questa stazione'}</div>
+    ${lineChips ? `<div class="line-chip-list">${lineChips}</div>` : ''}
+    <div class="row">
+      <button class="btn btn-sm" data-act="zoom">Vai alla stazione</button>
+      <button class="btn btn-sm btn-danger" data-act="delete">Elimina</button>
+    </div>`;
+
+  wireStationProps(host, station, layer);
+}
+
+function wireStationProps(host, station, layer) {
+  const commit = () => {
+    markDirty();
+    refreshStations(layer.id);
+    Main.renderLayerList();
+  };
+
+  const bindText = (sel, apply) => {
+    const node = host.querySelector(sel);
+    if (node) node.addEventListener('input', debounce(() => apply(node.value), 250));
+  };
+  bindText('.st-name', (v) => { station.name = v; commit(); });
+  bindText('.st-description', (v) => { station.description = v; commit(); });
+
+  const customBox = host.querySelector('.st-custom-fields');
+  const customCb = host.querySelector('.st-custom');
+  if (customCb) {
+    customCb.addEventListener('change', () => {
+      if (customCb.checked) {
+        const layerStyle = layer.defaultStyle || {};
+        station.shape = STATION_SHAPES.includes(layerStyle.stationShape) ? layerStyle.stationShape : 'circle';
+        station.size = Number(layerStyle.stationSize) || 14;
+        if (customBox) customBox.style.display = '';
+      } else {
+        station.shape = null;
+        station.size = null;
+        if (customBox) customBox.style.display = 'none';
+      }
+      commit();
+    });
+  }
+
+  const shapeSel = host.querySelector('.st-shape');
+  if (shapeSel) shapeSel.addEventListener('change', () => { station.shape = shapeSel.value; commit(); });
+
+  const sizeInput = host.querySelector('.st-size');
+  if (sizeInput) {
+    sizeInput.addEventListener('input', () => {
+      const readout = host.querySelector('.st-size-v');
+      if (readout) readout.textContent = sizeInput.value;
+      station.size = Number(sizeInput.value);
+      commit();
+    });
+  }
+
+  const zoomBtn = host.querySelector('[data-act="zoom"]');
+  if (zoomBtn) zoomBtn.addEventListener('click', () => zoomToStation(station));
+  const delBtn = host.querySelector('[data-act="delete"]');
+  if (delBtn) {
+    delBtn.addEventListener('click', async () => {
+      const ok = await confirmDialog({
+        title: 'Eliminare la stazione?',
+        message: `"${station.name || 'senza nome'}" verrà rimossa, e scollegata da ogni linea che vi si fermava.`,
+        confirmLabel: 'Elimina', danger: true,
+      });
+      if (ok) deleteStation(layer.id, station.id);
+    });
+  }
+}
+
+function zoomToStation(station) {
+  map.setView(toLatLng(station.x, station.z), Math.max(map.getZoom(), -1));
 }
 
 function wireProps(host, feature, layer) {
