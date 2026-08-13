@@ -435,6 +435,15 @@ details.sub > summary::-webkit-details-marker { display: none; }
   box-shadow: 0 0 0 1px #0d0d0d; vertical-align: middle;
 }
 
+.line-visibility-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.line-visibility-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer;
+  background: rgba(255, 255, 255, .04);
+}
+.line-visibility-row input[type="checkbox"] { flex: none; }
+.line-visibility-row .line-chip { margin: 0; }
+.line-visibility-row span.lname { flex: 1; }
+
 /* --------------------------------------------------------------- archivio */
 .doc-list { list-style: none; margin: 0; padding: 0; }
 .doc-item {

@@ -387,6 +387,8 @@ function selectLayer(id) {
   state.selectedLayerId = id;
   Atlas.setTool('select');
   renderLayerList();
+  const layer = state.project && state.project.layers.find((l) => l.id === id);
+  if (layer && layer.type === 'transit') Atlas.openLineVisibilityMenu(layer);
 }
 
 function updateToolAvailability() {

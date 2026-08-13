@@ -491,7 +491,10 @@ function buildFeatureLayer(feature, layer) {
     group.addLayer(primary);
   }
 
-  if (style.showName !== false && feature.name) {
+  // Transit lines never show their name on the map — with several lines
+  // packed close together (and now auto-bundled side by side), a floating
+  // name per line only adds clutter; the name is still one hover away.
+  if (layer.type !== 'transit' && style.showName !== false && feature.name) {
     const { marker: labelMarker, leader } = buildLabel({
       text: escapeHtml(feature.name),
       anchor: bannerAnchor(feature, layer),
@@ -852,7 +855,13 @@ function renderAllLayers() {
   if (!state.project) return;
   for (const layer of state.project.layers) {
     const group = L.layerGroup();
-    for (const feature of layer.features) group.addLayer(buildFeatureLayer(feature, layer));
+    for (const feature of layer.features) {
+      const built = buildFeatureLayer(feature, layer);
+      // Still tracked in `rendered` (buildFeatureLayer does that) even when
+      // left off the map — the "Linee visibili" menu re-adds it later
+      // without a full rebuild.
+      if (feature.visible !== false) group.addLayer(built);
+    }
     if (layer.type === 'transit') {
       const stationGroup = L.layerGroup();
       for (const station of layer.stations || []) stationGroup.addLayer(buildStationMarker(station, layer));
@@ -883,8 +892,65 @@ function refreshFeature(layerId, featureId) {
   if (wasEditing) commitVertexPositions(featureId);
   if (entry) group.removeLayer(entry.group);
   const fresh = buildFeatureLayer(feature, layer);
-  group.addLayer(fresh);
+  if (feature.visible !== false) group.addLayer(fresh);
   if (wasEditing) toggleVertexEditing(featureId, true);
+}
+
+/** Shows/hides one transit line without a full re-render — flips the
+ *  stored flag and adds/removes its already-built layer group directly. */
+function setLineVisible(layer, feature, visible) {
+  feature.visible = visible;
+  markDirty();
+  const group = layerGroups.get(layer.id);
+  const entry = rendered.get(feature.id);
+  if (!group || !entry) return;
+  if (visible) group.addLayer(entry.group);
+  else group.removeLayer(entry.group);
+}
+
+/** "Linee visibili" — opens when a transit layer is selected in the sidebar,
+ *  listing every line so only some can be shown at a time. Checkboxes apply
+ *  immediately (see setLineVisible), not on close. */
+function openLineVisibilityMenu(layer) {
+  const lines = layer.features;
+  const host = el('modal-host');
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  const rowsHtml = lines.length
+    ? lines.map((f) => `
+      <label class="line-visibility-row">
+        <input type="checkbox" data-line="${f.id}" ${f.visible === false ? '' : 'checked'}>
+        <span class="line-chip" style="background:${styleOf(f, layer).color || '#4fa3d1'}"></span>
+        <span class="lname">${escapeHtml(f.name || '(senza nome)')}</span>
+      </label>`).join('')
+    : '<p class="hint" style="margin:0">Nessuna linea in questo layer.</p>';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <h3>Linee visibili — ${escapeHtml(layer.name)}</h3>
+      <div class="modal-body">
+        ${lines.length ? '<div class="row"><button class="btn btn-sm" data-act="all">Mostra tutte</button><button class="btn btn-sm" data-act="none">Nascondi tutte</button></div>' : ''}
+        <div class="line-visibility-list">${rowsHtml}</div>
+      </div>
+      <div class="row"><button class="btn btn-primary" data-act="ok">Chiudi</button></div>
+    </div>`;
+  const done = () => backdrop.remove();
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) { done(); return; }
+    const act = e.target.dataset && e.target.dataset.act;
+    if (act === 'ok') { done(); return; }
+    if (act === 'all' || act === 'none') {
+      const visible = act === 'all';
+      backdrop.querySelectorAll('.line-visibility-row input[type="checkbox"]').forEach((cb) => { cb.checked = visible; });
+      lines.forEach((f) => setLineVisible(layer, f, visible));
+    }
+  });
+  backdrop.addEventListener('change', (e) => {
+    const id = e.target.dataset && e.target.dataset.line;
+    if (!id) return;
+    const feature = lines.find((f) => f.id === id);
+    if (feature) setLineVisible(layer, feature, e.target.checked);
+  });
+  host.appendChild(backdrop);
 }
 
 function setLayerVisibility(layerId, visible) {
@@ -1303,9 +1369,10 @@ function refreshProps() {
         ${feature.image ? '<button class="btn btn-sm btn-danger" data-act="rmimg" style="margin:0">Rimuovi</button>' : ''}
       </div>
     </label>
+    ${layer.type !== 'transit' ? `
     <label style="display:flex;align-items:center;gap:8px">
       <input type="checkbox" class="f-showName" ${style.showName !== false ? 'checked' : ''}> Mostra il nome sulla mappa
-    </label>
+    </label>` : ''}
     ${specific}
     <div class="row">
       <button class="btn btn-sm" data-act="zoom">Vai all'elemento</button>
@@ -1656,8 +1723,8 @@ function drawVectors(ctx, bounds, scale) {
         }
       }
 
-      // Labels
-      if (style.showName !== false && feature.name) {
+      // Labels — transit lines never show their name on the map (see buildFeatureLayer).
+      if (layer.type !== 'transit' && style.showName !== false && feature.name) {
         const [lx, ly] = isPointLayer(layer.type)
           ? toPx(feature.coord[0], feature.coord[1])
           : centroidPx(feature.coords, toPx);
@@ -1851,7 +1918,7 @@ async function exportSVG() {
         parts.push(`<g transform="translate(${px - size / 2},${py - size / 2})">${poiSvg(style.shape || 'circle', style.color || '#e05a47', size)}</g>`);
       }
 
-      if (style.showName !== false && feature.name) {
+      if (layer.type !== 'transit' && style.showName !== false && feature.name) {
         const [lx, ly] = isPointLayer(layer.type)
           ? toPx(feature.coord[0], feature.coord[1])
           : (() => {
@@ -2045,7 +2112,7 @@ export {
   // looks like, not two that can drift apart.
   styleOf, dashFor, poiSvg, noteSvg, stationSvg, popupHtml, lengthOf, areaOf,
   bannerMarker, bannerAnchor, isPointLayer,
-  beginPlaceStation, showTransitReport, orderedStationsForLine,
+  beginPlaceStation, showTransitReport, orderedStationsForLine, openLineVisibilityMenu,
 };
 export function getMap() { return map; }
 export function getCurrentTool() { return currentTool; }

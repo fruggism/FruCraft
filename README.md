@@ -101,7 +101,11 @@ dentro la cartella `web/`.
    una prima ancora che qualunque linea ci passi; una stazione con due o più
    linee diventa un'icona rettangolare con una striscia colorata per ogni
    linea. *"📋 Elenco linee e stazioni"* apre la lista di ogni linea del layer
-   con le sue fermate in ordine.
+   con le sue fermate in ordine. Il nome di una linea non compare mai sulla
+   mappa (resta visibile al passaggio del mouse, e nell'elenco): con più
+   linee vicine affiancate automaticamente sarebbe solo confusione.
+   Selezionando un layer trasporti si apre anche *"Linee visibili"*, un
+   elenco con una casella per linea per mostrarne solo alcune sulla mappa.
 | **Punti di interesse** | un simbolo sul punto | forma, colore, dimensione, categoria (abitazione, negozio, istituzioni, fiume, montagna, lago…), descrizione |
 | **Note** | promemoria sulla mappa, per le cose da costruire | colore, dimensione, descrizione libera |
 | **Aree** | poligoni chiusi che delimitano zone | colore e opacità del riempimento, colore/spessore/tratteggio del bordo |

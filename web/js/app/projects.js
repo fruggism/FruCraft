@@ -133,6 +133,10 @@ export function normalizeFeature(raw, layerType) {
     // Filtered against the layer's actual station list by normalizeLayer,
     // since that list isn't known here.
     out.stationIds = Array.isArray(raw.stationIds) ? raw.stationIds.filter((s) => typeof s === 'string') : [];
+    // Per-line show/hide, set from the layer's "Linee visibili" menu.
+    // Absent/anything but `false` means visible, so older saved projects
+    // (before this field existed) show every line as before.
+    out.visible = raw.visible !== false;
   }
   return out;
 }
