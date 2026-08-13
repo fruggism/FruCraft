@@ -304,19 +304,28 @@ function noteSvg(color, size) {
   </svg>`;
 }
 
-/** A shared transit station: a white dot with a dark core when only one (or
- *  no) line stops there. Once a second line joins, it becomes a rounded
- *  rectangle with one colour stripe per line — a real interchange, not just
- *  a dot — so a glance at the icon says how many lines meet there and which. */
-function stationSvg(size, lineColors) {
+const STATION_SHAPES = ['circle', 'square', 'rectangle'];
+// How rounded the icon's corners are, as a fraction of its height — the
+// same shape choice applies whether the station is a lone stop or an
+// interchange, so the two always look like a matching family of icons.
+const STATION_SHAPE_RADIUS = { circle: 0.5, square: 0.12, rectangle: 0.22 };
+
+/** A shared transit station: a white dot (or square/rectangle, per
+ *  `layer.defaultStyle.stationShape`) with a dark core when only one (or no)
+ *  line stops there. Once a second line joins, it becomes a wider icon of
+ *  the same shape with one colour stripe per line — a real interchange, not
+ *  just a dot — so a glance says how many lines meet there and which. */
+function stationSvg(size, lineColors, shape = 'circle') {
+  const rFrac = STATION_SHAPE_RADIUS[shape] ?? STATION_SHAPE_RADIUS.circle;
   if (!lineColors || lineColors.length <= 1) {
-    const s = size, half = s / 2;
-    return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="${half}" cy="${half}" r="${half - 2}" fill="#ffffff" stroke="#1a1a1a" stroke-width="2.5"/>
-      <circle cx="${half}" cy="${half}" r="${Math.max(1, half - 6)}" fill="${(lineColors && lineColors[0]) || '#1a1a1a'}"/>
+    const [w, h] = stationIconSize(size, 1, shape);
+    const rx = h * rFrac;
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1.25" y="1.25" width="${w - 2.5}" height="${h - 2.5}" rx="${rx}" fill="#ffffff" stroke="#1a1a1a" stroke-width="2.5"/>
+      <rect x="5" y="5" width="${Math.max(1, w - 10)}" height="${Math.max(1, h - 10)}" rx="${Math.max(0, rx - 3)}" fill="${(lineColors && lineColors[0]) || '#1a1a1a'}"/>
     </svg>`;
   }
-  const [w, h] = stationIconSize(size, lineColors.length);
+  const [w, h] = stationIconSize(size, lineColors.length, shape);
   const pad = 2;
   const stripeW = (w - pad * 2) / lineColors.length;
   const stripes = lineColors.map((c, i) => (
@@ -324,16 +333,19 @@ function stationSvg(size, lineColors) {
   )).join('');
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
     ${stripes}
-    <rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="${h * 0.22}" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+    <rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="${h * rFrac}" fill="none" stroke="#1a1a1a" stroke-width="2"/>
   </svg>`;
 }
 
-/** Width/height of the station icon: a plain size×size square for a lone
- *  stop, widened for each extra line so its stripe has room. Shared between
+/** Width/height of the station icon: a plain square for a lone stop unless
+ *  "rettangolo" is chosen (a touch wider than tall even alone), widened
+ *  further for each extra line so its stripe has room. Shared between
  *  stationSvg (what to draw) and buildStationMarker (icon size/anchor), so
  *  the two can never disagree about how big the icon actually is. */
-function stationIconSize(size, lineCount) {
-  if (lineCount <= 1) return [size, size];
+function stationIconSize(size, lineCount, shape = 'circle') {
+  if (lineCount <= 1) {
+    return shape === 'rectangle' ? [size * 1.4, size * 0.8] : [size, size];
+  }
   return [Math.max(size * 1.6, size * 0.85 * lineCount), size];
 }
 
@@ -731,13 +743,15 @@ function linesAtStation(station, layer) {
  *  standalone element in its own right (see beginPlaceStation), not owned
  *  by any one line. */
 function buildStationMarker(station, layer) {
-  const size = 14;
+  const layerStyle = layer.defaultStyle || {};
+  const shape = STATION_SHAPES.includes(layerStyle.stationShape) ? layerStyle.stationShape : 'circle';
+  const size = Number(layerStyle.stationSize) || 14;
   const lines = linesAtStation(station, layer);
   const colors = lines.map((f) => styleOf(f, layer).color || '#4fa3d1');
-  const [w, h] = stationIconSize(size, colors.length);
+  const [w, h] = stationIconSize(size, colors.length, shape);
   const icon = L.divIcon({
     className: 'ca-poi ca-station',
-    html: stationSvg(size, colors),
+    html: stationSvg(size, colors, shape),
     iconSize: [w, h],
     iconAnchor: [w / 2, h / 2],
   });
@@ -793,6 +807,16 @@ function refreshStations(layerId) {
   for (const station of layer.stations || []) fresh.addLayer(buildStationMarker(station, layer));
   stationGroups.set(layerId, fresh);
   group.addLayer(fresh);
+}
+
+/** Sets the layer-wide station icon (shape + size, from "Simbolo delle
+ *  stazioni" in the layer panel) and re-draws every station right away. */
+function setStationStyle(layer, { shape, size } = {}) {
+  layer.defaultStyle = { ...(layer.defaultStyle || {}) };
+  if (shape !== undefined) layer.defaultStyle.stationShape = STATION_SHAPES.includes(shape) ? shape : 'circle';
+  if (size !== undefined) layer.defaultStyle.stationSize = Math.max(6, Number(size) || 14);
+  markDirty();
+  refreshStations(layer.id);
 }
 
 function deleteStation(layerId, stationId) {
@@ -2112,7 +2136,7 @@ export {
   // looks like, not two that can drift apart.
   styleOf, dashFor, poiSvg, noteSvg, stationSvg, popupHtml, lengthOf, areaOf,
   bannerMarker, bannerAnchor, isPointLayer,
-  beginPlaceStation, showTransitReport, orderedStationsForLine, openLineVisibilityMenu,
+  beginPlaceStation, showTransitReport, orderedStationsForLine, openLineVisibilityMenu, setStationStyle,
 };
 export function getMap() { return map; }
 export function getCurrentTool() { return currentTool; }

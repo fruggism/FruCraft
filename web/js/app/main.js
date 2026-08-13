@@ -409,7 +409,15 @@ function updateToolAvailability() {
     el('tool-draw-label').textContent = 'Disegna';
     el('tool-hint').textContent = 'Seleziona un layer per attivare gli strumenti.';
   }
-  el('transit-layer-tools').classList.toggle('hidden', !layer || layer.type !== 'transit');
+  const isTransit = !!layer && layer.type === 'transit';
+  el('transit-layer-tools').classList.toggle('hidden', !isTransit);
+  if (isTransit) {
+    const style = layer.defaultStyle || {};
+    el('station-shape').value = style.stationShape || 'circle';
+    const size = Number(style.stationSize) || 14;
+    el('station-size').value = size;
+    el('station-size-v').textContent = size;
+  }
 }
 
 function pickLayerType() {
@@ -752,6 +760,15 @@ async function initRest() {
   el('btn-transit-report').addEventListener('click', () => {
     const layer = state.project && state.project.layers.find((l) => l.id === state.selectedLayerId);
     if (layer) Atlas.showTransitReport(layer);
+  });
+  el('station-shape').addEventListener('change', () => {
+    const layer = state.project && state.project.layers.find((l) => l.id === state.selectedLayerId);
+    if (layer) Atlas.setStationStyle(layer, { shape: el('station-shape').value });
+  });
+  el('station-size').addEventListener('input', () => {
+    const layer = state.project && state.project.layers.find((l) => l.id === state.selectedLayerId);
+    el('station-size-v').textContent = el('station-size').value;
+    if (layer) Atlas.setStationStyle(layer, { size: el('station-size').value });
   });
   el('layer-name').addEventListener('input', debounce(() => {
     const layer = state.project && state.project.layers.find((l) => l.id === state.selectedLayerId);

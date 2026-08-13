@@ -37,6 +37,11 @@ export const DEFAULT_AREA_STYLE = {
  * running side by side ("linee adiacenti") tell themselves apart by colour. */
 export const DEFAULT_TRANSIT_STYLE = {
   color: '#4fa3d1', width: 5, dash: 'solid', opacity: 1, showName: true,
+  // How every station in the layer is drawn (a per-layer choice, not
+  // per-station: a metro map reads best when all its stops match). An
+  // interchange (2+ lines) always keeps its colour stripes regardless of
+  // shape — only the outline follows stationShape.
+  stationShape: 'circle', stationSize: 14,
 };
 export const DEFAULT_NOTE_STYLE = {
   color: '#f5e14a', size: 16, showName: true,

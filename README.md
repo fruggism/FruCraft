@@ -106,6 +106,10 @@ dentro la cartella `web/`.
    linee vicine affiancate automaticamente sarebbe solo confusione.
    Selezionando un layer trasporti si apre anche *"Linee visibili"*, un
    elenco con una casella per linea per mostrarne solo alcune sulla mappa.
+   Il simbolo delle stazioni (cerchio, quadrato o rettangolo, e la sua
+   dimensione) si sceglie per l'intero layer in *"Simbolo delle stazioni"*:
+   una stazione con più linee resta comunque riconoscibile, allargata con
+   una striscia colorata per ogni linea, nella stessa forma scelta.
 | **Punti di interesse** | un simbolo sul punto | forma, colore, dimensione, categoria (abitazione, negozio, istituzioni, fiume, montagna, lago…), descrizione |
 | **Note** | promemoria sulla mappa, per le cose da costruire | colore, dimensione, descrizione libera |
 | **Aree** | poligoni chiusi che delimitano zone | colore e opacità del riempimento, colore/spessore/tratteggio del bordo |
