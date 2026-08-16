@@ -169,22 +169,6 @@
             <span class="lbl">Nome del layer selezionato</span>
             <input type="text" id="layer-name">
           </label>
-          <div id="transit-layer-tools" class="hidden">
-            <button class="btn btn-sm" id="btn-new-independent-station">🚉 Nuova stazione</button>
-            <button class="btn btn-sm" id="btn-transit-report">📋 Elenco linee e stazioni</button>
-            <label>
-              <span class="lbl">Simbolo delle stazioni</span>
-              <select id="station-shape">
-                <option value="circle">Cerchio</option>
-                <option value="square">Quadrato</option>
-                <option value="rectangle">Rettangolo</option>
-              </select>
-            </label>
-            <label>
-              <span class="lbl">Dimensione: <b id="station-size-v">14</b> px</span>
-              <input type="range" id="station-size" min="8" max="28" step="1" value="14">
-            </label>
-          </div>
           <button class="btn btn-sm btn-danger" id="btn-delete-layer">Elimina layer selezionato</button>
         </div>
       </section>
@@ -206,6 +190,23 @@
           </button>
         </div>
         <div class="hint" id="tool-hint">Seleziona un layer per attivare gli strumenti.</div>
+        <div id="transit-layer-tools" class="hidden" style="margin-top:8px">
+          <div class="hint" style="margin:0 0 6px">Stazioni — nuova, modifica (seleziona quella sulla mappa), elenco:</div>
+          <button class="btn btn-sm" id="btn-new-independent-station">🚉 Nuova stazione</button>
+          <button class="btn btn-sm" id="btn-transit-report">📋 Elenco linee e stazioni</button>
+          <label>
+            <span class="lbl">Simbolo delle stazioni</span>
+            <select id="station-shape">
+              <option value="circle">Cerchio</option>
+              <option value="square">Quadrato</option>
+              <option value="rectangle">Rettangolo</option>
+            </select>
+          </label>
+          <label>
+            <span class="lbl">Dimensione: <b id="station-size-v">14</b> px</span>
+            <input type="range" id="station-size" min="8" max="28" step="1" value="14">
+          </label>
+        </div>
       </section>
 
       <section class="panel">

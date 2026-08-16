@@ -32,11 +32,13 @@ export const DEFAULT_AREA_STYLE = {
   fillColor: '#4fa3d1', fillOpacity: 0.25,
   strokeColor: '#4fa3d1', strokeWidth: 2, dash: 'solid', showName: true,
 };
-/* A transit line looks like a road (colour/width/dash) but carries no casing:
- * metro lines are usually drawn as a single flat stroke, and two of them
- * running side by side ("linee adiacenti") tell themselves apart by colour. */
+/* A transit line looks like a road (colour/width/dash), and can optionally
+ * take a road-style casing (contour) too — off by default, since a flat
+ * stroke plus the sideways nudge from offsetTransitCoords is usually enough
+ * to tell adjacent lines apart, but some maps want the contrast anyway. */
 export const DEFAULT_TRANSIT_STYLE = {
   color: '#4fa3d1', width: 5, dash: 'solid', opacity: 1, showName: true,
+  casingColor: '#2b2b2b', casingWidth: 0,
   // The default look for every station in the layer — small dots, so a
   // station doesn't outshine the lines. A single station can still override
   // shape/size for itself (see normalizeStation), which is when this

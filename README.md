@@ -89,7 +89,7 @@ dentro la cartella `web/`.
 | Tipo | Cosa disegna | Stile |
 |---|---|---|
 | **Strade** | tracciati a vertici successivi, estendibili in un secondo momento | colore, spessore, tratteggio, colore/spessore del bordo, nome |
-| **Trasporti** | linee di trasporto pubblico (metro, bus…), anche adiacenti fra loro | colore, spessore, tratteggio, **stazioni condivise**: una stazione collegata a più linee fa fermare tutte allo stesso punto |
+| **Trasporti** | linee di trasporto pubblico (metro, bus…), anche adiacenti fra loro | colore, spessore, tratteggio, colore/spessore del contorno (facoltativo, come le strade), **stazioni condivise**: una stazione collegata a più linee fa fermare tutte allo stesso punto |
 
    Disegnando una linea di trasporto, gli angoli scattano ogni 45°, passare
    sopra una stazione esistente vi si aggancia automaticamente, e tornare col
@@ -97,24 +97,22 @@ dentro la cartella `web/`.
    sola. Se due linee corrono per un tratto sullo stesso percorso, l'app le
    affianca in automatico (un avviso lo segnala) invece di sovrapporle in un
    unico tratto indistinguibile. Le stazioni sono elementi indipendenti dalle
-   linee — *"🚉 Nuova stazione"*, nel pannello del layer trasporti, ne pianta
-   una prima ancora che qualunque linea ci passi; una stazione con due o più
-   linee diventa un'icona rettangolare con una striscia colorata per ogni
-   linea. *"📋 Elenco linee e stazioni"* apre la lista di ogni linea del layer
-   con le sue fermate in ordine. Il nome di una linea non compare mai sulla
-   mappa (resta visibile al passaggio del mouse, e nell'elenco): con più
-   linee vicine affiancate automaticamente sarebbe solo confusione.
-   Selezionando un layer trasporti si apre anche *"Linee visibili"*, un
-   elenco con una casella per linea per mostrarne solo alcune sulla mappa.
-   Il simbolo delle stazioni (cerchio, quadrato o rettangolo, e la sua
-   dimensione) si sceglie per l'intero layer in *"Simbolo delle stazioni"*
-   — per default piccoli pallini, per non sovrastare le linee. Selezionando
-   una singola stazione con *Seleziona* si apre il suo editor: nome,
+   linee: quando un layer trasporti è selezionato, gli **Strumenti**
+   guadagnano una sezione dedicata con *"🚉 Nuova stazione"* (ne pianta una
+   prima ancora che qualunque linea ci passi), *"📋 Elenco linee e stazioni"*
+   (la lista di ogni linea del layer con le sue fermate in ordine) e
+   *"Simbolo delle stazioni"* (forma — cerchio, quadrato o rettangolo — e
+   dimensione per l'intero layer; per default piccoli pallini, per non
+   sovrastare le linee). Una stazione con due o più linee diventa un'icona
+   allargata con una striscia colorata per ogni linea, nella forma scelta.
+   Selezionandone una con *Seleziona* si apre il suo editor: nome,
    descrizione e — spuntando *"Simbolo personalizzato per questa
    stazione"* — una forma e una dimensione solo per lei, senza cambiare il
-   default del layer. Una stazione con più linee resta comunque
-   riconoscibile, allargata con una striscia colorata per ogni linea, nella
-   forma scelta (di layer o personalizzata).
+   default del layer. Il nome di una linea non compare mai sulla mappa
+   (resta visibile al passaggio del mouse, e nell'elenco): con più linee
+   vicine affiancate automaticamente sarebbe solo confusione. Selezionando
+   un layer trasporti si apre anche *"Linee visibili"*, un elenco con una
+   casella per linea per mostrarne solo alcune sulla mappa.
 | **Punti di interesse** | un simbolo sul punto | forma, colore, dimensione, categoria (abitazione, negozio, istituzioni, fiume, montagna, lago…), descrizione |
 | **Note** | promemoria sulla mappa, per le cose da costruire | colore, dimensione, descrizione libera |
 | **Aree** | poligoni chiusi che delimitano zone | colore e opacità del riempimento, colore/spessore/tratteggio del bordo |

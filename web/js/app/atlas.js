@@ -447,9 +447,21 @@ function buildFeatureLayer(feature, layer) {
     group.addLayer(primary);
 
   } else if (layer.type === 'transit') {
-    // No casing: a metro line is a flat stroke, and adjacent lines tell
-    // themselves apart by colour plus the sideways nudge from offsetTransitCoords.
+    // Casing is off by default (a metro line reads fine as a flat stroke,
+    // and adjacent lines already tell themselves apart by colour plus the
+    // sideways nudge from offsetTransitCoords) but works exactly like a
+    // road's when turned on, contouring the very same offset coordinates.
     const latlngs = offsetTransitCoords(feature, layer).map(([x, z]) => toLatLng(x, z));
+    const casingWidth = Number(style.casingWidth) || 0;
+    if (casingWidth > 0) {
+      group.addLayer(L.polyline(latlngs, {
+        color: style.casingColor || '#000',
+        weight: (Number(style.width) || 5) + casingWidth * 2,
+        opacity: style.opacity ?? 1,
+        lineCap: 'round', lineJoin: 'round',
+        interactive: false,
+      }));
+    }
     primary = L.polyline(latlngs, {
       color: style.color || '#4fa3d1',
       weight: Number(style.width) || 5,
@@ -1346,6 +1358,10 @@ function refreshProps() {
       <label><span class="lbl">Spessore: <b class="v-width">${style.width || 5}</b> px</span>
         <input type="range" class="f-width" min="1" max="16" step="1" value="${style.width || 5}"></label>
       <label><span class="lbl">Tratteggio</span>${dashSelect(style.dash)}</label>
+      <label><span class="lbl">Colore contorno</span>
+        <input type="color" class="f-casingColor" value="${style.casingColor || '#2b2b2b'}">${swatches(style.casingColor, 'casingColor')}</label>
+      <label><span class="lbl">Spessore contorno: <b class="v-casing">${style.casingWidth ?? 0}</b> px</span>
+        <input type="range" class="f-casingWidth" min="0" max="8" step="1" value="${style.casingWidth ?? 0}"></label>
       <div class="hint">Lunghezza: ${lengthOf(feature.coords)} blocchi · ${feature.coords.length} vertici</div>
       <button class="btn btn-sm" data-act="extend">Estendi questa linea</button>
       <div class="stations-box">
@@ -1849,7 +1865,8 @@ function drawVectors(ctx, bounds, scale) {
           ctx.stroke();
           ctx.setLineDash([]);
         };
-        // Transit lines have no casing style, so this is a no-op for them.
+        // Casing defaults to off for transit lines, but is drawn the same
+        // way as for roads whenever it's turned on (see buildFeatureLayer).
         const casing = Number(style.casingWidth) || 0;
         if (casing > 0) stroke(style.casingColor || '#000', (Number(style.width) || 4) + casing * 2, false);
         stroke(style.color || (layer.type === 'transit' ? '#4fa3d1' : '#f2c14e'), Number(style.width) || 4, true);
