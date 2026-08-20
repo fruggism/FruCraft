@@ -18,6 +18,7 @@
 <div id="app">
 
   <header id="topbar">
+    <button id="sidebar-toggle" class="hidden" title="Mostra/nascondi il pannello">☰</button>
     <div class="logo"><span class="cube"></span><span>CUBE<b>-ATLAS</b></span><small id="mode-label"> Editor</small></div>
     <nav class="tabs" id="mode-tabs">
       <button class="tab active" data-mode="editor" title="Crea e modifica atlanti e documenti">✏️ Editor</button>
@@ -32,6 +33,13 @@
       <button class="tab" data-screen="reader-archive">Archivio</button>
     </nav>
     <div class="topbar-spacer"></div>
+    <label class="interface-picker" title="Passa tra l'interfaccia da scrivania e quella pensata per tablet/penna">
+      <span class="lbl">Interfaccia</span>
+      <select id="interface-mode-select">
+        <option value="desktop">🖥️ Desktop</option>
+        <option value="ipad">✏️ iPad</option>
+      </select>
+    </label>
     <div class="topbar-info" id="topbar-info">Nessun progetto aperto</div>
   </header>
 

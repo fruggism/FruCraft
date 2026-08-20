@@ -58,6 +58,12 @@ dentro la cartella `web/`.
   mondo). Su **Safari** e **Firefox** funziona tutto, ma la cartella va
   riselezionata a ogni avvio.
 - Un mondo **Minecraft Java Edition 1.13 o successivo**.
+- Su **iPad**, Safari resta l'unico browser disponibile: non ho modo di
+  verificare da qui se la versione di iPadOS installata lascia scegliere
+  un'intera cartella (invece che singoli file) dal selettore che compare
+  toccando *"Scegli la cartella del mondo…"* — va provato. Se non funziona,
+  fammelo sapere: è l'unico punto dell'app che dipende da una funzione del
+  browser fuori dal mio controllo.
 
 > Le versioni 1.13–1.17 sono lette, ma la tinta per bioma si applica dalla 1.18
 > in poi (prima i biomi erano id numerici). I mondi anteriori alla 1.13 non
@@ -171,6 +177,31 @@ dentro la cartella `web/`.
 
 Il salvataggio è automatico: atlanti e documenti stanno nell'archiviazione
 locale del browser. Usa *Esporta .json* per averne una copia tua.
+
+### Modalità iPad
+
+Il selettore *Interfaccia* nell'intestazione (🖥️ Desktop / ✏️ iPad) cambia
+com'è pensata l'interazione, non solo la disposizione — un iPad in verticale
+si adatta già da solo (il pannello si stringe sotto la mappa sotto i 900px),
+ma restava pensato per un mouse: informazioni che compaiono solo al
+passaggio del cursore, maniglie per i vertici pensate per un click preciso.
+La modalità iPad, salvata e riletta a ogni apertura:
+
+- ingrandisce ogni bersaglio toccabile (pulsanti, tab, caselle, cursori,
+  le maniglie di "Modifica nodi") ad almeno 44px, la misura minima
+  consigliata da Apple stessa per un tocco;
+- mostra le informazioni di un elemento al primo tocco, invece che al solo
+  passaggio — con una penna (o un dito) non esiste un "passaggio" prima del
+  tocco;
+- aggiunge un pulsante ☰ per nascondere il pannello laterale e disegnare
+  a schermo intero, utile su uno schermo piccolo mentre si traccia con
+  precisione;
+- **raddrizza le aree**: disegnando un poligono a mano libera (layer
+  *Aree*) con la penna, l'app lo *"raddrizza"* appena finito — ripulisce il
+  tremore della mano, allinea i lati agli assi e li squadra, così un
+  edificio disegnato a mano viene fuori con gli angoli dritti invece che
+  storto. Succede solo in modalità iPad: un poligono disegnato con il
+  mouse non viene mai toccato.
 
 ### Dove trovo la cartella del mondo?
 

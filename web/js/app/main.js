@@ -16,6 +16,7 @@ import * as Reader from './reader.js';
 import {
   supportsHandles, pickDirectory, restoreLastWorld, sourceFromFileList, pickerHint, forgetWorld,
 } from './worldPicker.js';
+import { getInterfaceMode, setInterfaceMode } from './interfaceMode.js';
 
 const LAYER_ICONS = { roads: '🛣️', pois: '📍', areas: '⬟', transit: '🚇', notes: '📝' };
 const LAYER_KIND_LABEL = { roads: 'Strade', pois: 'Punti', areas: 'Aree', transit: 'Trasporti', notes: 'Note' };
@@ -653,6 +654,19 @@ async function init() {
   });
   document.querySelectorAll('#editor-tabs .tab, #reader-tabs .tab').forEach((tab) => {
     tab.addEventListener('click', () => showScreen(tab.dataset.screen));
+  });
+  // interfaceMode.js already applied the stored choice to <html> on import;
+  // this just syncs the select and wires switching it further, same
+  // "must survive anything else throwing" reasoning as the tabs above.
+  el('interface-mode-select').value = getInterfaceMode();
+  el('interface-mode-select').addEventListener('change', (e) => {
+    setInterfaceMode(e.target.value);
+    el('sidebar-toggle').classList.toggle('hidden', e.target.value !== 'ipad');
+    el('app').classList.remove('sidebar-hidden');
+  });
+  el('sidebar-toggle').classList.toggle('hidden', getInterfaceMode() !== 'ipad');
+  el('sidebar-toggle').addEventListener('click', () => {
+    el('app').classList.toggle('sidebar-hidden');
   });
 
   try {

@@ -21,6 +21,14 @@ global.document = {
   querySelectorAll() { return []; },
   querySelector() { return null; },
   createElement() { return chainable(); },
+  documentElement: { dataset: {} }, // interfaceMode.js sets data-interface here on import
+};
+// interfaceMode.js persists the desktop/iPad choice here; undefined (not
+// missing) so its own try/catch around localStorage calls doesn't fire and
+// mask a real bug — Node just has no such global by default.
+global.localStorage = {
+  getItem() { return null; },
+  setItem() {},
 };
 
 global.L = {

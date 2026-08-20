@@ -11,6 +11,7 @@ import {
   debounce, newId, confirmDialog, promptDialog, pickDialog, alertDialog, download, slugify, setStatus, markDirty,
   findLayer, selectedLayer, findFeature, selectedFeature, findStation, selectedStation, engine,
 } from './ui-core.js';
+import { isIpadMode } from './interfaceMode.js';
 
 const DASHES = {
   solid: null,
@@ -553,6 +554,10 @@ function buildFeatureLayer(feature, layer) {
     if (e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
     if (placingStation) { placeStationAt(e.latlng); return; }
     if (currentTool === 'delete') { deleteFeature(layer.id, feature.id); return; }
+    // A tap IS the hover on iPad — there's no separate "point at it first"
+    // gesture — so the info bubble that the mouse gets for free needs an
+    // explicit open here, or it would never be seen at all.
+    if (isIpadMode()) primary.openPopup(e.latlng);
     selectFeature(layer.id, feature.id);
     if (currentTool === 'edit') toggleVertexEditing(feature.id, true);
   });
@@ -627,6 +632,96 @@ function segAngle(a, b) {
 function angleDiff(a1, a2) {
   const d = Math.abs(a1 - a2) % Math.PI;
   return Math.min(d, Math.PI - d);
+}
+
+// Tuning for straightenPolygon: a hand can't hold a pencil still, so these
+// treat "close enough" as intentional rather than as a real extra vertex.
+const STRAIGHTEN_MERGE_BLOCKS = 3;   // points closer than this to their neighbour are jitter, not a corner
+const STRAIGHTEN_COLLINEAR_DEG = 12; // a turn smaller than this is noise along what should be one straight edge
+const STRAIGHTEN_CLUSTER_BLOCKS = 6; // vertices whose rotated x (or z) lands within this of each other snap together
+
+/** Groups nearby numbers and replaces each with its cluster's average —
+ *  the step that turns "four corners whose x's are roughly 0, 2, 48, 50"
+ *  into "two clean edges at x=1 and x=49", by construction closing exactly
+ *  (shared edges get literally the same number) rather than by walking
+ *  forward from one vertex and hoping the error doesn't show by the time
+ *  it gets back around to the start. */
+function clusterAxis(values, tolerance) {
+  const order = values.map((v, i) => i).sort((a, b) => values[a] - values[b]);
+  const result = new Array(values.length);
+  let start = 0;
+  for (let k = 1; k <= order.length; k++) {
+    if (k === order.length || values[order[k]] - values[order[k - 1]] > tolerance) {
+      let sum = 0;
+      for (let j = start; j < k; j++) sum += values[order[j]];
+      const avg = sum / (k - start);
+      for (let j = start; j < k; j++) result[order[j]] = avg;
+      start = k;
+    }
+  }
+  return result;
+}
+
+/** Cleans up a freehand-drawn area (iPad pencil) into straight edges: merges
+ *  jittery near-duplicate points, drops near-collinear ones, rotates the
+ *  shape so its longest edge sits on the nearest 45°, then snaps vertices
+ *  that share roughly the same rotated x or z onto the same value. Only
+ *  ever called for areas drawn in iPad mode (see onDrawCreated) — a mouse
+ *  user's polygon is never touched. */
+function straightenPolygon(coords) {
+  if (coords.length < 3) return coords;
+
+  let pts = [coords[0]];
+  for (let i = 1; i < coords.length; i++) {
+    const prev = pts[pts.length - 1];
+    if (dist(prev[0], prev[1], coords[i][0], coords[i][1]) >= STRAIGHTEN_MERGE_BLOCKS) pts.push(coords[i]);
+  }
+  if (pts.length > 3 && dist(pts[0][0], pts[0][1], pts[pts.length - 1][0], pts[pts.length - 1][1]) < STRAIGHTEN_MERGE_BLOCKS) {
+    pts.pop(); // the closing click landed back on the starting point
+  }
+  if (pts.length < 3) return coords;
+
+  const collinearThreshold = (STRAIGHTEN_COLLINEAR_DEG * Math.PI) / 180;
+  pts = pts.filter((pt, i) => {
+    const prev = pts[(i - 1 + pts.length) % pts.length];
+    const next = pts[(i + 1) % pts.length];
+    const a1 = Math.atan2(pt[1] - prev[1], pt[0] - prev[0]);
+    const a2 = Math.atan2(next[1] - pt[1], next[0] - pt[0]);
+    let turn = Math.abs(a1 - a2);
+    if (turn > Math.PI) turn = 2 * Math.PI - turn;
+    return turn > collinearThreshold;
+  });
+  if (pts.length < 3) return coords;
+
+  let longest = 0;
+  let dominantAngle = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const len = dist(a[0], a[1], b[0], b[1]);
+    if (len > longest) { longest = len; dominantAngle = segAngle(a, b); }
+  }
+  const snapAngle = Math.round(dominantAngle / (Math.PI / 4)) * (Math.PI / 4);
+  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+  const cz = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  const cos = Math.cos(-snapAngle);
+  const sin = Math.sin(-snapAngle);
+  const rotated = pts.map(([x, z]) => {
+    const dx = x - cx;
+    const dz = z - cz;
+    return [dx * cos - dz * sin, dx * sin + dz * cos];
+  });
+
+  const xs = clusterAxis(rotated.map((p) => p[0]), STRAIGHTEN_CLUSTER_BLOCKS);
+  const zs = clusterAxis(rotated.map((p) => p[1]), STRAIGHTEN_CLUSTER_BLOCKS);
+
+  const cos2 = Math.cos(snapAngle);
+  const sin2 = Math.sin(snapAngle);
+  return rotated.map((_, i) => {
+    const x = xs[i];
+    const z = zs[i];
+    return [Math.round(x * cos2 - z * sin2 + cx), Math.round(x * sin2 + z * cos2 + cz)];
+  });
 }
 
 /** Nudges a transit line's rendered vertices sideways wherever it runs
@@ -806,6 +901,7 @@ function buildStationMarker(station, layer) {
     if (e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
     if (placingStation) { placeStationAt(e.latlng); return; }
     if (currentTool === 'delete') { deleteStation(layer.id, station.id); return; }
+    if (isIpadMode()) marker.openPopup(e.latlng);
     if (currentTool === 'select') selectStation(layer.id, station.id);
   });
   return group;
@@ -1279,10 +1375,14 @@ function onDrawCreated(e) {
     else if (snapped.stationIds.length > 1) toast(`Linea collegata a ${snapped.stationIds.length} stazioni esistenti`, 'ok');
   } else {
     const latlngs = layer.type === 'areas' ? e.layer.getLatLngs()[0] : e.layer.getLatLngs();
-    feature.coords = latlngs.map((ll) => {
+    let coords = latlngs.map((ll) => {
       const p = fromLatLng(ll);
       return [Math.round(p.x), Math.round(p.z)];
     });
+    // A pencil on glass can't hold a straight line the way a mouse does —
+    // squares up the freehand shape right after drawing it, iPad mode only.
+    if (layer.type === 'areas' && isIpadMode()) coords = straightenPolygon(coords);
+    feature.coords = coords;
     feature.name = layer.type === 'roads'
       ? `Via ${layer.features.length + 1}`
       : `Area ${layer.features.length + 1}`;
@@ -2275,7 +2375,7 @@ export {
   POI_SHAPES, POI_CATEGORIES, PALETTE,
   // Pure geometry helpers, exported mainly so the test suite can exercise
   // them without a browser (see test/run-tests.js).
-  offsetTransitCoords, snapToStations, exportPlan, MAX_EXPORT_PX,
+  offsetTransitCoords, snapToStations, straightenPolygon, exportPlan, MAX_EXPORT_PX,
   // Read-only rendering pieces, shared with the Lettore so a feature looks
   // and behaves (hover info) exactly the same whether it's being edited or
   // just viewed: one definition of what a road/POI/area/transit/note/station

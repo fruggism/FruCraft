@@ -582,3 +582,60 @@ details.sub > summary::-webkit-details-marker { display: none; }
   .map-wrap { min-height: 55vh; }
   .book-pane { display: none; }
 }
+
+/* ------------------------------------------------------------- iPad mode
+ * A deliberate choice from the header selector (see interfaceMode.js), not
+ * an automatic viewport guess: touch/pencil use needs bigger targets and
+ * tap-based info everywhere, regardless of how wide the iPad's screen is
+ * (a Pro in landscape is plenty wide, but still a finger/pencil, not a
+ * mouse). The narrow-window stacking above still applies underneath this
+ * on top of it, so an iPad in portrait gets both. */
+.interface-picker { display: flex; align-items: center; gap: 6px; margin: 0; }
+.interface-picker .lbl { margin: 0; white-space: nowrap; }
+.interface-picker select { width: auto; }
+
+/* Lives in the topbar's normal flex flow (not fixed) so it never overlaps
+ * the logo — it only ever displaces it, same as any other topbar button. */
+#sidebar-toggle {
+  flex: none;
+  width: 40px; height: 40px; padding: 0;
+  background: #6e6e6e; color: #fff; border: none; font-size: 18px;
+  box-shadow: inset -2px -2px 0 #3b3b3b, inset 2px 2px 0 #a5a5a5, 0 0 0 2px #101010;
+  cursor: pointer;
+}
+#app.sidebar-hidden .screen.active .sidebar { display: none; }
+
+:root[data-interface="ipad"] {
+  /* Every tap target grows, buttons included — 44px is Apple's own minimum
+     recommended hit area, so this isn't an arbitrary number. */
+  --touch-min: 44px;
+}
+:root[data-interface="ipad"] .btn,
+:root[data-interface="ipad"] .tool,
+:root[data-interface="ipad"] .tab,
+:root[data-interface="ipad"] input[type="text"],
+:root[data-interface="ipad"] input[type="number"],
+:root[data-interface="ipad"] input[type="search"],
+:root[data-interface="ipad"] select,
+:root[data-interface="ipad"] .interface-picker select {
+  min-height: var(--touch-min);
+  font-size: 14px;
+}
+:root[data-interface="ipad"] .btn-sm { min-height: 38px; padding: 8px 12px; }
+:root[data-interface="ipad"] input[type="checkbox"] { width: 22px; height: 22px; }
+:root[data-interface="ipad"] input[type="range"] { height: 30px; }
+:root[data-interface="ipad"] input[type="color"] { height: 40px; }
+:root[data-interface="ipad"] .swatch { width: 26px; height: 26px; }
+:root[data-interface="ipad"] .shape-btn { width: 34px; height: 34px; }
+:root[data-interface="ipad"] .eye, :root[data-interface="ipad"] .kill, :root[data-interface="ipad"] .sub {
+  padding: 4px; font-size: 15px;
+}
+/* Leaflet's vertex-edit handles ("Modifica nodi") are small squares
+   anchored at their own centre, so scaling them up around that same centre
+   (the CSS default transform-origin) keeps them exactly where Leaflet put
+   them — unlike POI/station icons, whose anchor is often off-centre (a pin
+   tip, say), where the same trick would visibly drift the icon from its
+   true point. Those are left at their normal size, adjustable per-feature
+   from the "Dimensione" slider (already a bigger touch target above) if a
+   particular map needs bigger icons. */
+:root[data-interface="ipad"] .leaflet-editing-icon { transform: scale(1.7); }

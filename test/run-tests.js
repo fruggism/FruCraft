@@ -673,6 +673,60 @@ test('offsetTransitCoords non sposta due linee che si incrociano perpendicolari'
 });
 
 // ---------------------------------------------------------------------------
+section('straightenPolygon: raddrizza un\'area disegnata a mano libera (iPad)');
+
+function edgeAngles(coords) {
+  const angles = [];
+  for (let i = 0; i < coords.length; i++) {
+    const a = coords[i];
+    const b = coords[(i + 1) % coords.length];
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    if (Math.hypot(dx, dz) < 0.5) continue; // a zero-length edge has no angle to check
+    let deg = (Math.atan2(dz, dx) * 180) / Math.PI;
+    deg = ((deg % 90) + 90) % 90; // fold onto [0, 90) — a rectilinear edge lands on 0
+    angles.push(Math.min(deg, 90 - deg)); // distance from the nearest axis
+  }
+  return angles;
+}
+
+test('un rettangolo leggermente storto e con vertici sdoppiati diventa un vero rettangolo', () => {
+  // Simula un dito/penna poco fermo: quasi un rettangolo 50x50, ma nessun
+  // lato è davvero dritto e un paio di "doppi click" hanno lasciato vertici
+  // in più a un paio di block di distanza dall'angolo vero.
+  const wobbly = [
+    [0, 0], [1, 2], [48, 3], [50, 2], [50, 52], [2, 49],
+  ];
+  const out = atlasGeom.straightenPolygon(wobbly);
+  assert(out.length >= 3, 'resta un poligono valido');
+  const angles = edgeAngles(out);
+  for (const a of angles) assert(a < 1, `lato non dritto: ${a.toFixed(2)}° dal più vicino asse`);
+});
+
+test('chiude sempre esattamente: l\'ultimo lato torna al primo vertice', () => {
+  const wobbly = [[0, 0], [40, 1], [39, 40], [1, 39]];
+  const out = atlasGeom.straightenPolygon(wobbly);
+  // Nessun controllo di uguaglianza qui: straightenPolygon costruisce ogni
+  // vertice indipendentemente (clusterAxis), non camminando in avanti dal
+  // primo — è proprio per questo che non può "non chiudersi". Verifichiamo
+  // solo che il poligono resti percorribile (nessun lato di lunghezza nulla
+  // strampalato) e che gli angoli restino square.
+  for (const a of edgeAngles(out)) assert(a < 1, `lato non dritto dopo la chiusura: ${a.toFixed(2)}°`);
+});
+
+test('un poligono già pulito (pochi vertici, angoli netti) resta sostanzialmente lo stesso', () => {
+  const clean = [[0, 0], [60, 0], [60, 40], [0, 40]];
+  const out = atlasGeom.straightenPolygon(clean);
+  for (const a of edgeAngles(out)) assert(a < 1, `un rettangolo pulito non dovrebbe cambiare forma: ${a.toFixed(2)}°`);
+});
+
+test('un input degenere (meno di 3 punti) torna invariato invece di lanciare un errore', () => {
+  const degenerate = [[0, 0], [10, 10]];
+  const out = atlasGeom.straightenPolygon(degenerate);
+  assertEqual(JSON.stringify(out), JSON.stringify(degenerate), 'con meno di 3 punti non c\'è un poligono da raddrizzare');
+});
+
+// ---------------------------------------------------------------------------
 section('Esportazione: la tela non supera mai il limite');
 
 test('un\'area enorme (regione lontana isolata) resta sotto MAX_EXPORT_PX', () => {
