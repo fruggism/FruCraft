@@ -79,14 +79,3 @@ export function sourceFromFileList(fileList) {
   }
   return { kind: 'files', files, name: rootName };
 }
-
-/** Human-readable hint about what the current browser supports. */
-export function pickerHint() {
-  if (supportsHandles) {
-    return 'Il browser ricorderà la cartella scelta: alla prossima apertura basta confermare.';
-  }
-  if (typeof window !== 'undefined' && !window.isSecureContext) {
-    return 'Aperta da file locale: la cartella va riselezionata a ogni avvio. Con l\'app pubblicata su un indirizzo https il browser la ricorda.';
-  }
-  return 'Questo browser non ricorda la cartella: va riselezionata a ogni avvio (su Chrome o Edge viene ricordata).';
-}

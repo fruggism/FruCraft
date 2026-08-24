@@ -22,10 +22,11 @@ L'app è divisa in due, cambiabile dai due bottoni in alto:
 Entrambi hanno le stesse due sezioni, **Atlante** e **Archivio** — nell'Editor
 sono dove crei le cose, nel Lettore dove le apri e le guardi:
 
-- **Atlante** (Lettore) — apri una mappa esportata con *"📖 Esporta per il
-  Lettore"*: il terreno è un'immagine piatta, ma i layer restano vivi: si
-  possono ancora nascondere/mostrare uno per uno, e passandoci sopra col
-  mouse se ne vedono le informazioni, come nell'Editor.
+- **Atlante** (Lettore) — apri un atlante esportato con *"🗺️ Esporta
+  atlante"* (file "<i>nome-mondo</i>_ATLAS"): il terreno è un'immagine
+  piatta, ma i layer restano vivi: si possono ancora nascondere/mostrare
+  uno per uno, e passandoci sopra col mouse se ne vedono le informazioni,
+  come nell'Editor.
 - **Archivio** (Lettore) — apri un documento esportato dall'Archivio
   dell'Editor e leggilo impaginato.
 
@@ -80,17 +81,17 @@ dentro la cartella `web/`.
      inesistenti — il tile mostra quello che c'è sotto. Scegliendolo qui, l'atlante
      nasce già con il filtro attivo, senza dover rigenerare nulla dopo. Si può
      cambiare anche più tardi, ma in quel caso le parti già generate vanno
-     rigenerate (*Svuota cache e rigenera*, nella sezione successiva) per aggiornarsi.
-   Poi crea l'atlante.
-2. **Genera la mappa** — la mappa si apre sul punto di spawn. Scegli l'area (di
-   solito *intorno a un punto*, con le coordinate della tua città e un raggio) e
-   premi **Genera mappa**: la barra mostra l'avanzamento e i tile compaiono man
-   mano. È interrompibile, e quello che è già stato prodotto resta.
-   - **Evidenzia le ferrovie**: un layer a parte, cercato a tutte le altezze, così
-     anche le gallerie profonde compaiono (più scure quanto più sono in basso).
-3. **Naviga** — porta la mappa alle coordinate che scegli (le stesse che leggi
-   in gioco con F3), al punto di spawn o su tutto il mondo.
-4. **Layer** — creane quanti vuoi, di cinque tipi:
+     rigenerate (*Svuota cache e rigenera*, nella 🧭 in fondo alla mappa) per aggiornarsi.
+   Poi crea l'atlante: la mappa si genera da sola intorno al punto di spawn,
+   senza altro da fare — lo stato di avanzamento compare nella 🧭 (vedi sotto).
+2. **La mappa** — in basso a sinistra c'è sempre la coordinata sotto il
+   cursore, e accanto una **🧭 bussola**: apre un pannellino con dove vuoi
+   andare (coordinate, punto di spawn, tutto il mondo), se mostrare il
+   terreno e le ferrovie (cercate a tutte le altezze, più scure quanto più
+   sono in basso), e la manutenzione della cache dei tile (*Svuota cache e
+   rigenera* per questo mondo, o *Svuota la cache di tutti i mondi* per
+   liberare spazio nel browser).
+3. **Layer** — creane quanti vuoi, di cinque tipi:
 
 | Tipo | Cosa disegna | Stile |
 |---|---|---|
@@ -129,7 +130,7 @@ dentro la cartella `web/`.
    *regione › provincia › quartiere*, con *strade*/*trasporti*/*punti* annidati
    dentro. Nascondere un layer nasconde anche i suoi sublayer. Il 🗑 sulla riga
    elimina un layer (i suoi sublayer restano, spostati al livello superiore).
-5. **Strumenti** — *Disegna* per aggiungere, *Seleziona* per scegliere,
+4. **Strumenti** — *Disegna* per aggiungere, *Seleziona* per scegliere,
    *Modifica nodi* per spostare i vertici, *Cancella* per eliminare cliccando.
    `Esc` annulla, `Canc` elimina l'elemento selezionato. I punti si spostano
    trascinandoli. Passando il mouse su un elemento compaiono le sue
@@ -139,26 +140,28 @@ dentro la cartella `web/`.
    elemento può avere un **banner** (un'immagine PNG/JPEG/WebP caricata dal
    proprietà), piantato come una bandierina sulla mappa e nell'anteprima al
    passaggio del mouse.
-6. **Esporta** — cinque formati, tutti con un'area da scegliere prima (vista
-   attuale, o tutto il mondo generato):
-   - **📖 Esporta per il Lettore** (`.camap.json`) — pensato per il Lettore: il
-     terreno è un'immagine piatta (ha senso, sono blocchi), ma i layer restano
-     dati veri. Nel Lettore si possono ancora nascondere/mostrare uno per uno,
-     e passando il mouse su un elemento se ne vedono le informazioni — come
-     nell'Editor.
+5. **Esporta mappa** — tre formati, tutti con un'area da scegliere prima:
+   vista attuale, tutto il mondo generato, oppure disegnata a mano sulla
+   mappa (utile per un ritaglio preciso, tipo solo la propria città). Ogni
+   file inizia col nome del mondo, non dell'atlante (che è libero di
+   chiamarsi come vuoi):
+   - **🗺️ Esporta atlante** (`nome-mondo_ATLAS.camap.json`) — pensato per il
+     Lettore: il terreno è un'immagine piatta (ha senso, sono blocchi), ma i
+     layer restano dati veri. Nel Lettore si possono ancora
+     nascondere/mostrare uno per uno, e passando il mouse su un elemento se
+     ne vedono le informazioni — come nell'Editor.
+   - **📐 Esporta layer SVG** (`nome-mondo_ATLAS_layer.svg`) — vettoriale, un
+     gruppo per layer, apribile in Inkscape/Illustrator.
    - **Immagine PNG** — un'unica immagine piatta con *tutto* disegnato sopra,
      layer compresi: comoda da condividere o stampare, ma senza interattività.
-   - **SVG** (un gruppo per layer, apribile in Inkscape/Illustrator), **GeoJSON**,
-     o il progetto completo `.cubeatlas.json` che si riapre con *Importa*
-     mantenendo i layer.
 
-   Le esportazioni con immagine (PNG e "per il Lettore") riducono da sole la
+   Le esportazioni con immagine (PNG e l'atlante) riducono da sole la
    risoluzione quando l'area è enorme — tipicamente "tutto il mondo generato"
    su una partita esplorata a macchia di leopardo, con una regione sperduta
    lontanissima dal resto — così il file resta sempre apribile invece di
    uscire come un'immagine rotta. Lo stato di esportazione lo segnala quando
    succede.
-7. **Archivio** — scrivi i documenti del tuo impero, vedili impaginati come un
+6. **Archivio** — scrivi i documenti del tuo impero, vedili impaginati come un
    libro di Minecraft ed esportali come comando `/give` (formato 1.20.5+ o
    precedenti), file `.mcfunction` o testo. *"📖 Esporta per il Lettore"*
    salva invece un file `.cadoc.json` pensato per essere aperto nel Lettore:
@@ -217,30 +220,30 @@ cui i file stanno più in profondità, come `dimensions/minecraft/overworld/regi
 
 ## Quanto ci mette
 
-Un tile di dettaglio copre 256×256 blocchi e richiede meno di un secondo; il
-pannello stima il tempo prima di partire. Un raggio di 1024 blocchi intorno
-alla propria città sono pochi secondi; l'intero mondo esplorato di una partita
-lunga può richiedere parecchi minuti — per questo l'area è limitabile.
+Non c'è più un pulsante "Genera mappa" da premere: appena crei un atlante, la
+mappa si genera da sola intorno al punto di spawn (un raggio di 1024 blocchi,
+di solito pochi secondi) — lo stato compare nella 🧭 in basso a sinistra sulla
+mappa. Un tile di dettaglio copre 256×256 blocchi e richiede meno di un
+secondo l'uno.
 
 ## Se cambi il mondo in gioco
 
-I tile restano in cache nel browser. Dopo aver costruito qualcosa premi
-**Svuota cache e rigenera**.
+I tile restano in cache nel browser. Dopo aver costruito qualcosa apri la 🧭 e
+premi **Svuota cache e rigenera**.
 
 > Conviene uscire dal mondo in Minecraft prima di rigenerare: i chunk non
 > ancora salvati su disco non possono essere letti.
 
 **Svuota cache e rigenera** riguarda solo il mondo aperto in quel momento —
 i tile degli altri mondi che hai mappato in passato restano dov'erano. La
-sezione *"3 Generazione mappa"* mostra anche quanto spazio sta usando
-l'app nel browser (soprattutto tile) e un pulsante separato, **🗑️ Svuota la
-cache di tutti i mondi**, che cancella i tile di *ogni* mondo mappato
-finora per liberare spazio — utile perché quella cache non si svuota mai
-da sola. Non tocca gli atlanti salvati (layer, punti, linee…): quelli
-restano finché non li elimini esplicitamente da *"2 Progetto"*, ed è per
-questo che, se ti serve tenere una copia della mappa, conviene esportarla
-(*"8 Esporta mappa"*, o *"Esporta .json"* per il progetto) invece di
-contare sulla cache dei tile.
+stessa 🧭 mostra anche quanto spazio sta usando l'app nel browser
+(soprattutto tile) e un pulsante separato, **🗑️ Svuota la cache di tutti i
+mondi**, che cancella i tile di *ogni* mondo mappato finora per liberare
+spazio — utile perché quella cache non si svuota mai da sola. Non tocca gli
+atlanti salvati (layer, punti, linee…): quelli restano finché non li elimini
+esplicitamente da *"2 Progetto"*, ed è per questo che, se ti serve tenere una
+copia della mappa, conviene esportarla (*"5 Esporta mappa"*, o *"Esporta
+.json"* per il progetto) invece di contare sulla cache dei tile.
 
 ---
 

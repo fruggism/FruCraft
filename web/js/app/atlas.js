@@ -2094,23 +2094,76 @@ function drawPoiShape(ctx, shape, cx, cy, size, color) {
   ctx.stroke();
 }
 
+/** Every export's filename starts with the Minecraft world's own name, not
+ *  the atlante's (which the user is free to rename to anything). */
+function worldFileBase() {
+  const name = (state.project && state.project.world && state.project.world.levelName)
+    || (state.project && state.project.name) || 'mondo';
+  return slugify(name);
+}
+
 /** Asked once per export, instead of a preset dropdown that's easy to
- *  forget to change before clicking. Resolves null if the user cancels. */
-function pickExportArea() {
-  return pickDialog({
+ *  forget to change before clicking. Resolves the block bounds to export,
+ *  or null if the user cancels (including cancelling the "disegna" draw). */
+async function pickExportBounds() {
+  const area = await pickDialog({
     title: 'Area da esportare',
     options: [
       { value: 'view', label: 'Vista attuale' },
       { value: 'all', label: 'Tutto il mondo generato' },
+      { value: 'draw', label: 'Disegna un\'area sulla mappa' },
     ],
+  });
+  if (!area) return null;
+  if (area === 'draw') return drawExportArea();
+  return exportBounds(area);
+}
+
+/** Lets the user drag out a rectangle on the map and resolves its block
+ *  bounds — a one-off interaction, kept from colliding with the normal
+ *  "draw a new feature" flow (also bound to L.Draw.Event.CREATED) by
+ *  unhooking it for the duration and restoring it right after. */
+function drawExportArea() {
+  return new Promise((resolve) => {
+    setTool('select');
+    map.off(L.Draw.Event.CREATED, onDrawCreated);
+    const rect = new L.Draw.Rectangle(map, { shapeOptions: { color: '#7fd44f', weight: 2 } });
+    const hint = el('draw-hint');
+    hint.classList.remove('hidden');
+    hint.innerHTML = 'Disegna l\'area da esportare trascinando sulla mappa. <kbd>Esc</kbd> per annullare.';
+
+    const cleanup = () => {
+      map.off(L.Draw.Event.CREATED, onCreated);
+      document.removeEventListener('keydown', onKey);
+      map.on(L.Draw.Event.CREATED, onDrawCreated);
+      hint.classList.add('hidden');
+    };
+    const onCreated = (e) => {
+      const b = e.layer.getBounds();
+      const nw = fromLatLng(b.getNorthWest());
+      const se = fromLatLng(b.getSouthEast());
+      cleanup();
+      resolve({
+        minX: Math.floor(nw.x), minZ: Math.floor(nw.z),
+        maxX: Math.ceil(se.x), maxZ: Math.ceil(se.z),
+      });
+    };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      rect.disable();
+      cleanup();
+      resolve(null);
+    };
+    map.on(L.Draw.Event.CREATED, onCreated);
+    document.addEventListener('keydown', onKey);
+    rect.enable();
   });
 }
 
 async function exportPNG() {
   if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
-  const area = await pickExportArea();
-  if (!area) return;
-  const bounds = exportBounds(area);
+  const bounds = await pickExportBounds();
+  if (!bounds) return;
   const { zoom, scale, w, h, shrunk } = exportPlan(bounds);
 
   setStatus('export-status', `Composizione immagine ${w}×${h}…`, 'busy');
@@ -2128,7 +2181,7 @@ async function exportPNG() {
     await preloadBanners();
     drawVectors(ctx, bounds, scale);
     await new Promise((resolve) => canvas.toBlob((blob) => {
-      download(`${slugify(state.project.name)}.png`, blob);
+      download(`${worldFileBase()}.png`, blob);
       resolve();
     }, 'image/png'));
     setStatus('export-status',
@@ -2140,9 +2193,8 @@ async function exportPNG() {
 
 async function exportSVG() {
   if (!state.project) { toast('Apri prima un atlante', 'err'); return; }
-  const area = await pickExportArea();
-  if (!area) return;
-  const bounds = exportBounds(area);
+  const bounds = await pickExportBounds();
+  if (!bounds) return;
   const { zoom, scale, w, h, shrunk } = exportPlan(bounds);
   const toPx = (x, z) => [((x - bounds.minX) * scale).toFixed(1), ((z - bounds.minZ) * scale).toFixed(1)];
 
@@ -2219,59 +2271,9 @@ async function exportSVG() {
   }
   parts.push('</svg>');
 
-  download(`${slugify(state.project.name)}.svg`, parts.join('\n'), 'image/svg+xml');
+  download(`${worldFileBase()}_ATLAS_layer.svg`, parts.join('\n'), 'image/svg+xml');
   setStatus('export-status',
     `SVG esportato (${w}×${h})${shrunk ? ' — area molto grande, risoluzione del terreno ridotta' : ''}`, 'ok');
-}
-
-function exportGeoJSON() {
-  if (!state.project) { toast('Apri prima un atlante', 'err'); return; }
-  const features = [];
-  for (const layer of state.project.layers) {
-    for (const feature of layer.features) {
-      const properties = {
-        name: feature.name,
-        description: feature.description,
-        layer: layer.name,
-        layerType: layer.type,
-        category: feature.category,
-        style: styleOf(feature, layer),
-      };
-      if (layer.type === 'transit') {
-        properties.stations = (feature.stationIds || [])
-          .map((id) => (layer.stations || []).find((s) => s.id === id))
-          .filter(Boolean).map((s) => s.name);
-      }
-      let geometry;
-      if (isPointLayer(layer.type)) {
-        geometry = { type: 'Point', coordinates: feature.coord };
-      } else if (layer.type === 'areas') {
-        const ring = feature.coords.slice();
-        const [fx, fz] = ring[0];
-        const [lx, lz] = ring[ring.length - 1];
-        if (fx !== lx || fz !== lz) ring.push([fx, fz]); // GeoJSON rings must close
-        geometry = { type: 'Polygon', coordinates: [ring] };
-      } else {
-        geometry = { type: 'LineString', coordinates: feature.coords };
-      }
-      features.push({ type: 'Feature', properties, geometry });
-    }
-    if (layer.type === 'transit') {
-      for (const station of layer.stations || []) {
-        features.push({
-          type: 'Feature',
-          properties: { name: station.name, description: station.description, layer: layer.name, layerType: 'station' },
-          geometry: { type: 'Point', coordinates: [station.x, station.z] },
-        });
-      }
-    }
-  }
-  download(
-    `${slugify(state.project.name)}.geojson`,
-    JSON.stringify({ type: 'FeatureCollection', features }, null, 2),
-    'application/geo+json'
-  );
-  setStatus('export-status', `GeoJSON esportato (${features.length} elementi)`, 'ok');
 }
 
 export const READER_MAP_FORMAT = 'cube-atlas/map';
@@ -2285,12 +2287,11 @@ export const READER_MAP_FORMAT = 'cube-atlas/map';
  */
 async function exportForReader() {
   if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
-  const area = await pickExportArea();
-  if (!area) return;
-  const bounds = exportBounds(area);
+  const bounds = await pickExportBounds();
+  if (!bounds) return;
   const { zoom, scale, w, h, shrunk } = exportPlan(bounds);
 
-  setStatus('export-status', `Composizione mappa per il Lettore ${w}×${h}…`, 'busy');
+  setStatus('export-status', `Composizione atlante ${w}×${h}…`, 'busy');
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
@@ -2309,9 +2310,9 @@ async function exportForReader() {
       image: canvas.toDataURL('image/png'),
       layers: JSON.parse(JSON.stringify(state.project.layers)),
     };
-    download(`${slugify(state.project.name)}.camap.json`, JSON.stringify(bundle), 'application/json');
+    download(`${worldFileBase()}_ATLAS.camap.json`, JSON.stringify(bundle), 'application/json');
     setStatus('export-status',
-      `Mappa per il Lettore esportata (${w}×${h} px)${shrunk ? ' — area molto grande, risoluzione ridotta per restare esportabile' : ''}`, 'ok');
+      `Atlante esportato (${w}×${h} px)${shrunk ? ' — area molto grande, risoluzione ridotta per restare esportabile' : ''}`, 'ok');
   } catch (err) {
     setStatus('export-status', `Export fallito: ${err.message}`, 'err');
   }
@@ -2369,7 +2370,7 @@ export {
   initMap, attachWorld, renderAllLayers, refreshFeature, setLayerVisibility, applyLayerVisibility,
   selectFeature, refreshProps, setTool, deleteFeature,
   setTerrainVisible, setRailsVisible, zoomToFeature, goTo, fitWorld, refreshTiles, updateViewInfo,
-  currentDimension, exportPNG, exportSVG, exportGeoJSON, exportForReader,
+  currentDimension, exportPNG, exportSVG, exportForReader,
   POI_SHAPES, POI_CATEGORIES, PALETTE,
   // Pure geometry helpers, exported mainly so the test suite can exercise
   // them without a browser (see test/run-tests.js).

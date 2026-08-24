@@ -25,22 +25,13 @@ const READER_MAP_FORMAT = Atlas.READER_MAP_FORMAT || 'cube-atlas/map';
 function showMapEmpty() {
   el('reader-map-empty').classList.remove('hidden');
   el('reader-map-view').classList.add('hidden');
-  el('reader-image-view').classList.add('hidden');
   el('reader-map-layers').classList.add('hidden');
 }
 
 function showMap() {
   el('reader-map-empty').classList.add('hidden');
   el('reader-map-view').classList.remove('hidden');
-  el('reader-image-view').classList.add('hidden');
   el('reader-map-layers').classList.remove('hidden');
-}
-
-function showImage() {
-  el('reader-map-empty').classList.add('hidden');
-  el('reader-map-view').classList.add('hidden');
-  el('reader-image-view').classList.remove('hidden');
-  el('reader-map-layers').classList.add('hidden');
 }
 
 function showDocEmpty() {
@@ -252,28 +243,17 @@ function openMapBundle(raw) {
   renderReaderLayerList();
 }
 
-function openPlainImage(file) {
-  const img = el('reader-image');
-  img.src = URL.createObjectURL(file);
-  img.className = 'fit';
-  el('reader-image-name').textContent = file.name;
-  showImage();
-}
-
 async function openMapFile(file) {
   if (!file) return;
   try {
     const looksJson = file.name.toLowerCase().endsWith('.json') || file.type === 'application/json';
-    if (looksJson) {
-      const raw = JSON.parse(await file.text());
-      if (!raw || raw.format !== READER_MAP_FORMAT) {
-        throw new Error('Questo file non è una mappa Cube-Atlas per il Lettore');
-      }
-      openMapBundle(raw);
-    } else {
-      openPlainImage(file);
+    if (!looksJson) throw new Error('Il Lettore apre solo un file "nome-mondo_ATLAS" esportato dall\'Editor');
+    const raw = JSON.parse(await file.text());
+    if (!raw || raw.format !== READER_MAP_FORMAT) {
+      throw new Error('Questo file non è un atlante Cube-Atlas per il Lettore');
     }
-    setStatus('reader-map-status', `"${file.name}" aperta`, 'ok');
+    openMapBundle(raw);
+    setStatus('reader-map-status', `"${file.name}" aperto`, 'ok');
   } catch (err) {
     setStatus('reader-map-status', `Apertura fallita: ${err.message}`, 'err');
     toast(`Apertura fallita: ${err.message}`, 'err');
@@ -342,9 +322,6 @@ function init() {
     openDocFile(e.target.files && e.target.files[0]);
     e.target.value = '';
   });
-
-  el('btn-reader-image-fit').addEventListener('click', () => { el('reader-image').className = 'fit'; });
-  el('btn-reader-image-full').addEventListener('click', () => { el('reader-image').className = 'full'; });
 
   showMapEmpty();
   showDocEmpty();

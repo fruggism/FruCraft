@@ -49,13 +49,9 @@
 
       <section class="panel">
         <h2><span class="num">1</span> Mondo</h2>
-        <div class="hint" id="privacy-note">
-          Il mondo viene letto <b>sul tuo computer</b>: nessun file viene caricato da nessuna parte.
-        </div>
         <button class="btn btn-primary" id="btn-pick-world">Scegli la cartella del mondo…</button>
         <button class="btn btn-sm hidden" id="btn-reopen-world">Riapri l'ultimo mondo</button>
         <input type="file" id="world-input" webkitdirectory directory multiple class="hidden">
-        <div class="hint" id="picker-hint"></div>
         <div id="world-status" class="status"></div>
         <div id="world-picks" class="world-picks hidden"></div>
 
@@ -88,7 +84,7 @@
       <section class="panel">
         <h2><span class="num">2</span> Progetto</h2>
         <label>
-          <span class="lbl">Apri un atlante salvato</span>
+          <span class="lbl">Apri dei layer già creati</span>
           <select id="project-list"><option value="">— nessuno —</option></select>
         </label>
         <div class="row">
@@ -108,64 +104,7 @@
       </section>
 
       <section class="panel">
-        <h2><span class="num">3</span> Generazione mappa</h2>
-        <label style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="chk-terrain" checked> Mostra il terreno
-        </label>
-        <label style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="chk-rails"> Evidenzia le ferrovie
-        </label>
-        <div class="hint">Le ferrovie vengono cercate a tutte le altezze: le gallerie
-          compaiono comunque, disegnate più scure quanto più sono profonde.</div>
-
-        <label>
-          <span class="lbl">Area da generare</span>
-          <select id="render-extent">
-            <option value="around">Intorno a un punto (consigliato)</option>
-            <option value="all">Tutto il mondo esplorato</option>
-          </select>
-        </label>
-        <div id="render-around">
-          <div class="row-3">
-            <label><span class="lbl">X</span><input type="number" id="render-x" value="0" step="16"></label>
-            <label><span class="lbl">Z</span><input type="number" id="render-z" value="0" step="16"></label>
-            <label><span class="lbl">Raggio</span><input type="number" id="render-radius" value="1024" min="256" step="256"></label>
-          </div>
-          <button class="btn btn-sm" id="btn-render-here">Usa il centro della vista</button>
-        </div>
-        <div class="hint" id="render-estimate"></div>
-
-        <button class="btn btn-primary" id="btn-render">Genera mappa</button>
-        <button class="btn btn-sm hidden" id="btn-render-cancel">Interrompi</button>
-        <div class="progress hidden" id="render-progress"><div class="bar" id="render-bar"></div></div>
-        <div id="render-status" class="status"></div>
-
-        <button class="btn btn-sm" id="btn-clear-cache">Svuota cache e rigenera</button>
-        <div id="cache-status" class="status"></div>
-        <div class="hint" id="storage-usage" style="margin-top:8px"></div>
-        <button class="btn btn-sm btn-danger" id="btn-clear-all-tiles" style="margin-top:4px">🗑️ Svuota la cache di tutti i mondi</button>
-        <div class="hint">A differenza del pulsante sopra (che rigenera solo questo mondo),
-          questo cancella i tile salvati di <b>ogni</b> mondo mappato finora — anche di quelli
-          non aperti ora — per liberare spazio nel browser. Hai già l'esportazione per tenerti
-          una copia della mappa: la cache serve solo a non dover rigenerare i tile ogni volta.</div>
-      </section>
-
-      <section class="panel">
-        <h2><span class="num">4</span> Naviga</h2>
-        <div class="row-3">
-          <label><span class="lbl">X</span><input type="number" id="goto-x" placeholder="0"></label>
-          <label><span class="lbl">Z</span><input type="number" id="goto-z" placeholder="0"></label>
-          <label><span class="lbl">&nbsp;</span><button class="btn btn-sm" id="btn-goto" style="margin-top:0">Vai</button></label>
-        </div>
-        <div class="row">
-          <button class="btn btn-sm" id="btn-goto-spawn">Punto di spawn</button>
-          <button class="btn btn-sm" id="btn-goto-fit">Tutto il mondo</button>
-        </div>
-        <div class="hint" id="view-info"></div>
-      </section>
-
-      <section class="panel">
-        <h2><span class="num">5</span> Layer</h2>
+        <h2><span class="num">3</span> Creazione Layer</h2>
         <div class="hint">I sublayer (➕ su un layer) creano elenchi come regione › provincia ›
           quartiere, con strade/trasporti/punti annidati dentro.</div>
         <ul class="layer-list" id="layer-list"></ul>
@@ -188,7 +127,7 @@
       </section>
 
       <section class="panel">
-        <h2><span class="num">6</span> Strumenti</h2>
+        <h2><span class="num">4</span> Strumenti</h2>
         <div class="tool-grid">
           <button class="tool" data-tool="draw" id="tool-draw" disabled>
             <span class="ico" id="tool-draw-ico">✏️</span><span id="tool-draw-label">Disegna</span>
@@ -222,28 +161,60 @@
       </section>
 
       <section class="panel">
-        <h2><span class="num">7</span> Proprietà</h2>
+        <h2><span class="num">5</span> Proprietà</h2>
         <div id="props"><div class="prop-empty">Nessun elemento selezionato.<br>Clicca un elemento sulla mappa.</div></div>
       </section>
 
       <section class="panel">
-        <h2><span class="num">8</span> Esporta mappa</h2>
-        <div class="hint">Ogni esportazione chiede prima l'area: la vista attuale, o tutto
-          il mondo generato.</div>
-        <button class="btn btn-primary" id="btn-export-reader-map">📖 Esporta per il Lettore</button>
+        <h2><span class="num">6</span> Esporta mappa</h2>
+        <div class="hint">Ogni esportazione chiede prima l'area: la vista attuale, tutto il
+          mondo generato, oppure disegnala tu sulla mappa.</div>
+        <button class="btn btn-primary" id="btn-export-atlas">🗺️ Esporta atlante</button>
         <div class="hint">Il terreno resta un'immagine piatta, ma i layer restano dati: nel
           Lettore si possono ancora nascondere o mostrare solo alcuni, con le info di ogni
-          elemento al passaggio del mouse.</div>
+          elemento al passaggio del mouse. Salvato come "<i>nome-mondo</i>_ATLAS".</div>
+        <button class="btn" id="btn-export-svg-layer">📐 Esporta layer SVG</button>
+        <div class="hint">Vettoriale (apribile in Inkscape/Illustrator). Salvato come
+          "<i>nome-mondo</i>_ATLAS_layer".</div>
         <button class="btn" id="btn-export-png">Immagine PNG (tutto appiattito)</button>
-        <button class="btn" id="btn-export-svg">Vettoriale SVG</button>
-        <button class="btn" id="btn-export-geojson">Dati GeoJSON</button>
         <div id="export-status" class="status"></div>
       </section>
     </aside>
 
     <main class="map-wrap">
       <div id="map"></div>
-      <div class="coord-readout" id="coord-readout">X <b>—</b>  Z <b>—</b></div>
+      <div class="coord-bar">
+        <div class="coord-readout" id="coord-readout">X <b>—</b>  Z <b>—</b></div>
+        <button id="btn-compass" title="Vai alle coordinate, aspetto della mappa, manutenzione">🧭</button>
+      </div>
+      <div class="map-utility-panel hidden" id="map-utility-panel">
+        <h3>Vai alle coordinate</h3>
+        <div class="row-3">
+          <label><span class="lbl">X</span><input type="number" id="goto-x" placeholder="0"></label>
+          <label><span class="lbl">Z</span><input type="number" id="goto-z" placeholder="0"></label>
+          <label><span class="lbl">&nbsp;</span><button class="btn btn-sm" id="btn-goto" style="margin-top:0">Vai</button></label>
+        </div>
+        <div class="row">
+          <button class="btn btn-sm" id="btn-goto-spawn">Punto di spawn</button>
+          <button class="btn btn-sm" id="btn-goto-fit">Tutto il mondo</button>
+        </div>
+        <div class="hint" id="view-info"></div>
+
+        <h3>Aspetto della mappa</h3>
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="chk-terrain" checked> Mostra il terreno
+        </label>
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="chk-rails"> Evidenzia le ferrovie
+        </label>
+        <div id="render-status" class="status"></div>
+
+        <h3>Manutenzione</h3>
+        <button class="btn btn-sm" id="btn-clear-cache">Svuota cache e rigenera</button>
+        <div id="cache-status" class="status"></div>
+        <div class="hint" id="storage-usage"></div>
+        <button class="btn btn-sm btn-danger" id="btn-clear-all-tiles">🗑️ Svuota la cache di tutti i mondi</button>
+      </div>
       <div class="draw-hint hidden" id="draw-hint"></div>
       <div class="map-overlay" id="map-overlay">
         <div class="inner">
@@ -328,12 +299,12 @@
   <div class="screen" id="screen-reader-atlas">
     <aside class="sidebar">
       <section class="panel">
-        <h2>Apri una mappa</h2>
-        <div class="hint">Apri un file esportato dall'Editor con "📖 Esporta per il Lettore"
-          (.camap.json): i layer restano nascondibili/mostrabili, con le info al passaggio
-          del mouse. Una semplice immagine PNG/JPEG si apre anche, come immagine piatta.</div>
-        <button class="btn btn-primary" id="btn-reader-open-map">Apri mappa…</button>
-        <input type="file" id="reader-map-input" accept=".camap.json,.json,image/png,image/jpeg,image/webp,application/json" class="hidden">
+        <h2>Apri un atlante</h2>
+        <div class="hint">Apri un file "<i>nome-mondo</i>_ATLAS" esportato dall'Editor con
+          "🗺️ Esporta atlante": i layer restano nascondibili/mostrabili, con le info al
+          passaggio del mouse.</div>
+        <button class="btn btn-primary" id="btn-reader-open-map">Apri atlante…</button>
+        <input type="file" id="reader-map-input" accept=".camap.json,.json,application/json" class="hidden">
         <div id="reader-map-status" class="status"></div>
       </section>
 
@@ -347,23 +318,12 @@
     <main class="reader-main">
       <div class="reader-empty" id="reader-map-empty">
         <h3>Cube-Atlas Lettore — Atlante</h3>
-        <p>Apri una mappa esportata dall'Editor per vederla qui.</p>
+        <p>Apri un atlante esportato dall'Editor per vederlo qui.</p>
         <p>Non serve aprire nessun mondo: il Lettore mostra solo file già esportati.</p>
       </div>
 
       <div class="reader-map-view hidden" id="reader-map-view">
         <div id="reader-map"></div>
-      </div>
-
-      <div class="reader-image-view hidden" id="reader-image-view">
-        <div class="reader-image-bar">
-          <span id="reader-image-name"></span>
-          <button class="btn btn-sm" id="btn-reader-image-fit">Adatta alla finestra</button>
-          <button class="btn btn-sm" id="btn-reader-image-full">Dimensione reale</button>
-        </div>
-        <div class="reader-image-scroll" id="reader-image-scroll">
-          <img id="reader-image" alt="Mappa esportata">
-        </div>
       </div>
     </main>
   </div>

@@ -7,14 +7,14 @@
  */
 
 import {
-  state, el, escapeHtml, toast, debounce, setStatus, markDirty, fromLatLng,
+  state, el, escapeHtml, toast, debounce, setStatus, markDirty,
   confirmDialog, promptDialog, pickDialog, download, slugify, newId, engine, projects,
 } from './ui-core.js';
 import * as Atlas from './atlas.js';
 import * as Archive from './archive.js';
 import * as Reader from './reader.js';
 import {
-  supportsHandles, pickDirectory, restoreLastWorld, sourceFromFileList, pickerHint, forgetWorld,
+  supportsHandles, pickDirectory, restoreLastWorld, sourceFromFileList, forgetWorld,
 } from './worldPicker.js';
 import { idbClear, storageEstimate } from './db.js';
 import { getInterfaceMode, setInterfaceMode } from './interfaceMode.js';
@@ -254,12 +254,9 @@ async function openProject(project) {
   setStatus('save-status', 'Atlante aperto', 'ok');
 
   const spawn = state.world.spawn || { x: 0, z: 0 };
-  el('render-x').value = Math.round(spawn.x);
-  el('render-z').value = Math.round(spawn.z);
   el('goto-x').value = Math.round(spawn.x);
   el('goto-z').value = Math.round(spawn.z);
-  updateRenderEstimate();
-  pollRenderStatus();
+  maybeAutoGenerate();
 }
 
 async function deleteProject() {
@@ -556,39 +553,16 @@ async function applyBlockFilter() {
 }
 
 // ------------------------------------------------------- map generation
+// Generation has no panel of its own any more: it just happens, around the
+// world's spawn point, the moment an atlas is created or opened and its
+// dimension hasn't been generated yet — see maybeAutoGenerate().
 let renderRunning = false;
+const DEFAULT_RENDER_RADIUS = 1024;
 
 function renderArea() {
-  if (el('render-extent').value === 'all') return null;
-  const x = Number(el('render-x').value) || 0;
-  const z = Number(el('render-z').value) || 0;
-  const r = Math.max(256, Number(el('render-radius').value) || 1024);
-  return { minX: x - r, minZ: z - r, maxX: x + r, maxZ: z + r };
-}
-
-/** Rough "how long will this take", from the tile count. */
-function updateRenderEstimate() {
-  const node = el('render-estimate');
-  if (!state.project || !state.world) { node.textContent = ''; return; }
-  const dim = state.world.dimensions.find((d) => d.id === state.project.world.dimension);
-  if (!dim) { node.textContent = ''; return; }
-
-  const area = renderArea();
-  const b = dim.bounds;
-  const minX = area ? Math.max(b.minX, area.minX) : b.minX;
-  const maxX = area ? Math.min(b.maxX, area.maxX) : b.maxX;
-  const minZ = area ? Math.max(b.minZ, area.minZ) : b.minZ;
-  const maxZ = area ? Math.min(b.maxZ, area.maxZ) : b.maxZ;
-  if (minX > maxX || minZ > maxZ) {
-    node.textContent = "L'area scelta non tocca nessuna parte generata del mondo.";
-    return;
-  }
-  const tiles = Math.ceil((maxX - minX + 1) / 256) * Math.ceil((maxZ - minZ + 1) / 256);
-  // The rail overlay is a second pass over the same tiles.
-  const withRails = el('chk-rails').checked;
-  const seconds = Math.round(tiles * (withRails ? 1.5 : 0.8));
-  const pretty = seconds > 90 ? `~${Math.round(seconds / 60)} min` : `~${seconds} s`;
-  node.textContent = `Circa ${tiles} tile di dettaglio${withRails ? ' (più le ferrovie)' : ''}, ${pretty} di elaborazione.`;
+  const spawn = (state.world && state.world.spawn) || { x: 0, z: 0 };
+  const r = DEFAULT_RENDER_RADIUS;
+  return { minX: spawn.x - r, minZ: spawn.z - r, maxX: spawn.x + r, maxZ: spawn.z + r };
 }
 
 function formatBytes(n) {
@@ -616,16 +590,12 @@ async function startRender() {
   if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
   if (renderRunning) return;
   renderRunning = true;
-  el('btn-render').disabled = true;
-  el('btn-render-cancel').classList.remove('hidden');
-  el('render-progress').classList.remove('hidden');
-  setStatus('render-status', 'Avvio generazione…', 'busy');
+  setStatus('render-status', 'Generazione della mappa in corso…', 'busy');
 
   let lastRefresh = 0;
   try {
     const result = await engine.render(state.project.world.dimension, renderArea(), el('chk-rails').checked, (p) => {
       const percent = p.total ? Math.round((p.done / p.total) * 100) : 0;
-      el('render-bar').style.width = `${percent}%`;
       setStatus('render-status', `${p.phase}: ${p.done}/${p.total} (${percent}%)`, 'busy');
       // Show the tiles appearing, without redrawing on every single one.
       if (Date.now() - lastRefresh > 1500) {
@@ -634,17 +604,11 @@ async function startRender() {
       }
     });
     Atlas.refreshTiles();
-    if (result.state === 'cancelled') {
-      setStatus('render-status', 'Generazione interrotta (la parte già fatta resta).', 'busy');
-    } else {
-      setStatus('render-status', `Mappa generata${describeBounds(result.bounds)}.`, 'ok');
-    }
+    setStatus('render-status', `Mappa generata${describeBounds(result.bounds)}.`, 'ok');
   } catch (err) {
     setStatus('render-status', `Generazione fallita: ${err.message}`, 'err');
   } finally {
     renderRunning = false;
-    el('btn-render').disabled = false;
-    el('btn-render-cancel').classList.add('hidden');
   }
 }
 
@@ -653,17 +617,20 @@ function describeBounds(b) {
   return ` (area X ${Math.round(b.minX)}…${Math.round(b.maxX)}, Z ${Math.round(b.minZ)}…${Math.round(b.maxZ)})`;
 }
 
-async function pollRenderStatus() {
+/** No more "Genera mappa" button: opening or creating an atlas generates a
+ *  reasonable area around spawn by itself the first time, so there's always
+ *  something to look at. A dimension already generated is left alone. */
+async function maybeAutoGenerate() {
   if (!state.project || !state.world) return;
   try {
     const status = await engine.renderStatus(state.project.world.dimension);
     if (status.state === 'done') {
-      setStatus('render-status', `Mappa già generata${describeBounds(status.bounds)}.`, 'ok');
-    } else if (status.state !== 'running') {
-      setStatus('render-status',
-        'Questa dimensione non è ancora stata generata: scegli l\'area e premi "Genera mappa".', 'busy');
+      setStatus('render-status', `Mappa generata${describeBounds(status.bounds)}.`, 'ok');
+      return;
     }
+    if (status.state === 'running') return;
   } catch { /* the worker will report properly when asked to render */ }
+  await startRender();
 }
 
 // -------------------------------------------------------------------- init
@@ -704,7 +671,6 @@ async function initRest() {
   Atlas.initMap();
   Archive.init();
   Reader.init();
-  el('picker-hint').textContent = pickerHint();
 
   el('btn-pick-world').addEventListener('click', pickWorld);
   el('btn-reopen-world').addEventListener('click', reopenLastWorld);
@@ -736,27 +702,8 @@ async function initRest() {
   el('chk-rails').addEventListener('change', () => {
     Atlas.setRailsVisible(el('chk-rails').checked);
     if (state.project) { state.project.settings.showRails = el('chk-rails').checked; markDirty(); }
-    updateRenderEstimate();
   });
   el('btn-apply-filter').addEventListener('click', applyBlockFilter);
-
-  el('render-extent').addEventListener('change', () => {
-    el('render-around').classList.toggle('hidden', el('render-extent').value === 'all');
-    updateRenderEstimate();
-  });
-  for (const id of ['render-x', 'render-z', 'render-radius']) {
-    el(id).addEventListener('input', debounce(updateRenderEstimate, 250));
-  }
-  el('btn-render-here').addEventListener('click', () => {
-    const map = Atlas.getMap();
-    if (!map) return;
-    const c = fromLatLng(map.getCenter());
-    el('render-x').value = Math.round(c.x);
-    el('render-z').value = Math.round(c.z);
-    updateRenderEstimate();
-  });
-  el('btn-render').addEventListener('click', startRender);
-  el('btn-render-cancel').addEventListener('click', () => engine.cancelRender());
 
   el('btn-clear-cache').addEventListener('click', async () => {
     if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
@@ -807,6 +754,18 @@ async function initRest() {
   });
   el('btn-goto-fit').addEventListener('click', () => Atlas.fitWorld());
 
+  el('btn-compass').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const opening = el('map-utility-panel').classList.contains('hidden');
+    el('map-utility-panel').classList.toggle('hidden', !opening);
+    el('btn-compass').classList.toggle('active', opening);
+  });
+  el('map-utility-panel').addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => {
+    el('map-utility-panel').classList.add('hidden');
+    el('btn-compass').classList.remove('active');
+  });
+
   document.querySelectorAll('[data-add-layer]').forEach((btn) => {
     btn.addEventListener('click', () => addLayer(btn.dataset.addLayer));
   });
@@ -836,10 +795,9 @@ async function initRest() {
     btn.addEventListener('click', () => Atlas.setTool(btn.dataset.tool));
   });
 
-  el('btn-export-reader-map').addEventListener('click', () => Atlas.exportForReader());
+  el('btn-export-atlas').addEventListener('click', () => Atlas.exportForReader());
+  el('btn-export-svg-layer').addEventListener('click', () => Atlas.exportSVG());
   el('btn-export-png').addEventListener('click', () => Atlas.exportPNG());
-  el('btn-export-svg').addEventListener('click', () => Atlas.exportSVG());
-  el('btn-export-geojson').addEventListener('click', () => Atlas.exportGeoJSON());
 
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input, textarea, select')) return;
