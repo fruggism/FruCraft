@@ -294,6 +294,30 @@ function bannerAnchor(feature, layer) {
   return toLatLng(sx / feature.coords.length, sz / feature.coords.length);
 }
 
+// How far clear of the stroke a road's name label starts, in blocks —
+// enough that a fresh label reads next to its road instead of sitting on
+// top of it, which is what a dead-centre default (the old behaviour)
+// produced on anything but a single straight segment.
+const LINE_LABEL_CLEARANCE_BLOCKS = 8;
+
+/** A perpendicular nudge, away from the line, for a road's name label to
+ *  start at — computed from the segment nearest the middle of the line,
+ *  since that's usually close to where bannerAnchor (the vertex average)
+ *  lands. Only ever the *starting* offset: once a label is dragged, its
+ *  stored feature.style.labelOffset takes over completely (see
+ *  buildFeatureLayer), so this never fights a placement the user chose. */
+function defaultLineLabelOffset(feature) {
+  const coords = feature.coords;
+  if (!coords || coords.length < 2) return [0, 0];
+  const mid = Math.floor((coords.length - 1) / 2);
+  const [ax, az] = coords[mid];
+  const [bx, bz] = coords[mid + 1];
+  const dx = bx - ax;
+  const dz = bz - az;
+  const len = Math.hypot(dx, dz) || 1;
+  return [(-dz / len) * LINE_LABEL_CLEARANCE_BLOCKS, (dx / len) * LINE_LABEL_CLEARANCE_BLOCKS];
+}
+
 /** A small sticky-note glyph, for the "cose da costruire" layer. */
 function noteSvg(color, size) {
   const s = size;
@@ -524,10 +548,14 @@ function buildFeatureLayer(feature, layer) {
       text: escapeHtml(feature.name),
       anchor: bannerAnchor(feature, layer),
       // No stored offset yet: a point label starts just clear of its own
-      // icon instead of sitting right on top of it; lines/areas start dead
-      // centre, as the old fixed tooltip did.
+      // icon instead of sitting right on top of it; a road's starts clear
+      // of its stroke the same way, perpendicular to the line itself
+      // (see defaultLineLabelOffset) instead of sitting dead centre on
+      // top of it; an area's does start dead centre, since there the
+      // centre is empty space, not a stroke to sit on.
       getOffset: () => (feature.style && feature.style.labelOffset)
-        || (isPointLayer(layer.type) ? DEFAULT_POINT_LABEL_OFFSET : [0, 0]),
+        || (isPointLayer(layer.type) ? DEFAULT_POINT_LABEL_OFFSET
+          : layer.type === 'roads' ? defaultLineLabelOffset(feature) : [0, 0]),
       setOffset: (off) => {
         feature.style = { ...(feature.style || {}), labelOffset: off };
         markDirty();
@@ -1999,18 +2027,22 @@ function drawVectors(ctx, bounds, scale) {
 
       // Labels — transit lines never show their name on the map (see buildFeatureLayer).
       if (layer.type !== 'transit' && style.showName !== false && feature.name) {
+        const [ox, oz] = labelOffsetWorld(feature, layer);
         const [lx, ly] = isPointLayer(layer.type)
-          ? toPx(feature.coord[0], feature.coord[1])
-          : centroidPx(feature.coords, toPx);
+          ? toPx(feature.coord[0] + ox, feature.coord[1] + oz)
+          : (() => {
+            let sx = 0, sz = 0;
+            for (const [x, z] of feature.coords) { sx += x; sz += z; }
+            return toPx(sx / feature.coords.length + ox, sz / feature.coords.length + oz);
+          })();
         ctx.font = `${layer.type === 'areas' ? 15 : 12}px monospace`;
         ctx.textAlign = isPointLayer(layer.type) ? 'left' : 'center';
         ctx.textBaseline = 'middle';
-        const offset = isPointLayer(layer.type) ? (Number(style.size) || 10) / 2 + 4 : 0;
         ctx.lineWidth = 3;
         ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-        ctx.strokeText(feature.name, lx + offset, ly);
+        ctx.strokeText(feature.name, lx, ly);
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(feature.name, lx + offset, ly);
+        ctx.fillText(feature.name, lx, ly);
       }
     }
 
@@ -2055,6 +2087,20 @@ function centroidPx(coords, toPx) {
   let sx = 0, sz = 0;
   for (const [x, z] of coords) { sx += x; sz += z; }
   return toPx(sx / coords.length, sz / coords.length);
+}
+
+/** Where a feature's name label lands, in world blocks relative to its
+ *  anchor — a user's drag if there is one, otherwise the same default the
+ *  editor starts a fresh label at (see buildFeatureLayer): clear of a
+ *  POI's icon, perpendicular to a road's stroke, dead centre for an area.
+ *  Shared by the PNG and SVG exports so a flattened map matches what the
+ *  editor actually shows instead of falling back to its own dead-centre-
+ *  on-the-line default. */
+function labelOffsetWorld(feature, layer) {
+  if (feature.style && Array.isArray(feature.style.labelOffset)) return feature.style.labelOffset;
+  if (isPointLayer(layer.type)) return DEFAULT_POINT_LABEL_OFFSET;
+  if (layer.type === 'roads') return defaultLineLabelOffset(feature);
+  return [0, 0];
 }
 
 function drawPoiShape(ctx, shape, cx, cy, size, color) {
@@ -2245,17 +2291,17 @@ async function exportSVG() {
       }
 
       if (layer.type !== 'transit' && style.showName !== false && feature.name) {
+        const [ox, oz] = labelOffsetWorld(feature, layer);
         const [lx, ly] = isPointLayer(layer.type)
-          ? toPx(feature.coord[0], feature.coord[1])
+          ? toPx(feature.coord[0] + ox, feature.coord[1] + oz)
           : (() => {
             let sx = 0, sz = 0;
             for (const [x, z] of feature.coords) { sx += x; sz += z; }
-            return toPx(sx / feature.coords.length, sz / feature.coords.length);
+            return toPx(sx / feature.coords.length + ox, sz / feature.coords.length + oz);
           })();
         const anchor = isPointLayer(layer.type) ? 'start' : 'middle';
-        const dx = isPointLayer(layer.type) ? (Number(style.size) || 10) / 2 + 4 : 0;
         const fs = layer.type === 'areas' ? 15 : 12;
-        parts.push(`<text x="${Number(lx) + dx}" y="${ly}" font-family="monospace" font-size="${fs}" text-anchor="${anchor}" dominant-baseline="middle" fill="#fff" stroke="#000" stroke-width="3" paint-order="stroke">${escapeHtml(feature.name)}</text>`);
+        parts.push(`<text x="${lx}" y="${ly}" font-family="monospace" font-size="${fs}" text-anchor="${anchor}" dominant-baseline="middle" fill="#fff" stroke="#000" stroke-width="3" paint-order="stroke">${escapeHtml(feature.name)}</text>`);
       }
     }
     if (layer.type === 'transit') {

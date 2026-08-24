@@ -134,9 +134,10 @@ dentro la cartella `web/`.
    *Modifica nodi* per spostare i vertici, *Cancella* per eliminare cliccando.
    `Esc` annulla, `Canc` elimina l'elemento selezionato. I punti si spostano
    trascinandoli. Passando il mouse su un elemento compaiono le sue
-   informazioni; il nome può restare sempre visibile sulla mappa, e la sua
-   etichetta si trascina dove preferisci: se la allontani troppo dal punto a
-   cui appartiene compare una sottile linea nera che li ricollega. Ogni
+   informazioni; il nome può restare sempre visibile sulla mappa — per una
+   strada nasce già spostato di lato, non sopra il tracciato — e la sua
+   etichetta si trascina comunque dove preferisci: se la allontani troppo dal
+   punto a cui appartiene compare una sottile linea nera che li ricollega. Ogni
    elemento può avere un **banner** (un'immagine PNG/JPEG/WebP caricata dal
    proprietà), piantato come una bandierina sulla mappa e nell'anteprima al
    passaggio del mouse.
