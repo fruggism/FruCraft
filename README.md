@@ -230,6 +230,18 @@ I tile restano in cache nel browser. Dopo aver costruito qualcosa premi
 > Conviene uscire dal mondo in Minecraft prima di rigenerare: i chunk non
 > ancora salvati su disco non possono essere letti.
 
+**Svuota cache e rigenera** riguarda solo il mondo aperto in quel momento —
+i tile degli altri mondi che hai mappato in passato restano dov'erano. La
+sezione *"3 Generazione mappa"* mostra anche quanto spazio sta usando
+l'app nel browser (soprattutto tile) e un pulsante separato, **🗑️ Svuota la
+cache di tutti i mondi**, che cancella i tile di *ogni* mondo mappato
+finora per liberare spazio — utile perché quella cache non si svuota mai
+da sola. Non tocca gli atlanti salvati (layer, punti, linee…): quelli
+restano finché non li elimini esplicitamente da *"2 Progetto"*, ed è per
+questo che, se ti serve tenere una copia della mappa, conviene esportarla
+(*"8 Esporta mappa"*, o *"Esporta .json"* per il progetto) invece di
+contare sulla cache dei tile.
+
 ---
 
 ## Struttura

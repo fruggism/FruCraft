@@ -16,6 +16,7 @@ import * as Reader from './reader.js';
 import {
   supportsHandles, pickDirectory, restoreLastWorld, sourceFromFileList, pickerHint, forgetWorld,
 } from './worldPicker.js';
+import { idbClear, storageEstimate } from './db.js';
 import { getInterfaceMode, setInterfaceMode } from './interfaceMode.js';
 
 const LAYER_ICONS = { roads: '🛣️', pois: '📍', areas: '⬟', transit: '🚇', notes: '📝' };
@@ -590,6 +591,27 @@ function updateRenderEstimate() {
   node.textContent = `Circa ${tiles} tile di dettaglio${withRails ? ' (più le ferrovie)' : ''}, ${pretty} di elaborazione.`;
 }
 
+function formatBytes(n) {
+  if (!Number.isFinite(n)) return '?';
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Shows roughly how much of the browser's storage the app is using —
+ *  mostly cached map tiles, since atlanti/documenti are tiny by comparison
+ *  — so "svuota tutta la cache" has a number to react to, not a guess. */
+async function updateStorageUsage() {
+  const node = el('storage-usage');
+  if (!node) return;
+  const estimate = await storageEstimate();
+  if (!estimate || !Number.isFinite(estimate.usage)) {
+    node.textContent = '';
+    return;
+  }
+  const quotaPart = Number.isFinite(estimate.quota) ? ` di ${formatBytes(estimate.quota)} disponibili` : '';
+  node.textContent = `Spazio usato in questo browser: ${formatBytes(estimate.usage)}${quotaPart} — soprattutto tile di mappa già generati.`;
+}
+
 async function startRender() {
   if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
   if (renderRunning) return;
@@ -744,10 +766,31 @@ async function initRest() {
       Atlas.refreshTiles();
       setStatus('cache-status', `Cache svuotata (${removed} tile).`, 'ok');
       await startRender();
+      updateStorageUsage();
     } catch (err) {
       setStatus('cache-status', err.message, 'err');
     }
   });
+
+  el('btn-clear-all-tiles').addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Svuotare la cache di tutti i mondi?',
+      message: 'Cancella i tile salvati di ogni mondo mappato finora, non solo di quello aperto ora. '
+        + 'Riaprendo un mondo andrà rigenerato da capo. Gli atlanti (layer, punti, linee…) non vengono toccati.',
+      confirmLabel: 'Svuota tutto', danger: true,
+    });
+    if (!ok) return;
+    setStatus('cache-status', 'Svuoto la cache di tutti i mondi…', 'busy');
+    try {
+      await idbClear('tiles');
+      if (state.world) { Atlas.refreshTiles(); await startRender(); }
+      setStatus('cache-status', 'Cache di tutti i mondi svuotata.', 'ok');
+      updateStorageUsage();
+    } catch (err) {
+      setStatus('cache-status', err.message, 'err');
+    }
+  });
+  updateStorageUsage();
 
   el('btn-goto').addEventListener('click', () => {
     Atlas.goTo(Number(el('goto-x').value) || 0, Number(el('goto-z').value) || 0,
