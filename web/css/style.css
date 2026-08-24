@@ -74,7 +74,7 @@ html, body {
 }
 .logo .cube {
   width: 22px; height: 22px;
-  background-image: var(--tex-grass);
+  background-image: var(--tex-dirt);
   background-size: 22px 22px;
   border: 2px solid #1d1d1d;
   box-shadow: inset -2px -2px 0 rgba(0, 0, 0, .35), inset 2px 2px 0 rgba(255, 255, 255, .2);
