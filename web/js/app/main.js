@@ -412,6 +412,7 @@ function updateToolAvailability() {
   }
   const isTransit = !!layer && layer.type === 'transit';
   el('transit-layer-tools').classList.toggle('hidden', !isTransit);
+  el('btn-new-independent-station').classList.toggle('hidden', !isTransit);
   if (isTransit) {
     const style = layer.defaultStyle || {};
     el('station-shape').value = style.stationShape || 'circle';
@@ -770,10 +771,6 @@ async function initRest() {
   el('btn-new-independent-station').addEventListener('click', () => {
     const layer = state.project && state.project.layers.find((l) => l.id === state.selectedLayerId);
     if (layer) Atlas.beginPlaceStation(layer);
-  });
-  el('btn-transit-report').addEventListener('click', () => {
-    const layer = state.project && state.project.layers.find((l) => l.id === state.selectedLayerId);
-    if (layer) Atlas.showTransitReport(layer);
   });
   el('station-shape').addEventListener('change', () => {
     const layer = state.project && state.project.layers.find((l) => l.id === state.selectedLayerId);

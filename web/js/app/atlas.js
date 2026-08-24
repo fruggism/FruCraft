@@ -8,7 +8,7 @@
 
 import {
   state, el, escapeHtml, toast, toLatLng, fromLatLng, roundCoord,
-  debounce, newId, confirmDialog, promptDialog, pickDialog, alertDialog, download, slugify, setStatus, markDirty,
+  debounce, newId, confirmDialog, promptDialog, pickDialog, download, slugify, setStatus, markDirty,
   findLayer, selectedLayer, findFeature, selectedFeature, findStation, selectedStation, engine,
 } from './ui-core.js';
 import { isIpadMode } from './interfaceMode.js';
@@ -1479,6 +1479,10 @@ function refreshProps() {
           vicino a una stazione già esistente ti colleghi a quella invece di crearne una nuova.
           Disegnando o estendendo una linea che passa sopra una stazione, la linea si collega
           da sola.</div>
+      </div>
+      <div class="stations-box" style="margin-top:8px">
+        <span class="lbl">Linee e stazioni — ${escapeHtml(layer.name)}</span>
+        ${transitReportHtml(layer)}
       </div>`;
   } else if (layer.type === 'notes') {
     specific = `
@@ -2361,12 +2365,6 @@ function transitReportHtml(layer) {
   }).join('');
 }
 
-/** "Elenco linee e stazioni" — a read-only report of every transit line in
- *  a layer with its stops in order along the line. */
-async function showTransitReport(layer) {
-  await alertDialog({ title: `Linee e stazioni — ${layer.name}`, bodyHtml: transitReportHtml(layer) });
-}
-
 export {
   initMap, attachWorld, renderAllLayers, refreshFeature, setLayerVisibility, applyLayerVisibility,
   selectFeature, refreshProps, setTool, deleteFeature,
@@ -2382,7 +2380,7 @@ export {
   // looks like, not two that can drift apart.
   styleOf, dashFor, poiSvg, noteSvg, stationSvg, popupHtml, lengthOf, areaOf,
   bannerMarker, bannerAnchor, isPointLayer,
-  beginPlaceStation, showTransitReport, orderedStationsForLine, openLineVisibilityMenu, setStationStyle,
+  beginPlaceStation, orderedStationsForLine, openLineVisibilityMenu, setStationStyle,
 };
 export function getMap() { return map; }
 export function getCurrentTool() { return currentTool; }

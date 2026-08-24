@@ -104,9 +104,8 @@ dentro la cartella `web/`.
    affianca in automatico (un avviso lo segnala) invece di sovrapporle in un
    unico tratto indistinguibile. Le stazioni sono elementi indipendenti dalle
    linee: quando un layer trasporti è selezionato, gli **Strumenti**
-   guadagnano una sezione dedicata con *"🚉 Nuova stazione"* (ne pianta una
-   prima ancora che qualunque linea ci passi), *"📋 Elenco linee e stazioni"*
-   (la lista di ogni linea del layer con le sue fermate in ordine) e
+   guadagnano *"🚉 Nuova stazione"* (subito sotto i quattro strumenti
+   principali — ne pianta una prima ancora che qualunque linea ci passi) e
    *"Simbolo delle stazioni"* (forma — cerchio, quadrato o rettangolo — e
    dimensione per l'intero layer; per default piccoli pallini, per non
    sovrastare le linee). Una stazione con due o più linee diventa un'icona
@@ -114,8 +113,11 @@ dentro la cartella `web/`.
    Selezionandone una con *Seleziona* si apre il suo editor: nome,
    descrizione e — spuntando *"Simbolo personalizzato per questa
    stazione"* — una forma e una dimensione solo per lei, senza cambiare il
-   default del layer. Il nome di una linea non compare mai sulla mappa
-   (resta visibile al passaggio del mouse, e nell'elenco): con più linee
+   default del layer. Selezionando invece una linea, le sue Proprietà
+   includono l'elenco di ogni linea del layer con le sue fermate in ordine —
+   compare da solo, senza doverlo aprire a parte. Il nome di una linea non
+   compare mai sulla mappa (resta visibile al passaggio del mouse, e
+   nell'elenco): con più linee
    vicine affiancate automaticamente sarebbe solo confusione. Selezionando
    un layer trasporti si apre anche *"Linee visibili"*, un elenco con una
    casella per linea per mostrarne solo alcune sulla mappa.
