@@ -1830,6 +1830,61 @@ function zoomToFeature(feature, layer) {
   }
 }
 
+/** Flat, searchable list of every named feature and station across a set of
+ *  layers — shared between the Editor (state.project.layers) and the
+ *  Lettore (the layers of whatever bundle it has open), so "search by name"
+ *  behaves the same in both. */
+function searchIndex(layers) {
+  const items = [];
+  for (const layer of layers || []) {
+    for (const feature of layer.features || []) {
+      if (feature.name) {
+        items.push({
+          kind: 'feature', name: feature.name, layerId: layer.id, layerName: layer.name,
+          layerType: layer.type, featureId: feature.id,
+        });
+      }
+    }
+    if (layer.type === 'transit') {
+      for (const station of layer.stations || []) {
+        if (station.name) {
+          items.push({
+            kind: 'station', name: station.name, layerId: layer.id, layerName: layer.name,
+            layerType: layer.type, stationId: station.id,
+          });
+        }
+      }
+    }
+  }
+  return items;
+}
+
+function searchByName(layers, query) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return [];
+  return searchIndex(layers)
+    .filter((it) => it.name.toLowerCase().includes(q))
+    .slice(0, 40);
+}
+
+/** Pans/zooms to a search result and selects it in the Editor, the same as
+ *  clicking it on the map — works only against state.project.layers. */
+function goToSearchResult(item) {
+  const layer = findLayer(item.layerId);
+  if (!layer) return;
+  if (item.kind === 'station') {
+    const station = (layer.stations || []).find((s) => s.id === item.stationId);
+    if (!station) return;
+    zoomToStation(station);
+    selectStation(item.layerId, item.stationId);
+  } else {
+    const feature = (layer.features || []).find((f) => f.id === item.featureId);
+    if (!feature) return;
+    zoomToFeature(feature, layer);
+    selectFeature(item.layerId, item.featureId);
+  }
+}
+
 function setTerrainVisible(visible) {
   if (!tileLayer) return;
   if (visible && !map.hasLayer(tileLayer)) tileLayer.addTo(map);
@@ -2416,7 +2471,7 @@ export {
   initMap, attachWorld, renderAllLayers, refreshFeature, setLayerVisibility, applyLayerVisibility,
   selectFeature, refreshProps, setTool, deleteFeature,
   setTerrainVisible, setRailsVisible, zoomToFeature, goTo, fitWorld, refreshTiles, updateViewInfo,
-  currentDimension, exportPNG, exportSVG, exportForReader,
+  currentDimension, exportPNG, exportSVG, exportForReader, searchByName, goToSearchResult,
   POI_SHAPES, POI_CATEGORIES, PALETTE,
   // Pure geometry helpers, exported mainly so the test suite can exercise
   // them without a browser (see test/run-tests.js).

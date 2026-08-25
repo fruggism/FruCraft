@@ -84,7 +84,11 @@ dentro la cartella `web/`.
    senza altro da fare.
 2. **La mappa** — in basso a sinistra c'è sempre la coordinata sotto il
    cursore, e accanto una **🧭 bussola**: apre un pannellino per andare dove
-   vuoi (coordinate, punto di spawn, tutto il mondo).
+   vuoi (coordinate, punto di spawn, tutto il mondo). Di fianco, il pulsante
+   **🔍 cerca** trova per nome una stazione, un punto di interesse, una
+   strada o un'area già disegnati: scrivi anche solo una parte del nome e un
+   click sul risultato porta subito lì, con le sue informazioni aperte.
+   C'è anche nel Lettore, sulla mappa di un atlante aperto.
 3. **Layer** — creane quanti vuoi, di cinque tipi:
 
 | Tipo | Cosa disegna | Stile |

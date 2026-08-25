@@ -185,9 +185,10 @@
       <div id="map"></div>
       <div class="coord-bar">
         <div class="coord-readout" id="coord-readout">X <b>—</b>  Z <b>—</b></div>
-        <button id="btn-compass" title="Vai alle coordinate">🧭</button>
+        <button class="map-icon-btn" id="btn-compass" title="Vai alle coordinate">🧭</button>
+        <button class="map-icon-btn" id="btn-map-search" title="Cerca una stazione o un edificio per nome">🔍</button>
       </div>
-      <div class="map-utility-panel hidden" id="map-utility-panel">
+      <div class="map-utility-panel map-popover hidden" id="map-utility-panel">
         <h3>Vai alle coordinate</h3>
         <div class="row-3">
           <label><span class="lbl">X</span><input type="number" id="goto-x" placeholder="0"></label>
@@ -199,6 +200,11 @@
           <button class="btn btn-sm" id="btn-goto-fit">Tutto il mondo</button>
         </div>
         <div class="hint" id="view-info"></div>
+      </div>
+      <div class="map-search-panel map-popover hidden" id="map-search-panel">
+        <h3>Cerca sulla mappa</h3>
+        <input type="text" id="map-search-input" placeholder="Nome di una stazione, un punto, una strada…" autocomplete="off">
+        <ul class="search-results" id="map-search-results"></ul>
       </div>
       <div class="draw-hint hidden" id="draw-hint"></div>
       <div class="map-overlay" id="map-overlay">
@@ -309,6 +315,12 @@
 
       <div class="reader-map-view hidden" id="reader-map-view">
         <div id="reader-map"></div>
+        <button class="map-icon-btn reader-search-btn" id="btn-reader-search" title="Cerca una stazione o un edificio per nome">🔍</button>
+        <div class="map-search-panel map-popover reader-search-panel hidden" id="reader-search-panel">
+          <h3>Cerca sulla mappa</h3>
+          <input type="text" id="reader-search-input" placeholder="Nome di una stazione, un punto, una strada…" autocomplete="off">
+          <ul class="search-results" id="reader-search-results"></ul>
+        </div>
       </div>
     </main>
   </div>

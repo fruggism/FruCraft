@@ -21,6 +21,30 @@ import { getInterfaceMode, setInterfaceMode } from './interfaceMode.js';
 const LAYER_ICONS = { roads: '🛣️', pois: '📍', areas: '⬟', transit: '🚇', notes: '📝' };
 const LAYER_KIND_LABEL = { roads: 'Strade', pois: 'Punti', areas: 'Aree', transit: 'Trasporti', notes: 'Note' };
 
+function closeMapPopovers() {
+  el('map-utility-panel').classList.add('hidden');
+  el('btn-compass').classList.remove('active');
+  el('map-search-panel').classList.add('hidden');
+  el('btn-map-search').classList.remove('active');
+}
+
+/** Renders search results (from Atlas.searchByName) into a <ul>, shared
+ *  markup/behaviour between the Editor's and the Lettore's search panels. */
+function renderMapSearchResults(hostId, results, onPick) {
+  const host = el(hostId);
+  if (!host) return;
+  if (!results.length) {
+    host.innerHTML = `<li class="sr-empty">${el(hostId.replace('-results', '-input')).value.trim() ? 'Nessun risultato' : 'Scrivi un nome…'}</li>`;
+    return;
+  }
+  host.innerHTML = results.map((item, i) => `
+    <li data-i="${i}">${item.kind === 'station' ? '🚉' : (LAYER_ICONS[item.layerType] || '•')} ${escapeHtml(item.name)}
+      <span class="sr-layer">${escapeHtml(item.layerName)}</span></li>`).join('');
+  host.querySelectorAll('li[data-i]').forEach((node) => {
+    node.addEventListener('click', () => onPick(results[Number(node.dataset.i)]));
+  });
+}
+
 // The description of the currently open folder, kept so a project reopened
 // later can be matched against the world actually loaded in the worker.
 let openWorldInit = null;
@@ -684,14 +708,30 @@ async function initRest() {
   el('btn-compass').addEventListener('click', (e) => {
     e.stopPropagation();
     const opening = el('map-utility-panel').classList.contains('hidden');
+    closeMapPopovers();
     el('map-utility-panel').classList.toggle('hidden', !opening);
     el('btn-compass').classList.toggle('active', opening);
   });
   el('map-utility-panel').addEventListener('click', (e) => e.stopPropagation());
-  document.addEventListener('click', () => {
-    el('map-utility-panel').classList.add('hidden');
-    el('btn-compass').classList.remove('active');
+
+  el('btn-map-search').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const opening = el('map-search-panel').classList.contains('hidden');
+    closeMapPopovers();
+    el('map-search-panel').classList.toggle('hidden', !opening);
+    el('btn-map-search').classList.toggle('active', opening);
+    if (opening) { el('map-search-input').value = ''; el('map-search-results').innerHTML = ''; el('map-search-input').focus(); }
   });
+  el('map-search-panel').addEventListener('click', (e) => e.stopPropagation());
+  el('map-search-input').addEventListener('input', debounce(() => {
+    const results = state.project ? Atlas.searchByName(state.project.layers, el('map-search-input').value) : [];
+    renderMapSearchResults('map-search-results', results, (item) => {
+      Atlas.goToSearchResult(item);
+      closeMapPopovers();
+    });
+  }, 150));
+
+  document.addEventListener('click', () => closeMapPopovers());
 
   document.querySelectorAll('[data-add-layer]').forEach((btn) => {
     btn.addEventListener('click', () => addLayer(btn.dataset.addLayer));

@@ -382,25 +382,48 @@ details.sub > summary::-webkit-details-marker { display: none; }
   font-size: 11px; color: var(--ink); pointer-events: none;
 }
 .coord-readout b { color: var(--accent-bright); font-weight: normal; }
-#btn-compass {
+.map-icon-btn {
   background: #6e6e6e; color: #fff; border: none; cursor: pointer;
   width: 22px; height: 22px; padding: 0; font-size: 13px; line-height: 1;
   box-shadow: inset -2px -2px 0 #3b3b3b, inset 2px 2px 0 #a5a5a5, 0 0 0 1px #101010;
 }
-#btn-compass:hover { background: #868686; }
-#btn-compass.active { background: var(--accent); box-shadow: inset -2px -2px 0 #35651f, inset 2px 2px 0 #8fd06a, 0 0 0 1px #101010; }
+.map-icon-btn:hover { background: #868686; }
+.map-icon-btn.active { background: var(--accent); box-shadow: inset -2px -2px 0 #35651f, inset 2px 2px 0 #8fd06a, 0 0 0 1px #101010; }
 
-.map-utility-panel {
+.reader-search-btn {
+  position: absolute; left: 10px; bottom: 10px; z-index: 800;
+}
+
+.map-popover {
   position: absolute; left: 10px; bottom: 42px; z-index: 810;
   width: 260px; max-height: calc(100% - 80px); overflow-y: auto;
   background-color: #262626; background-image: var(--tex-deepslate); background-size: 64px 64px;
   padding: 10px; box-shadow: 0 0 0 2px #101010, inset -2px -2px 0 rgba(0, 0, 0, .55), inset 2px 2px 0 rgba(255, 255, 255, .08);
 }
-.map-utility-panel h3 {
+.map-popover h3 {
   margin: 12px 0 8px; font-size: 11px; font-weight: normal; letter-spacing: .06em;
   text-transform: uppercase; color: var(--accent-bright); text-shadow: 1px 1px 0 #000;
 }
-.map-utility-panel h3:first-child { margin-top: 0; }
+.map-popover h3:first-child { margin-top: 0; }
+
+.map-search-panel input {
+  width: 100%; box-sizing: border-box; background: #1a1a1a; color: var(--ink);
+  border: none; padding: 6px 8px; font-size: 12px; font-family: inherit;
+  box-shadow: inset 0 0 0 2px #101010, inset 1px 1px 3px rgba(0, 0, 0, .5);
+}
+.search-results {
+  list-style: none; margin: 8px 0 0; padding: 0;
+}
+.search-results li {
+  display: flex; align-items: center; gap: 6px; padding: 6px 4px;
+  cursor: pointer; font-size: 12px; color: var(--ink);
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+.search-results li:last-child { border-bottom: none; }
+.search-results li:hover { background: rgba(255, 255, 255, .09); color: var(--accent-bright); }
+.search-results li .sr-layer { color: var(--ink-faint); font-size: 10px; margin-left: auto; flex: none; }
+.search-results .sr-empty { color: var(--ink-faint); font-style: italic; padding: 6px 4px; cursor: default; }
+.search-results .sr-empty:hover { background: none; color: var(--ink-faint); }
 
 .draw-hint {
   position: absolute; left: 50%; transform: translateX(-50%); top: 12px; z-index: 850;

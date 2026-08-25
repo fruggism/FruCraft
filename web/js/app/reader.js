@@ -11,7 +11,7 @@
  * whether it's being edited or just viewed.
  */
 
-import { el, escapeHtml, toast, setStatus, toLatLng } from './ui-core.js';
+import { el, escapeHtml, toast, setStatus, toLatLng, debounce } from './ui-core.js';
 import * as Atlas from './atlas.js';
 import { READER_DOC_FORMAT } from './archive.js';
 
@@ -48,6 +48,10 @@ function showDoc() {
 let readerMap = null;
 let readerLayers = [];              // the opened bundle's layers, as-is
 const readerLayerGroups = new Map(); // layerId -> L.LayerGroup
+// Indexed by id so the search panel can find and pan/open a marker by name
+// without re-walking readerLayers on every click.
+const readerFeatureMarkers = new Map(); // featureId -> primary Leaflet layer
+const readerStationMarkers = new Map(); // stationId -> Leaflet marker
 
 function initReaderMap() {
   if (readerMap) return readerMap;
@@ -135,6 +139,7 @@ function buildReadOnlyFeature(feature, layer) {
   primary.bindPopup(Atlas.popupHtml(feature, layer), { closeButton: false, autoPan: false, className: 'ca-info-popup' });
   primary.on('mouseover', () => primary.openPopup());
   primary.on('mouseout', () => primary.closePopup());
+  readerFeatureMarkers.set(feature.id, primary);
   return group;
 }
 
@@ -162,12 +167,15 @@ function buildReadOnlyStation(station, layer) {
     </div>`, { closeButton: false, autoPan: false, className: 'ca-info-popup' });
   marker.on('mouseover', () => marker.openPopup());
   marker.on('mouseout', () => marker.closePopup());
+  readerStationMarkers.set(station.id, marker);
   return marker;
 }
 
 function renderReaderLayers() {
   for (const g of readerLayerGroups.values()) readerMap.removeLayer(g);
   readerLayerGroups.clear();
+  readerFeatureMarkers.clear();
+  readerStationMarkers.clear();
   for (const layer of readerLayers) {
     const group = L.layerGroup();
     for (const feature of layer.features || []) group.addLayer(buildReadOnlyFeature(feature, layer));
@@ -226,10 +234,60 @@ function renderReaderLayerList() {
   });
 }
 
+// ------------------------------------------------------------------ search
+function renderReaderSearchResults(results) {
+  const host = el('reader-search-results');
+  if (!results.length) {
+    host.innerHTML = `<li class="sr-empty">${el('reader-search-input').value.trim() ? 'Nessun risultato' : 'Scrivi un nome…'}</li>`;
+    return;
+  }
+  host.innerHTML = results.map((item, i) => `
+    <li data-i="${i}">${item.kind === 'station' ? '🚉' : (LAYER_ICONS[item.layerType] || '•')} ${escapeHtml(item.name)}
+      <span class="sr-layer">${escapeHtml(item.layerName)}</span></li>`).join('');
+  host.querySelectorAll('li[data-i]').forEach((node) => {
+    node.addEventListener('click', () => {
+      goToReaderSearchResult(results[Number(node.dataset.i)]);
+      el('reader-search-panel').classList.add('hidden');
+      el('btn-reader-search').classList.remove('active');
+    });
+  });
+}
+
+/** Pans/zooms the read-only map to a search result and opens its popup —
+ *  the Lettore's equivalent of Atlas.goToSearchResult, working off
+ *  readerLayers/readerFeatureMarkers/readerStationMarkers instead of a
+ *  live project. */
+function goToReaderSearchResult(item) {
+  const layer = readerLayers.find((l) => l.id === item.layerId);
+  if (!layer || !readerMap) return;
+  let marker;
+  if (item.kind === 'station') {
+    const station = (layer.stations || []).find((s) => s.id === item.stationId);
+    if (!station) return;
+    readerMap.setView(toLatLng(station.x, station.z), Math.max(readerMap.getZoom(), -1));
+    marker = readerStationMarkers.get(item.stationId);
+  } else {
+    const feature = (layer.features || []).find((f) => f.id === item.featureId);
+    if (!feature) return;
+    if (Atlas.isPointLayer(layer.type)) {
+      readerMap.setView(toLatLng(feature.coord[0], feature.coord[1]), Math.max(readerMap.getZoom(), -1));
+    } else {
+      const b = L.latLngBounds(feature.coords.map(([x, z]) => toLatLng(x, z)));
+      readerMap.fitBounds(b.pad(0.2));
+    }
+    marker = readerFeatureMarkers.get(item.featureId);
+  }
+  if (marker) marker.openPopup();
+}
+
 function openMapBundle(raw) {
   const map = initReaderMap();
   readerLayers = Array.isArray(raw.layers) ? raw.layers : [];
   showMap();
+  el('reader-search-panel').classList.add('hidden');
+  el('btn-reader-search').classList.remove('active');
+  el('reader-search-input').value = '';
+  el('reader-search-results').innerHTML = '';
   setTimeout(() => map.invalidateSize(), 30);
 
   const b = raw.bounds || {};
@@ -321,6 +379,26 @@ function init() {
   el('reader-doc-input').addEventListener('change', (e) => {
     openDocFile(e.target.files && e.target.files[0]);
     e.target.value = '';
+  });
+
+  el('btn-reader-search').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const opening = el('reader-search-panel').classList.contains('hidden');
+    el('reader-search-panel').classList.toggle('hidden', !opening);
+    el('btn-reader-search').classList.toggle('active', opening);
+    if (opening) {
+      el('reader-search-input').value = '';
+      el('reader-search-results').innerHTML = '';
+      el('reader-search-input').focus();
+    }
+  });
+  el('reader-search-panel').addEventListener('click', (e) => e.stopPropagation());
+  el('reader-search-input').addEventListener('input', debounce(() => {
+    renderReaderSearchResults(Atlas.searchByName(readerLayers, el('reader-search-input').value));
+  }, 150));
+  document.addEventListener('click', () => {
+    el('reader-search-panel').classList.add('hidden');
+    el('btn-reader-search').classList.remove('active');
   });
 
   showMapEmpty();
