@@ -2206,34 +2206,39 @@ function worldFileBase() {
 }
 
 /** Asked once per export, instead of a preset dropdown that's easy to
- *  forget to change before clicking. Resolves the block bounds to export,
- *  or null if the user cancels (including cancelling the "disegna" draw). */
+ *  forget to change before clicking. Resolves to { bounds, polygon } — bounds
+ *  is always the block bounding box (used for canvas size and tile fetch),
+ *  polygon is the drawn outline (world coords) when the user chose "disegna",
+ *  or null for "vista"/"tutto" — those two stay simple rectangles. Resolves
+ *  to null if the user cancels (including cancelling the "disegna" draw). */
 async function pickExportBounds() {
   const area = await pickDialog({
     title: 'Area da esportare',
     options: [
       { value: 'view', label: 'Vista attuale' },
       { value: 'all', label: 'Tutto il mondo generato' },
-      { value: 'draw', label: 'Disegna un\'area sulla mappa' },
+      { value: 'draw', label: 'Disegna un\'area sulla mappa (anche non rettangolare)' },
     ],
   });
   if (!area) return null;
   if (area === 'draw') return drawExportArea();
-  return exportBounds(area);
+  return { bounds: exportBounds(area), polygon: null };
 }
 
-/** Lets the user drag out a rectangle on the map and resolves its block
- *  bounds — a one-off interaction, kept from colliding with the normal
- *  "draw a new feature" flow (also bound to L.Draw.Event.CREATED) by
- *  unhooking it for the duration and restoring it right after. */
+/** Lets the user trace a free-form polygon on the map and resolves its
+ *  block bounds plus the polygon itself — a one-off interaction, kept from
+ *  colliding with the normal "draw a new feature" flow (also bound to
+ *  L.Draw.Event.CREATED) by unhooking it for the duration and restoring it
+ *  right after. Not tied to any layer, so nothing is added to the atlante:
+ *  it only shapes what the export includes. */
 function drawExportArea() {
   return new Promise((resolve) => {
     setTool('select');
     map.off(L.Draw.Event.CREATED, onDrawCreated);
-    const rect = new L.Draw.Rectangle(map, { shapeOptions: { color: '#7fd44f', weight: 2 } });
+    const poly = new L.Draw.Polygon(map, { allowIntersection: false, showArea: false, shapeOptions: { color: '#7fd44f', weight: 2 } });
     const hint = el('draw-hint');
     hint.classList.remove('hidden');
-    hint.innerHTML = 'Disegna l\'area da esportare trascinando sulla mappa. <kbd>Esc</kbd> per annullare.';
+    hint.innerHTML = 'Disegna il contorno dell\'area da esportare: clicca ogni vertice, poi clicca sul primo punto (o doppio clic) per chiuderlo. <kbd>Esc</kbd> per annullare.';
 
     const cleanup = () => {
       map.off(L.Draw.Event.CREATED, onCreated);
@@ -2242,31 +2247,57 @@ function drawExportArea() {
       hint.classList.add('hidden');
     };
     const onCreated = (e) => {
+      const polygon = e.layer.getLatLngs()[0].map((ll) => {
+        const p = fromLatLng(ll);
+        return [Math.round(p.x), Math.round(p.z)];
+      });
       const b = e.layer.getBounds();
       const nw = fromLatLng(b.getNorthWest());
       const se = fromLatLng(b.getSouthEast());
       cleanup();
       resolve({
-        minX: Math.floor(nw.x), minZ: Math.floor(nw.z),
-        maxX: Math.ceil(se.x), maxZ: Math.ceil(se.z),
+        bounds: {
+          minX: Math.floor(nw.x), minZ: Math.floor(nw.z),
+          maxX: Math.ceil(se.x), maxZ: Math.ceil(se.z),
+        },
+        polygon,
       });
     };
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      rect.disable();
+      poly.disable();
       cleanup();
       resolve(null);
     };
     map.on(L.Draw.Event.CREATED, onCreated);
     document.addEventListener('keydown', onKey);
-    rect.enable();
+    poly.enable();
   });
+}
+
+/** Clips subsequent canvas drawing to `polygon` (world coords), so anything
+ *  outside it stays transparent instead of being cut to the bounding
+ *  rectangle. Pairs with ctx.restore() once the export is done drawing.
+ *  Returns whether a clip was applied, so callers know whether to restore. */
+function clipCanvasToPolygon(ctx, polygon, bounds, scale) {
+  if (!polygon) return false;
+  ctx.save();
+  ctx.beginPath();
+  polygon.forEach(([x, z], i) => {
+    const px = (x - bounds.minX) * scale;
+    const py = (z - bounds.minZ) * scale;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.closePath();
+  ctx.clip();
+  return true;
 }
 
 async function exportPNG() {
   if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
-  const bounds = await pickExportBounds();
-  if (!bounds) return;
+  const picked = await pickExportBounds();
+  if (!picked) return;
+  const { bounds, polygon } = picked;
   const { zoom, scale, w, h, shrunk } = exportPlan(bounds);
 
   setStatus('export-status', `Composizione immagine ${w}×${h}…`, 'busy');
@@ -2275,6 +2306,7 @@ async function exportPNG() {
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
+  const clipped = clipCanvasToPolygon(ctx, polygon, bounds, scale);
   ctx.fillStyle = '#10120e';
   ctx.fillRect(0, 0, w, h);
 
@@ -2282,6 +2314,7 @@ async function exportPNG() {
     await drawTerrain(ctx, bounds, zoom, scale); // terrain is always on — no toggle in the UI
     await preloadBanners();
     drawVectors(ctx, bounds, scale);
+    if (clipped) ctx.restore();
     await new Promise((resolve) => canvas.toBlob((blob) => {
       download(`${worldFileBase()}.png`, blob);
       resolve();
@@ -2295,13 +2328,19 @@ async function exportPNG() {
 
 async function exportSVG() {
   if (!state.project) { toast('Apri prima un atlante', 'err'); return; }
-  const bounds = await pickExportBounds();
-  if (!bounds) return;
+  const picked = await pickExportBounds();
+  if (!picked) return;
+  const { bounds, polygon } = picked;
   const { zoom, scale, w, h, shrunk } = exportPlan(bounds);
   const toPx = (x, z) => [((x - bounds.minX) * scale).toFixed(1), ((z - bounds.minZ) * scale).toFixed(1)];
 
   setStatus('export-status', 'Composizione SVG…', 'busy');
   const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`];
+  if (polygon) {
+    const pts = polygon.map(([x, z]) => toPx(x, z).join(',')).join(' ');
+    parts.push(`<defs><clipPath id="export-area"><polygon points="${pts}"/></clipPath></defs>`);
+    parts.push('<g clip-path="url(#export-area)">');
+  }
   parts.push(`<rect width="${w}" height="${h}" fill="#10120e"/>`);
 
   // Terrain goes in as one flattened raster so the SVG stays a sane size.
@@ -2371,6 +2410,7 @@ async function exportSVG() {
     }
     parts.push('</g>');
   }
+  if (polygon) parts.push('</g>');
   parts.push('</svg>');
 
   download(`${worldFileBase()}_ATLAS_layer.svg`, parts.join('\n'), 'image/svg+xml');
@@ -2389,8 +2429,9 @@ export const READER_MAP_FORMAT = 'cube-atlas/map';
  */
 async function exportForReader() {
   if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
-  const bounds = await pickExportBounds();
-  if (!bounds) return;
+  const picked = await pickExportBounds();
+  if (!picked) return;
+  const { bounds, polygon } = picked;
   const { zoom, scale, w, h, shrunk } = exportPlan(bounds);
 
   setStatus('export-status', `Composizione atlante ${w}×${h}…`, 'busy');
@@ -2399,11 +2440,13 @@ async function exportForReader() {
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
+  const clipped = clipCanvasToPolygon(ctx, polygon, bounds, scale);
   ctx.fillStyle = '#10120e';
   ctx.fillRect(0, 0, w, h);
 
   try {
     await drawTerrain(ctx, bounds, zoom, scale); // terrain is always on — no toggle in the UI
+    if (clipped) ctx.restore();
     const bundle = {
       format: READER_MAP_FORMAT,
       version: 1,

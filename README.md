@@ -140,10 +140,14 @@ dentro la cartella `web/`.
    proprietà), piantato come una bandierina sulla mappa e nell'anteprima al
    passaggio del mouse.
 5. **Esporta mappa** — tre formati, tutti con un'area da scegliere prima:
-   vista attuale, tutto il mondo generato, oppure disegnata a mano sulla
-   mappa (utile per un ritaglio preciso, tipo solo la propria città). Ogni
-   file inizia col nome del mondo, non dell'atlante (che è libero di
-   chiamarsi come vuoi):
+   vista attuale, tutto il mondo generato, oppure disegnata sulla mappa —
+   in questo caso non serve un rettangolo: clicca un vertice alla volta e
+   chiudi il contorno tornando sul primo punto, un poligono qualunque va
+   bene (utile per un ritaglio preciso, tipo solo la propria città, di
+   qualunque forma). Fuori dal contorno disegnato l'immagine esportata
+   resta trasparente invece di essere tagliata al rettangolo che la
+   contiene. Ogni file inizia col nome del mondo, non dell'atlante (che è
+   libero di chiamarsi come vuoi):
    - **🗺️ Esporta atlante** (`nome-mondo_ATLAS.camap.json`) — pensato per il
      Lettore: il terreno è un'immagine piatta (ha senso, sono blocchi), ma i
      layer restano dati veri. Nel Lettore si possono ancora
