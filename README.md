@@ -79,18 +79,12 @@ dentro la cartella `web/`.
    - **Filtro blocchi**: prima di creare l'atlante, apri questa tendina per escludere
      dal disegno blocchi come le barriere, che altrimenti apparirebbero come pareti
      inesistenti — il tile mostra quello che c'è sotto. Scegliendolo qui, l'atlante
-     nasce già con il filtro attivo, senza dover rigenerare nulla dopo. Si può
-     cambiare anche più tardi, ma in quel caso le parti già generate vanno
-     rigenerate (*Svuota cache e rigenera*, nella 🧭 in fondo alla mappa) per aggiornarsi.
+     nasce già con il filtro attivo, senza dover rigenerare nulla dopo.
    Poi crea l'atlante: la mappa si genera da sola intorno al punto di spawn,
-   senza altro da fare — lo stato di avanzamento compare nella 🧭 (vedi sotto).
+   senza altro da fare.
 2. **La mappa** — in basso a sinistra c'è sempre la coordinata sotto il
-   cursore, e accanto una **🧭 bussola**: apre un pannellino con dove vuoi
-   andare (coordinate, punto di spawn, tutto il mondo), se mostrare il
-   terreno e le ferrovie (cercate a tutte le altezze, più scure quanto più
-   sono in basso), e la manutenzione della cache dei tile (*Svuota cache e
-   rigenera* per questo mondo, o *Svuota la cache di tutti i mondi* per
-   liberare spazio nel browser).
+   cursore, e accanto una **🧭 bussola**: apre un pannellino per andare dove
+   vuoi (coordinate, punto di spawn, tutto il mondo).
 3. **Layer** — creane quanti vuoi, di cinque tipi:
 
 | Tipo | Cosa disegna | Stile |
@@ -221,26 +215,22 @@ cui i file stanno più in profondità, come `dimensions/minecraft/overworld/regi
 
 ## Quanto ci mette
 
-Non c'è più un pulsante "Genera mappa" da premere: appena crei un atlante, la
-mappa si genera da sola intorno al punto di spawn (un raggio di 1024 blocchi,
-di solito pochi secondi) — lo stato compare nella 🧭 in basso a sinistra sulla
-mappa. Un tile di dettaglio copre 256×256 blocchi e richiede meno di un
-secondo l'uno.
+Non c'è un pulsante "Genera mappa" da premere: appena crei o apri un atlante,
+la mappa si genera da sola intorno al punto di spawn (un raggio di 1024
+blocchi, di solito pochi secondi). Un tile di dettaglio copre 256×256 blocchi
+e richiede meno di un secondo l'uno.
 
 ## Se cambi il mondo in gioco
 
-I tile restano in cache nel browser. Dopo aver costruito qualcosa apri la 🧭 e
-premi **Svuota cache e rigenera**.
+I tile restano in cache nel browser e non si aggiornano da soli. Se hai
+costruito qualcosa e la mappa non lo mostra ancora, per ora l'unico modo è
+ripulire manualmente la cache del browser per questo sito (o aprire l'atlante
+da un browser/profilo "pulito").
 
 > Conviene uscire dal mondo in Minecraft prima di rigenerare: i chunk non
 > ancora salvati su disco non possono essere letti.
 
-**Svuota cache e rigenera** riguarda solo il mondo aperto in quel momento —
-i tile degli altri mondi che hai mappato in passato restano dov'erano. La
-stessa 🧭 mostra anche quanto spazio sta usando l'app nel browser
-(soprattutto tile) e un pulsante separato, **🗑️ Svuota la cache di tutti i
-mondi**, che cancella i tile di *ogni* mondo mappato finora per liberare
-spazio — utile perché quella cache non si svuota mai da sola. Non tocca gli
+I tile non vengono mai eliminati automaticamente. Non toccano comunque gli
 atlanti salvati (layer, punti, linee…): quelli restano finché non li elimini
 esplicitamente da *"2 Progetto"*, ed è per questo che, se ti serve tenere una
 copia della mappa, conviene esportarla (*"5 Esporta mappa"*, o *"Esporta

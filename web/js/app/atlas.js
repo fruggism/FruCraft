@@ -169,8 +169,10 @@ function attachWorld(world, dimId, view) {
   tileLayer = makeTerrainLayer(dim.id, 'terrain');
   if (railLayer) { map.removeLayer(railLayer); railLayer = null; }
   railLayer = makeTerrainLayer(dim.id, 'rails');
-  if (el('chk-terrain').checked) tileLayer.addTo(map);
-  if (el('chk-rails').checked) railLayer.addTo(map);
+  // Terrain is always shown, rails never — there's no toggle for either in
+  // the UI any more (setTerrainVisible/setRailsVisible still work if
+  // something ever needs to flip them programmatically).
+  tileLayer.addTo(map);
 
   // Panning is bounded by the generated area, but generously: a tight bound
   // makes the map feel stuck, which is worse than letting the user drift a
@@ -2222,8 +2224,7 @@ async function exportPNG() {
   ctx.fillRect(0, 0, w, h);
 
   try {
-    if (el('chk-terrain').checked) await drawTerrain(ctx, bounds, zoom, scale);
-    if (el('chk-rails').checked) await drawTerrain(ctx, bounds, zoom, scale, 'rails');
+    await drawTerrain(ctx, bounds, zoom, scale); // terrain is always on — no toggle in the UI
     await preloadBanners();
     drawVectors(ctx, bounds, scale);
     await new Promise((resolve) => canvas.toBlob((blob) => {
@@ -2249,14 +2250,14 @@ async function exportSVG() {
   parts.push(`<rect width="${w}" height="${h}" fill="#10120e"/>`);
 
   // Terrain goes in as one flattened raster so the SVG stays a sane size.
-  if (el('chk-terrain').checked || el('chk-rails').checked) {
+  // Always on — no toggle in the UI any more.
+  {
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     try {
-      if (el('chk-terrain').checked) await drawTerrain(ctx, bounds, zoom, scale);
-      if (el('chk-rails').checked) await drawTerrain(ctx, bounds, zoom, scale, 'rails');
+      await drawTerrain(ctx, bounds, zoom, scale);
       parts.push(`<image x="0" y="0" width="${w}" height="${h}" href="${canvas.toDataURL('image/png')}" style="image-rendering:pixelated"/>`);
     } catch { /* terrain is optional in the SVG */ }
   }
@@ -2347,8 +2348,7 @@ async function exportForReader() {
   ctx.fillRect(0, 0, w, h);
 
   try {
-    if (el('chk-terrain').checked) await drawTerrain(ctx, bounds, zoom, scale);
-    if (el('chk-rails').checked) await drawTerrain(ctx, bounds, zoom, scale, 'rails');
+    await drawTerrain(ctx, bounds, zoom, scale); // terrain is always on — no toggle in the UI
     const bundle = {
       format: READER_MAP_FORMAT,
       version: 1,

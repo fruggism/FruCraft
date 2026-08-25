@@ -16,7 +16,6 @@ import * as Reader from './reader.js';
 import {
   supportsHandles, pickDirectory, restoreLastWorld, sourceFromFileList, forgetWorld,
 } from './worldPicker.js';
-import { idbClear, storageEstimate } from './db.js';
 import { getInterfaceMode, setInterfaceMode } from './interfaceMode.js';
 
 const LAYER_ICONS = { roads: '🛣️', pois: '📍', areas: '⬟', transit: '🚇', notes: '📝' };
@@ -240,14 +239,12 @@ async function openProject(project) {
   el('topbar-info').innerHTML =
     `<span>${escapeHtml(project.name)}</span> · ${escapeHtml(state.world.levelName || '')} · ${escapeHtml(dim.label)}`;
 
-  el('chk-terrain').checked = project.settings.showTerrain !== false;
-  el('chk-rails').checked = project.settings.showRails === true;
   renderBlockFilter();
   // The worker has to know the filter before the first tile is asked for.
   await engine.setRenderSettings({ hiddenBlocks: project.settings.hiddenBlocks || [] });
   Atlas.attachWorld(state.world, dim.id, project.view);
   Atlas.renderAllLayers();
-  Atlas.setTerrainVisible(el('chk-terrain').checked);
+  Atlas.setTerrainVisible(true);
   Atlas.refreshProps();
   renderLayerList();
   Archive.onProjectLoaded();
@@ -565,38 +562,15 @@ function renderArea() {
   return { minX: spawn.x - r, minZ: spawn.z - r, maxX: spawn.x + r, maxZ: spawn.z + r };
 }
 
-function formatBytes(n) {
-  if (!Number.isFinite(n)) return '?';
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/** Shows roughly how much of the browser's storage the app is using —
- *  mostly cached map tiles, since atlanti/documenti are tiny by comparison
- *  — so "svuota tutta la cache" has a number to react to, not a guess. */
-async function updateStorageUsage() {
-  const node = el('storage-usage');
-  if (!node) return;
-  const estimate = await storageEstimate();
-  if (!estimate || !Number.isFinite(estimate.usage)) {
-    node.textContent = '';
-    return;
-  }
-  const quotaPart = Number.isFinite(estimate.quota) ? ` di ${formatBytes(estimate.quota)} disponibili` : '';
-  node.textContent = `Spazio usato in questo browser: ${formatBytes(estimate.usage)}${quotaPart} — soprattutto tile di mappa già generati.`;
-}
-
 async function startRender() {
   if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
   if (renderRunning) return;
   renderRunning = true;
-  setStatus('render-status', 'Generazione della mappa in corso…', 'busy');
+  toast('Generazione della mappa in corso…', 'busy');
 
   let lastRefresh = 0;
   try {
-    const result = await engine.render(state.project.world.dimension, renderArea(), el('chk-rails').checked, (p) => {
-      const percent = p.total ? Math.round((p.done / p.total) * 100) : 0;
-      setStatus('render-status', `${p.phase}: ${p.done}/${p.total} (${percent}%)`, 'busy');
+    const result = await engine.render(state.project.world.dimension, renderArea(), false, (p) => {
       // Show the tiles appearing, without redrawing on every single one.
       if (Date.now() - lastRefresh > 1500) {
         lastRefresh = Date.now();
@@ -604,9 +578,9 @@ async function startRender() {
       }
     });
     Atlas.refreshTiles();
-    setStatus('render-status', `Mappa generata${describeBounds(result.bounds)}.`, 'ok');
+    toast(`Mappa generata${describeBounds(result.bounds)}.`, 'ok');
   } catch (err) {
-    setStatus('render-status', `Generazione fallita: ${err.message}`, 'err');
+    toast(`Generazione fallita: ${err.message}`, 'err');
   } finally {
     renderRunning = false;
   }
@@ -624,11 +598,7 @@ async function maybeAutoGenerate() {
   if (!state.project || !state.world) return;
   try {
     const status = await engine.renderStatus(state.project.world.dimension);
-    if (status.state === 'done') {
-      setStatus('render-status', `Mappa generata${describeBounds(status.bounds)}.`, 'ok');
-      return;
-    }
-    if (status.state === 'running') return;
+    if (status.state === 'done' || status.state === 'running') return;
   } catch { /* the worker will report properly when asked to render */ }
   await startRender();
 }
@@ -694,50 +664,7 @@ async function initRest() {
     refreshProjectList(state.project.id);
   }, 500));
 
-  el('chk-terrain').addEventListener('change', () => {
-    Atlas.setTerrainVisible(el('chk-terrain').checked);
-    if (state.project) { state.project.settings.showTerrain = el('chk-terrain').checked; markDirty(); }
-  });
-
-  el('chk-rails').addEventListener('change', () => {
-    Atlas.setRailsVisible(el('chk-rails').checked);
-    if (state.project) { state.project.settings.showRails = el('chk-rails').checked; markDirty(); }
-  });
   el('btn-apply-filter').addEventListener('click', applyBlockFilter);
-
-  el('btn-clear-cache').addEventListener('click', async () => {
-    if (!state.project || !state.world) { toast('Apri prima un atlante', 'err'); return; }
-    setStatus('cache-status', 'Svuoto la cache dei tile…', 'busy');
-    try {
-      const { removed } = await engine.clearCache(state.project.world.dimension);
-      Atlas.refreshTiles();
-      setStatus('cache-status', `Cache svuotata (${removed} tile).`, 'ok');
-      await startRender();
-      updateStorageUsage();
-    } catch (err) {
-      setStatus('cache-status', err.message, 'err');
-    }
-  });
-
-  el('btn-clear-all-tiles').addEventListener('click', async () => {
-    const ok = await confirmDialog({
-      title: 'Svuotare la cache di tutti i mondi?',
-      message: 'Cancella i tile salvati di ogni mondo mappato finora, non solo di quello aperto ora. '
-        + 'Riaprendo un mondo andrà rigenerato da capo. Gli atlanti (layer, punti, linee…) non vengono toccati.',
-      confirmLabel: 'Svuota tutto', danger: true,
-    });
-    if (!ok) return;
-    setStatus('cache-status', 'Svuoto la cache di tutti i mondi…', 'busy');
-    try {
-      await idbClear('tiles');
-      if (state.world) { Atlas.refreshTiles(); await startRender(); }
-      setStatus('cache-status', 'Cache di tutti i mondi svuotata.', 'ok');
-      updateStorageUsage();
-    } catch (err) {
-      setStatus('cache-status', err.message, 'err');
-    }
-  });
-  updateStorageUsage();
 
   el('btn-goto').addEventListener('click', () => {
     Atlas.goTo(Number(el('goto-x').value) || 0, Number(el('goto-z').value) || 0,

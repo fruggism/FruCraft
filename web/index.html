@@ -185,7 +185,7 @@
       <div id="map"></div>
       <div class="coord-bar">
         <div class="coord-readout" id="coord-readout">X <b>—</b>  Z <b>—</b></div>
-        <button id="btn-compass" title="Vai alle coordinate, aspetto della mappa, manutenzione">🧭</button>
+        <button id="btn-compass" title="Vai alle coordinate">🧭</button>
       </div>
       <div class="map-utility-panel hidden" id="map-utility-panel">
         <h3>Vai alle coordinate</h3>
@@ -199,21 +199,6 @@
           <button class="btn btn-sm" id="btn-goto-fit">Tutto il mondo</button>
         </div>
         <div class="hint" id="view-info"></div>
-
-        <h3>Aspetto della mappa</h3>
-        <label style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="chk-terrain" checked> Mostra il terreno
-        </label>
-        <label style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="chk-rails"> Evidenzia le ferrovie
-        </label>
-        <div id="render-status" class="status"></div>
-
-        <h3>Manutenzione</h3>
-        <button class="btn btn-sm" id="btn-clear-cache">Svuota cache e rigenera</button>
-        <div id="cache-status" class="status"></div>
-        <div class="hint" id="storage-usage"></div>
-        <button class="btn btn-sm btn-danger" id="btn-clear-all-tiles">🗑️ Svuota la cache di tutti i mondi</button>
       </div>
       <div class="draw-hint hidden" id="draw-hint"></div>
       <div class="map-overlay" id="map-overlay">
