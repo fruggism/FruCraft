@@ -23,6 +23,16 @@ import { NodeSource, MemoryTileCache } from './node-source.js';
 import * as fixture from './make-test-world.js';
 import * as projects from '../web/js/app/projects.js';
 import * as documents from '../web/js/app/documents.js';
+import { shapeOf, S } from '../web/js/voxel/blockKinds.js';
+import { readVolume, stateKeyOf, AIR_STATE } from '../web/js/voxel/volume.js';
+import { buildTables, meshColumn, KIND } from '../web/js/voxel/mesher.js';
+import { ZipReader } from '../web/js/pack/zip.js';
+import { ResourcePack } from '../web/js/pack/resources.js';
+import { FACE_COUNT, faceIndex } from '../web/js/pack/textures.js';
+import { collectParts, buildGlb } from '../web/js/export/glb.js';
+import { makeZip, bufferSource } from './make-zip.js';
+import { clearRegionCache } from '../web/js/core/anvil.js';
+import { scanWorld } from '../web/js/core/worldScan.js';
 
 let passed = 0;
 let failed = 0;
@@ -32,6 +42,11 @@ const tests = [];
 function test(name, fn) { tests.push({ kind: 'test', name, fn }); }
 function section(title) { tests.push({ kind: 'section', title }); }
 function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
+function assertClose(actual, expected, msg, eps = 1e-5) {
+  if (Math.abs(actual - expected) > eps) {
+    throw new Error(`${msg || 'diverso'}: atteso ~${expected}, ottenuto ${actual}`);
+  }
+}
 function assertEqual(actual, expected, msg) {
   if (actual !== expected) throw new Error(`${msg || 'not equal'}: atteso ${expected}, ottenuto ${actual}`);
 }
@@ -813,6 +828,801 @@ test('history non entra in loop su un versionOf ciclico', () => {
 });
 
 // ---------------------------------------------------------------------------
+
+// ======================================================================
+// Atlante 3D — voxel, mesher, texture ed export, portati da Cube-Atlas 3D.
+// Girano sullo stesso mondo di prova del resto della suite.
+// ======================================================================
+// --------------------------------------------------------------- helpers ---
+
+/** A volume built by hand, with the same shape readVolume() produces. */
+function makeVolume(sizeX, sizeY, sizeZ, stateKeys) {
+  const states = ['minecraft:air', ...stateKeys];
+  return {
+    minX: 0, minY: 0, minZ: 0, sizeX, sizeY, sizeZ,
+    blocks: new Uint16Array(sizeX * sizeY * sizeZ),
+    biomes: new Uint8Array((sizeX >> 2) * (sizeY >> 2) * (sizeZ >> 2)),
+    states,
+    names: states.map((k) => k.split('|')[0]),
+    props: states.map((k) => {
+      const parts = k.split('|').slice(1);
+      if (!parts.length) return null;
+      const o = {};
+      for (const p of parts) { const [a, b] = p.split('='); o[a] = b; }
+      return o;
+    }),
+    biomeNames: ['minecraft:plains'],
+    stats: { chunks: 1, missing: 0, unparsed: 0 },
+  };
+}
+
+const setBlock = (vol, x, y, z, id) => {
+  vol.blocks[(y * vol.sizeZ + z) * vol.sizeX + x] = id;
+};
+
+/** Vertex k of quad q, as [x, y, z]. */
+const vertex = (mesh, q, k) => {
+  const o = (q * 4 + k) * 3;
+  return [mesh.positions[o], mesh.positions[o + 1], mesh.positions[o + 2]];
+};
+
+/** Face normal of quad q, from the winding of its first triangle. */
+function normalOf(mesh, q) {
+  const [ax, ay, az] = vertex(mesh, q, 0);
+  const [bx, by, bz] = vertex(mesh, q, 1);
+  const [cx, cy, cz] = vertex(mesh, q, 2);
+  const ux = bx - ax, uy = by - ay, uz = bz - az;
+  const vx = cx - ax, vy = cy - ay, vz = cz - az;
+  const n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+  const len = Math.hypot(...n) || 1;
+  return n.map((c) => Math.round(c / len));
+}
+
+const quadCount = (mesh) => (mesh ? mesh.positions.length / 12 : 0);
+
+/** Every quad whose normal points the given way. */
+function quadsFacing(mesh, nx, ny, nz) {
+  const out = [];
+  for (let q = 0; q < quadCount(mesh); q++) {
+    const n = normalOf(mesh, q);
+    if (n[0] === nx && n[1] === ny && n[2] === nz) out.push(q);
+  }
+  return out;
+}
+
+function meshOf(vol) {
+  return meshColumn(vol, buildTables(vol), 0, 0);
+}
+
+/**
+ * Texture tables built by hand: layer `state * 6 + face`, so a face's layer
+ * says exactly which state and which side it came from and a wrong mapping
+ * cannot hide.
+ */
+function fakeTextures(vol) {
+  const count = vol.states.length;
+  const faces = new Int32Array(count * FACE_COUNT);
+  const cross = new Int32Array(count);
+  for (let state = 0; state < count; state++) {
+    for (let f = 0; f < FACE_COUNT; f++) faces[state * FACE_COUNT + f] = state * FACE_COUNT + f;
+    cross[state] = 900 + state;
+  }
+  return { tile: 16, layers: count * FACE_COUNT + 1000, faces, cross };
+}
+
+function texturedMeshOf(vol) {
+  const textures = fakeTextures(vol);
+  return { mesh: meshColumn(vol, buildTables(vol, textures), 0, 0), textures };
+}
+
+/** Texture coordinates of vertex k of quad q. */
+const texel = (mesh, q, k) => [mesh.uvs[(q * 4 + k) * 2], mesh.uvs[(q * 4 + k) * 2 + 1]];
+
+// ---------------------------------------------------------------------------
+section('Forme dei blocchi');
+
+test('un blocco pieno è un cubo, l\'aria non è niente', () => {
+  assertEqual(shapeOf('minecraft:stone', 'minecraft:stone', null).kind, 'cube', 'pietra');
+  assertEqual(shapeOf('minecraft:air', 'minecraft:air', null).kind, 'air', 'aria');
+  assertEqual(shapeOf('minecraft:cave_air', 'minecraft:cave_air', null).kind, 'air', 'aria di grotta');
+});
+
+test('le barriere non diventano muri', () => {
+  assertEqual(shapeOf('minecraft:barrier', 'minecraft:barrier', null).kind, 'skip', 'barriera');
+});
+
+test('lo slab sta sotto o sopra secondo type', () => {
+  const bottom = shapeOf('a', 'minecraft:oak_slab', { type: 'bottom' });
+  const top = shapeOf('b', 'minecraft:oak_slab', { type: 'top' });
+  const dbl = shapeOf('c', 'minecraft:oak_slab', { type: 'double' });
+  assertEqual(bottom.boxes[0][4], 0.5, 'lo slab basso arriva a metà');
+  assertEqual(top.boxes[0][1], 0.5, 'lo slab alto parte da metà');
+  assertEqual(dbl.kind, 'cube', 'il doppio slab è un cubo pieno');
+});
+
+test('la scala è mezzo blocco più un gradino sul lato di facing', () => {
+  const east = shapeOf('e', 'minecraft:stone_stairs', { facing: 'east', half: 'bottom' });
+  assertEqual(east.boxes.length, 2, 'due scatole');
+  assertEqual(east.boxes[0][4], 0.5, 'la base è mezzo blocco');
+  assertEqual(east.boxes[1][0], 0.5, 'il gradino sta a est');
+  assertEqual(east.boxes[1][4], 1, 'e arriva in cima');
+  const top = shapeOf('t', 'minecraft:stone_stairs', { facing: 'east', half: 'top' });
+  assertEqual(top.boxes[0][1], 0.5, 'capovolta: la base è in alto');
+  assertEqual(top.boxes[1][1], 0, 'e il gradino in basso');
+});
+
+test('la neve cresce con i suoi strati', () => {
+  assertClose(shapeOf('s1', 'minecraft:snow', { layers: '1' }).boxes[0][4], 2 * S, 'uno strato');
+  assertClose(shapeOf('s5', 'minecraft:snow', { layers: '5' }).boxes[0][4], 10 * S, 'cinque strati');
+});
+
+test('la porta è un pannello sul lato opposto a facing', () => {
+  const d = shapeOf('d', 'minecraft:oak_door', { facing: 'east', half: 'lower', open: 'false' });
+  assertEqual(d.kind, 'box', 'è una scatola');
+  assertEqual(d.boxes[0][0], 0, 'il pannello sta a ovest');
+  assertClose(d.boxes[0][3], 3 * S, 'ed è spesso 3/16');
+});
+
+test('erba e fiori sono croci, l\'acqua è acqua, il vetro è vetro', () => {
+  assertEqual(shapeOf('g', 'minecraft:short_grass', null).kind, 'plant', 'erba');
+  assertEqual(shapeOf('p', 'minecraft:poppy', null).kind, 'plant', 'papavero');
+  assertEqual(shapeOf('sa', 'minecraft:oak_sapling', null).kind, 'plant', 'germoglio');
+  assertEqual(shapeOf('w', 'minecraft:water', null).kind, 'water', 'acqua');
+  assertEqual(shapeOf('gl', 'minecraft:glass', null).kind, 'glass', 'vetro');
+  assert(shapeOf('gl2', 'minecraft:glass', null).alpha < 1, 'il vetro è trasparente');
+});
+
+test('recinti, muretti e vetrate sono pali con braccia', () => {
+  for (const n of ['minecraft:oak_fence', 'minecraft:cobblestone_wall', 'minecraft:glass_pane']) {
+    assertEqual(shapeOf(n, n, null).kind, 'post', n);
+  }
+});
+
+test('la chiave di stato tiene solo le proprietà che cambiano la forma', () => {
+  const a = stateKeyOf({ Name: 'minecraft:oak_slab', Properties: { type: 'top', waterlogged: 'true' } });
+  const b = stateKeyOf({ Name: 'minecraft:oak_slab', Properties: { type: 'top', waterlogged: 'false' } });
+  assertEqual(a, b, 'waterlogged non cambia la geometria');
+  assert(a.includes('type=top'), 'type invece sì');
+  const c = stateKeyOf({ Name: 'minecraft:oak_slab', Properties: { type: 'bottom' } });
+  assert(a !== c, 'slab alto e slab basso restano distinti');
+});
+
+// ---------------------------------------------------------------------------
+section('Mesher');
+
+test('un cubo isolato ha sei facce, una per lato', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  setBlock(vol, 8, 8, 8, 1);
+  const { opaque, translucent } = meshOf(vol);
+  assertEqual(quadCount(opaque), 6, 'facce');
+  assertEqual(translucent, null, 'niente da disegnare in trasparenza');
+  for (const [nx, ny, nz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+    assertEqual(quadsFacing(opaque, nx, ny, nz).length, 1, `faccia ${nx},${ny},${nz}`);
+  }
+});
+
+test('le facce fra due cubi attaccati non vengono disegnate', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  setBlock(vol, 8, 8, 8, 1);
+  setBlock(vol, 9, 8, 8, 1);
+  const { opaque } = meshOf(vol);
+  // Le due facce che si toccano spariscono, e le altre quattro coppie si
+  // fondono a due a due: restano sei quadrilateri, come per un cubo solo.
+  assertEqual(quadCount(opaque), 6, 'sei facce in tutto');
+  const east = quadsFacing(opaque, 1, 0, 0);
+  assertEqual(east.length, 1, 'una sola faccia verso est');
+  assertEqual(vertex(opaque, east[0], 0)[0], 10, 'ed è quella esterna, a x=10');
+  const top = quadsFacing(opaque, 0, 1, 0);
+  assertEqual(top.length, 1, 'e una sola faccia in cima, lunga due blocchi');
+});
+
+test('le facce complanari si fondono in un rettangolo solo', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  for (let x = 4; x < 8; x++) for (let z = 4; z < 8; z++) setBlock(vol, x, 5, z, 1);
+  const { opaque } = meshOf(vol);
+  const top = quadsFacing(opaque, 0, 1, 0);
+  assertEqual(top.length, 1, 'una sola faccia in cima per 16 blocchi');
+  assertEqual(quadCount(opaque), 6, 'la lastra 4x4 costa quanto un cubo');
+  // e copre davvero tutta l'area
+  const xs = [0, 1, 2, 3].map((k) => vertex(opaque, top[0], k)[0]);
+  const zs = [0, 1, 2, 3].map((k) => vertex(opaque, top[0], k)[2]);
+  assertEqual(Math.min(...xs), 4, 'da x=4');
+  assertEqual(Math.max(...xs), 8, 'a x=8');
+  assertEqual(Math.min(...zs), 4, 'da z=4');
+  assertEqual(Math.max(...zs), 8, 'a z=8');
+});
+
+test('la faccia superiore sta in cima al blocco, non alla sua base', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  setBlock(vol, 2, 3, 2, 1);
+  const { opaque } = meshOf(vol);
+  const top = quadsFacing(opaque, 0, 1, 0)[0];
+  assertEqual(vertex(opaque, top, 0)[1], 4, 'y del piano superiore');
+  const bottom = quadsFacing(opaque, 0, -1, 0)[0];
+  assertEqual(vertex(opaque, bottom, 0)[1], 3, 'y del piano inferiore');
+});
+
+test('l\'occlusione ambientale scurisce gli angoli, non le superfici libere', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  for (let x = 0; x < 8; x++) for (let z = 0; z < 8; z++) setBlock(vol, x, 4, z, 1);
+  setBlock(vol, 2, 5, 2, 1);   // un blocco in piedi sul pavimento
+  const { opaque } = meshOf(vol);
+  const tops = quadsFacing(opaque, 0, 1, 0);
+  let darkest = 255, brightest = 0;
+  for (const q of tops) {
+    for (let k = 0; k < 4; k++) {
+      const g = opaque.colors[(q * 4 + k) * 3 + 1];
+      if (vertex(opaque, q, k)[1] !== 5) continue; // solo il pavimento
+      darkest = Math.min(darkest, g);
+      brightest = Math.max(brightest, g);
+    }
+  }
+  assert(darkest < brightest * 0.95, `il pavimento accanto al blocco è più scuro (${darkest} vs ${brightest})`);
+});
+
+test('il pelo dell\'acqua sta 1/16 sotto il bordo del blocco', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:water']);
+  setBlock(vol, 8, 4, 8, 1);
+  setBlock(vol, 8, 3, 8, 1);
+  const { opaque, translucent } = meshOf(vol);
+  assertEqual(opaque, null, 'l\'acqua non è opaca');
+  const top = quadsFacing(translucent, 0, 1, 0);
+  assertEqual(top.length, 1, 'una superficie sola: quella in alto');
+  assertClose(vertex(translucent, top[0], 0)[1], 4 + 0.875, 'altezza del pelo dell\'acqua');
+  // la faccia fra i due blocchi d'acqua non esiste
+  assertEqual(quadsFacing(translucent, 0, -1, 0).length, 1, 'solo il fondo');
+});
+
+test('lo slab occupa mezzo blocco anche nel mesh', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone_slab|type=bottom']);
+  setBlock(vol, 8, 4, 8, 1);
+  const { opaque } = meshOf(vol);
+  assertEqual(quadCount(opaque), 6, 'sei facce');
+  assertClose(vertex(opaque, quadsFacing(opaque, 0, 1, 0)[0], 0)[1], 4.5, 'il piano dello slab');
+});
+
+test('l\'erba è una croce a parte, con le sue coordinate di texture', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:short_grass']);
+  setBlock(vol, 8, 4, 8, 1);
+  const { opaque, plants } = meshOf(vol);
+  assertEqual(opaque, null, 'non finisce fra i cubi opachi');
+  assertEqual(quadCount(plants), 2, 'due piani incrociati (il materiale è a doppia faccia)');
+  assertEqual(quadsFacing(plants, 0, 1, 0).length, 0, 'nessuna faccia orizzontale');
+  assertEqual(plants.uvs.length, plants.positions.length / 3 * 2, 'una uv per vertice');
+  // l'erba non arriva in cima al blocco
+  let top = 0;
+  for (let q = 0; q < quadCount(plants); q++) {
+    for (let k = 0; k < 4; k++) top = Math.max(top, vertex(plants, q, k)[1]);
+  }
+  assertClose(top, 4.85, 'altezza dell\'erba');
+});
+
+test('i fiori usano l\'altra metà della maschera', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:poppy', 'minecraft:fern']);
+  setBlock(vol, 4, 4, 4, 1);
+  setBlock(vol, 8, 4, 8, 2);
+  const { plants } = meshOf(vol);
+  const us = new Set();
+  for (let i = 0; i < plants.uvs.length; i += 2) us.add(plants.uvs[i]);
+  assert(us.has(0) && us.has(0.5) && us.has(1), `entrambe le mattonelle: ${[...us]}`);
+});
+
+test('le barriere non producono geometria', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:barrier']);
+  setBlock(vol, 8, 4, 8, 1);
+  const { opaque, translucent } = meshOf(vol);
+  assertEqual(opaque, null, 'niente di opaco');
+  assertEqual(translucent, null, 'niente di trasparente');
+});
+
+test('il vetro è trasparente ma non nasconde ciò che gli sta dietro', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:glass', 'minecraft:stone']);
+  setBlock(vol, 8, 4, 8, 1);
+  setBlock(vol, 9, 4, 8, 2);
+  const { opaque, translucent } = meshOf(vol);
+  assertEqual(quadCount(opaque), 6, 'la pietra conserva la faccia rivolta al vetro');
+  assertEqual(quadCount(translucent), 5, 'il vetro perde solo la faccia coperta dalla pietra');
+});
+
+test('due vetri attaccati non hanno facce interne', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:glass']);
+  setBlock(vol, 8, 4, 8, 1);
+  setBlock(vol, 9, 4, 8, 1);
+  const { translucent } = meshOf(vol);
+  assertEqual(quadCount(translucent), 6, 'il guscio esterno, senza le facce interne');
+  assertEqual(quadsFacing(translucent, 1, 0, 0).length, 1, 'una sola faccia verso est');
+});
+
+test('il recinto mette un braccio solo verso ciò che tocca', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:oak_fence', 'minecraft:stone']);
+  setBlock(vol, 8, 4, 8, 1);
+  const alone = quadCount(meshOf(vol).opaque);
+  setBlock(vol, 9, 4, 8, 2);
+  const joined = meshOf(vol).opaque;
+  assert(quadCount(joined) > alone, 'attaccato alla pietra il palo cresce di un braccio');
+});
+
+test('una colonna vuota non produce mesh', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  const { opaque, translucent, quads } = meshOf(vol);
+  assertEqual(opaque, null, 'niente opaco');
+  assertEqual(translucent, null, 'niente trasparente');
+  assertEqual(quads, 0, 'zero quadrilateri');
+});
+
+test('i blocchi ai bordi della porzione mostrano il taglio', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  for (let y = 0; y < 3; y++) {
+    for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) setBlock(vol, x, y, z, 1);
+  }
+  const { opaque } = meshOf(vol);
+  assertEqual(quadsFacing(opaque, -1, 0, 0).length, 1, 'la parete ovest del taglio');
+  assertEqual(quadsFacing(opaque, 0, -1, 0).length, 1, 'e il fondo');
+});
+
+test('gli indici formano triangoli validi e non escono dai vertici', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  for (let x = 2; x < 10; x++) for (let z = 2; z < 10; z++) setBlock(vol, x, 4, z, 1);
+  setBlock(vol, 5, 5, 5, 1);
+  const { opaque } = meshOf(vol);
+  const verts = opaque.positions.length / 3;
+  assertEqual(opaque.indices.length, quadCount(opaque) * 6, 'sei indici per quadrilatero');
+  assertEqual(opaque.colors.length, verts * 3, 'un colore per vertice');
+  for (const i of opaque.indices) assert(i < verts, `indice fuori intervallo: ${i}`);
+});
+
+// ---------------------------------------------------------------------------
+section('Archivi e risorse');
+
+test('legge un archivio zip, compresso e non', async () => {
+  const zip = await ZipReader.open(bufferSource(makeZip([
+    ['piccolo.txt', 'ciao'],
+    ['grande.txt', 'ripetuto '.repeat(200)],
+  ])));
+  assertEqual(new TextDecoder().decode(await zip.read('piccolo.txt')), 'ciao', 'voce non compressa');
+  assertEqual(new TextDecoder().decode(await zip.read('grande.txt')), 'ripetuto '.repeat(200),
+    'voce compressa');
+  assertEqual(await zip.read('non-c-e.txt'), null, 'voce assente');
+  assert(zip.has('piccolo.txt'), 'has()');
+});
+
+test('un file che non è uno zip viene rifiutato invece di leggere spazzatura', async () => {
+  const junk = Buffer.alloc(500, 7);
+  let failed = false;
+  try { await ZipReader.open(bufferSource(junk)); } catch { failed = true; }
+  assert(failed, 'deve fallire');
+});
+
+/** Un pacchetto di prova con la stessa struttura del .jar del gioco. */
+async function testPack() {
+  const zip = await ZipReader.open(bufferSource(makeZip([
+    ['assets/minecraft/blockstates/prova_pietra.json',
+      JSON.stringify({ variants: { '': { model: 'minecraft:block/prova_pietra' } } })],
+    ['assets/minecraft/blockstates/prova_tronco.json',
+      JSON.stringify({ variants: {
+        'axis=y': { model: 'minecraft:block/prova_tronco' },
+        'axis=x': { model: 'minecraft:block/prova_tronco', x: 90, y: 90 },
+      } })],
+    ['assets/minecraft/models/block/cube.json', JSON.stringify({})],
+    ['assets/minecraft/models/block/cube_all.json', JSON.stringify({
+      parent: 'block/cube',
+      textures: { down: '#all', up: '#all', north: '#all', east: '#all', south: '#all', west: '#all' },
+    })],
+    ['assets/minecraft/models/block/prova_pietra.json', JSON.stringify({
+      parent: 'minecraft:block/cube_all',
+      // forma a oggetto, come la scrivono le versioni dal 2026
+      textures: { all: { force_translucent: false, sprite: 'minecraft:block/prova_pietra' } },
+    })],
+    ['assets/minecraft/models/block/prova_tronco.json', JSON.stringify({
+      parent: 'minecraft:block/cube_all',
+      textures: { end: 'minecraft:block/prova_cima', side: 'minecraft:block/prova_lato' },
+    })],
+    ['assets/minecraft/textures/block/prova_pietra.png', 'png'],
+    ['assets/minecraft/textures/block/prova_cima.png', 'png'],
+    ['assets/minecraft/textures/block/prova_lato.png', 'png'],
+  ])));
+  return new ResourcePack([zip]);
+}
+
+test('risolve la texture seguendo la catena dei modelli e i riferimenti #', async () => {
+  const faces = await (await testPack()).facesFor('minecraft:prova_pietra', null);
+  assert(faces, 'trovato');
+  for (const side of ['up', 'down', 'north', 'south', 'west', 'east']) {
+    assertEqual(faces[side], 'minecraft:block/prova_pietra', `faccia ${side}`);
+  }
+});
+
+test('un tronco mette le cime sull\'asse su cui è appoggiato', async () => {
+  const pack = await testPack();
+  const dritto = await pack.facesFor('prova_tronco', { axis: 'y' });
+  assertEqual(dritto.up, 'minecraft:block/prova_cima', 'in piedi: cima sopra');
+  assertEqual(dritto.north, 'minecraft:block/prova_lato', 'e corteccia di lato');
+  const sdraiato = await pack.facesFor('prova_tronco', { axis: 'x' });
+  assertEqual(sdraiato.east, 'minecraft:block/prova_cima', 'sdraiato: cima a est');
+  assertEqual(sdraiato.up, 'minecraft:block/prova_lato', 'e corteccia sopra');
+});
+
+test('un blocco che il pacchetto non conosce non risolve niente', async () => {
+  assertEqual(await (await testPack()).facesFor('blocco_inventato', null), null, 'niente');
+});
+
+test('una texture citata dal modello ma assente non viene usata', async () => {
+  const zip = await ZipReader.open(bufferSource(makeZip([
+    ['assets/minecraft/blockstates/vuoto.json',
+      JSON.stringify({ variants: { '': { model: 'block/vuoto' } } })],
+    ['assets/minecraft/models/block/vuoto.json',
+      JSON.stringify({ textures: { all: 'block/mai_esistita' } })],
+  ])));
+  assertEqual(await new ResourcePack([zip]).facesFor('vuoto', null), null,
+    'meglio niente che una texture che non c\'è');
+});
+
+// ---------------------------------------------------------------------------
+section('Texture nella geometria');
+
+test('ogni faccia porta lo strato della sua direzione', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  setBlock(vol, 8, 8, 8, 1);
+  const { mesh } = texturedMeshOf(vol);
+  const layers = mesh.opaque.layers;
+  assert(layers, 'gli strati ci sono');
+  const dirs = [[1, 0, 0, 0], [-1, 0, 0, 1], [0, 1, 0, 2], [0, -1, 0, 3], [0, 0, 1, 4], [0, 0, -1, 5]];
+  for (const [nx, ny, nz, face] of dirs) {
+    const q = quadsFacing(mesh.opaque, nx, ny, nz)[0];
+    assertEqual(layers[q * 4], 1 * FACE_COUNT + face, `strato della faccia ${nx},${ny},${nz}`);
+  }
+  assertEqual(faceIndex(1, 1), 2, 'indice della faccia superiore');
+});
+
+test('le coordinate di texture vengono dalla posizione, quindi si ripetono', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  for (let x = 4; x < 8; x++) for (let z = 4; z < 8; z++) setBlock(vol, x, 5, z, 1);
+  const { mesh } = texturedMeshOf(vol);
+  const top = quadsFacing(mesh.opaque, 0, 1, 0);
+  assertEqual(top.length, 1, 'la faccia in cima resta fusa in una sola');
+  // fusa su 4x4 blocchi: le coordinate spaziano 4 unità, così la texture si
+  // ripete quattro volte invece di essere stirata
+  const us = [0, 1, 2, 3].map((k) => texel(mesh.opaque, top[0], k)[0]);
+  const vs = [0, 1, 2, 3].map((k) => texel(mesh.opaque, top[0], k)[1]);
+  assertEqual(Math.max(...us) - Math.min(...us), 4, 'quattro ripetizioni in orizzontale');
+  assertEqual(Math.max(...vs) - Math.min(...vs), 4, 'quattro in verticale');
+  assertEqual(Math.min(...us), 4, 'e partono dalla x del blocco');
+});
+
+test('le facce laterali hanno il verticale della texture su Y', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  setBlock(vol, 2, 3, 2, 1);
+  const { mesh } = texturedMeshOf(vol);
+  for (const [nx, ny, nz] of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+    const q = quadsFacing(mesh.opaque, nx, ny, nz)[0];
+    const vs = [0, 1, 2, 3].map((k) => texel(mesh.opaque, q, k)[1]);
+    assertEqual(Math.min(...vs), 3, `faccia ${nx},${nz}: parte dalla base del blocco`);
+    assertEqual(Math.max(...vs), 4, 'e arriva in cima');
+  }
+});
+
+test('lo slab mostra solo la metà bassa della sua texture', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone_slab|type=bottom']);
+  setBlock(vol, 8, 4, 8, 1);
+  const { mesh } = texturedMeshOf(vol);
+  const side = quadsFacing(mesh.opaque, 1, 0, 0)[0];
+  const vs = [0, 1, 2, 3].map((k) => texel(mesh.opaque, side, k)[1]);
+  assertClose(Math.min(...vs), 4, 'dalla base');
+  assertClose(Math.max(...vs), 4.5, 'a metà blocco: la texture si taglia da sola');
+});
+
+test('con le texture le piante stanno in piedi per tutto il blocco', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:short_grass']);
+  setBlock(vol, 8, 4, 8, 1);
+  const { mesh } = texturedMeshOf(vol);
+  let top = 0;
+  for (let q = 0; q < quadCount(mesh.plants); q++) {
+    for (let k = 0; k < 4; k++) top = Math.max(top, vertex(mesh.plants, q, k)[1]);
+  }
+  assertEqual(top, 5, 'la sagoma la decide la texture, non l\'altezza del quadrilatero');
+  assertEqual(mesh.plants.layers[0], 901, 'e usa lo strato della croce');
+  const us = [0, 1, 2, 3].map((k) => texel(mesh.plants, 0, k)[0]);
+  assertEqual(Math.min(...us), 0, 'texture intera in orizzontale');
+  assertEqual(Math.max(...us), 1, 'da 0 a 1');
+});
+
+test('senza pacchetto non si emettono né coordinate né strati', () => {
+  const vol = makeVolume(16, 16, 16, ['minecraft:stone']);
+  setBlock(vol, 8, 8, 8, 1);
+  const { opaque } = meshOf(vol);
+  assertEqual(opaque.uvs, undefined, 'niente coordinate');
+  assertEqual(opaque.layers, undefined, 'niente strati');
+});
+
+// ---------------------------------------------------------------------------
+section('Lettura del volume');
+
+test('legge un mondo vero e ritrova il terreno', async () => {
+  if (!fs.existsSync(fixture.WORLD_DIR)) fixture.generate({ quiet: true });
+  clearRegionCache();
+  const source = new NodeSource(fixture.WORLD_DIR);
+  const scan = await scanWorld(source);
+  assert(scan.ok, `scansione fallita: ${scan.error || ''}`);
+  const dim = scan.dimensions[0];
+
+  const vol = await readVolume(source, dim.regionDir,
+    { minX: 96, minY: 48, minZ: 96, sizeX: 32, sizeY: 80, sizeZ: 32 });
+
+  assertEqual(vol.stats.chunks, 4, 'quattro chunk letti');
+  assertEqual(vol.stats.unparsed, 0, 'nessun chunk illeggibile');
+  assert(vol.states.length > 3, `palette con più di tre stati (${vol.states.length})`);
+  assertEqual(vol.states[AIR_STATE], 'minecraft:air', 'lo stato 0 è aria');
+
+  // c'è della roccia in basso e dell'aria in alto
+  const at = (x, y, z) => vol.states[vol.blocks[((y - 48) * 32 + (z - 96)) * 32 + (x - 96)]];
+  assert(at(100, 50, 100).startsWith('minecraft:'), 'nome di blocco valido');
+  assertEqual(at(100, 127, 100), 'minecraft:air', 'in cima c\'è aria');
+  let solid = 0;
+  for (const s of vol.blocks) if (s !== AIR_STATE) solid++;
+  assert(solid > 1000, `il volume non è vuoto (${solid} blocchi)`);
+
+  assert(vol.biomeNames.length >= 1, 'almeno un bioma');
+  assert(vol.biomeNames.every((b) => b.startsWith('minecraft:')), 'nomi di bioma validi');
+});
+
+test('ogni blocco letto è quello che il mondo di prova ci ha scritto', async () => {
+  // Il controllo che conta: se lo spacchettamento dei bit o l'indicizzazione
+  // sbagliassero, il volume uscirebbe plausibile ma con i blocchi sbagliati.
+  if (!fs.existsSync(fixture.WORLD_DIR)) fixture.generate({ quiet: true });
+  fixture.ensureTerrain();
+  clearRegionCache();
+  const source = new NodeSource(fixture.WORLD_DIR);
+  const scan = await scanWorld(source);
+  const box = { minX: 112, minY: 48, minZ: 112, sizeX: 16, sizeY: 80, sizeZ: 16 };
+  const vol = await readVolume(source, scan.dimensions[0].regionDir, box);
+
+  let checked = 0;
+  for (let y = 0; y < box.sizeY; y++) {
+    for (let z = 0; z < box.sizeZ; z++) {
+      for (let x = 0; x < box.sizeX; x++) {
+        const got = vol.names[vol.blocks[(y * box.sizeZ + z) * box.sizeX + x]];
+        const want = fixture.blockAt(box.minX + x, box.minY + y, box.minZ + z);
+        if (got !== want) {
+          throw new Error(`blocco a ${box.minX + x},${box.minY + y},${box.minZ + z}: `
+            + `atteso ${want}, letto ${got}`);
+        }
+        checked++;
+      }
+    }
+  }
+  assertEqual(checked, 16 * 80 * 16, 'blocchi confrontati');
+});
+
+test('il volume letto si trasforma in triangoli', async () => {
+  if (!fs.existsSync(fixture.WORLD_DIR)) fixture.generate({ quiet: true });
+  clearRegionCache();
+  const source = new NodeSource(fixture.WORLD_DIR);
+  const scan = await scanWorld(source);
+  const vol = await readVolume(source, scan.dimensions[0].regionDir,
+    { minX: 96, minY: 48, minZ: 96, sizeX: 32, sizeY: 80, sizeZ: 32 });
+  const tables = buildTables(vol);
+  assertEqual(tables.kind[AIR_STATE], KIND.air, 'lo stato 0 resta aria');
+
+  let quads = 0;
+  for (let z = 0; z < 32; z += 16) {
+    for (let x = 0; x < 32; x += 16) {
+      const m = meshColumn(vol, tables, x, z);
+      quads += m.quads;
+      if (m.opaque) {
+        const verts = m.opaque.positions.length / 3;
+        for (const i of m.opaque.indices) assert(i < verts, 'indice valido');
+      }
+    }
+  }
+  assert(quads > 200, `il terreno produce geometria (${quads} quadrilateri)`);
+});
+
+test('i blocchi nascosti si leggono come aria', async () => {
+  if (!fs.existsSync(fixture.WORLD_DIR)) fixture.generate({ quiet: true });
+  clearRegionCache();
+  const source = new NodeSource(fixture.WORLD_DIR);
+  const scan = await scanWorld(source);
+  const box = { minX: 96, minY: 48, minZ: 96, sizeX: 16, sizeY: 80, sizeZ: 16 };
+  const dir = scan.dimensions[0].regionDir;
+
+  const plain = await readVolume(source, dir, box);
+  const counts = new Map();
+  for (const s of plain.blocks) counts.set(s, (counts.get(s) || 0) + 1);
+  let common = 1, best = 0;
+  for (const [s, n] of counts) {
+    if (s !== AIR_STATE && n > best) { best = n; common = s; }
+  }
+  const name = plain.names[common];
+
+  const filtered = await readVolume(source, dir, box, { hiddenBlocks: new Set([name]) });
+  let before = 0, after = 0;
+  for (const s of plain.blocks) if (plain.names[s] === name) before++;
+  for (const s of filtered.blocks) if (filtered.names[s] === name) after++;
+  assert(before > 0, 'il blocco c\'era');
+  assertEqual(after, 0, `${name} è sparito dal volume filtrato`);
+});
+
+
+// --------------------------------------------------------------- glb ---
+section('Esportazione .glb');
+
+/** One quad, as the mesher lays it out: four vertices, two triangles. */
+function quad({ y = 0, layer = 0, kind = 'opaque' } = {}) {
+  return {
+    kind,
+    offset: [0, 0, 0],
+    positions: new Float32Array([0, y, 0, 1, y, 0, 1, y, 1, 0, y, 1]),
+    colors: new Uint8Array([255, 255, 255, 200, 200, 200, 150, 150, 150, 90, 90, 90]),
+    uvs: new Float32Array([0, 0, 4, 0, 4, 4, 0, 4]),
+    layers: new Float32Array([layer, layer, layer, layer]),
+    indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+  };
+}
+
+/** Read a .glb back: header, then the JSON chunk. */
+function readGlb(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const magic = view.getUint32(0, true);
+  const total = view.getUint32(8, true);
+  const jsonLength = view.getUint32(12, true);
+  const json = JSON.parse(
+    new TextDecoder().decode(bytes.subarray(20, 20 + jsonLength)));
+  const binAt = 20 + jsonLength;
+  const binLength = view.getUint32(binAt, true);
+  return {
+    magic, total, json, binLength,
+    bin: bytes.subarray(binAt + 8, binAt + 8 + binLength),
+  };
+}
+
+const fakePng = (n) => new Uint8Array([137, 80, 78, 71, n]);
+
+test('le facce si raggruppano per strato di texture', () => {
+  const parts = collectParts([quad({ layer: 0 }), quad({ y: 1, layer: 3 })]);
+  assertEqual(parts.length, 2, 'due strati, due gruppi');
+  const layers = parts.map((p) => p.layer).sort();
+  assertEqual(layers.join(','), '0,3', 'gli strati sono quelli di partenza');
+  for (const part of parts) {
+    assertEqual(part.positions.length / 3, 4, 'quattro vertici per quad');
+    assertEqual(part.indices.length, 6, 'due triangoli');
+    assertEqual(part.colors.length / 4, 4, 'i colori escono in RGBA');
+  }
+});
+
+test('gruppi diversi per famiglie di blocchi diverse', () => {
+  const parts = collectParts([quad({ layer: 0 }), quad({ y: 1, layer: 0, kind: 'clear' })]);
+  assertEqual(parts.length, 2, 'stesso strato ma materiali diversi');
+});
+
+test('le coordinate di texture escono intatte, ripetizioni comprese', () => {
+  const [part] = collectParts([quad()]);
+  assertEqual(Math.max(...part.uvs), 4, 'il 4 di un quad merge-ato resta 4');
+});
+
+test('il taglio in altezza lascia fuori quello che nasconde', () => {
+  const parts = collectParts([quad({ y: 0 }), quad({ y: 10 })], { cut: 5 });
+  assertEqual(parts.length, 1, 'il quad sopra il taglio non esce');
+  assertEqual(parts[0].positions[1], 0, 'quello rimasto è il basso');
+});
+
+test('una parete a cavallo del taglio viene tagliata sul piano', () => {
+  // Il mesher unisce una parete piatta in un solo rettangolo alto: tenerlo o
+  // buttarlo interi sbaglierebbe di dieci blocchi.
+  const wall = quad();
+  wall.positions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 10, 1, 0, 10, 1]);
+  const [part] = collectParts([wall], { cut: 5 });
+  let top = -Infinity, bottom = Infinity;
+  for (let i = 1; i < part.positions.length; i += 3) {
+    top = Math.max(top, part.positions[i]);
+    bottom = Math.min(bottom, part.positions[i]);
+  }
+  assertClose(top, 5, 'la parete finisce esattamente sul taglio');
+  assertEqual(bottom, 0, 'e parte da dove partiva');
+  assert(part.indices.length >= 6, 'il pezzo rimasto è ancora chiuso');
+  assertEqual(part.indices.length % 3, 0, 'sono triangoli');
+});
+
+test('il taglio interpola anche colori e coordinate di texture', () => {
+  const wall = quad();
+  wall.positions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 10, 0, 0, 10, 0]);
+  wall.uvs = new Float32Array([0, 0, 1, 0, 1, 10, 0, 10]);
+  const [part] = collectParts([wall], { cut: 5 });
+  const maxV = Math.max(...[...part.uvs].filter((_, i) => i % 2 === 1));
+  assertClose(maxV, 5, 'la texture si ferma dove si ferma la geometria');
+});
+
+test('senza pacchetto non escono né coordinate né strati', () => {
+  const bare = quad();
+  bare.uvs = null; bare.layers = null;
+  const [part] = collectParts([bare]);
+  assertEqual(part.uvs, null, 'niente coordinate');
+  assertEqual(part.layer, -1, 'nessuno strato');
+});
+
+test('il file è un glb valido: intestazione, lunghezze, blocchi allineati', () => {
+  const bytes = buildGlb(collectParts([quad()]), [fakePng(1)]);
+  const glb = readGlb(bytes);
+  assertEqual(glb.magic, 0x46546c67, 'la firma è glTF');
+  assertEqual(glb.total, bytes.length, 'la lunghezza dichiarata è quella vera');
+  assertEqual(bytes.length % 4, 0, 'il file è allineato a 4');
+  assertEqual(glb.binLength % 4, 0, 'il blocco binario è allineato a 4');
+  assertEqual(glb.json.asset.version, '2.0', 'è glTF 2.0');
+});
+
+test('ogni accessore sta dentro il blocco binario che dichiara', () => {
+  const bytes = buildGlb(collectParts([quad({ layer: 0 }), quad({ y: 1, layer: 1 })]),
+    [fakePng(1), fakePng(2)]);
+  const { json, binLength } = readGlb(bytes);
+  const SIZE = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
+  const BYTES = { 5121: 1, 5125: 4, 5126: 4 };
+  for (const accessor of json.accessors) {
+    const view = json.bufferViews[accessor.bufferView];
+    const need = accessor.count * SIZE[accessor.type] * BYTES[accessor.componentType];
+    assertEqual(view.byteLength, need, 'la vista è larga quanto i dati');
+    assert(view.byteOffset + view.byteLength <= binLength, 'la vista sta nel buffer');
+    assertEqual(view.byteOffset % 4, 0, 'la vista è allineata a 4');
+  }
+  assertEqual(json.buffers[0].byteLength, binLength, 'il buffer dichiara la sua taglia');
+});
+
+test('una texture per strato, con la ripetizione accesa', () => {
+  const bytes = buildGlb(collectParts([quad({ layer: 0 }), quad({ y: 1, layer: 1 })]),
+    [fakePng(1), fakePng(2)]);
+  const { json } = readGlb(bytes);
+  assertEqual(json.images.length, 2, 'due strati, due immagini');
+  assertEqual(json.samplers[0].wrapS, 10497, 'wrapS è REPEAT');
+  assertEqual(json.samplers[0].wrapT, 10497, 'wrapT è REPEAT');
+  assertEqual(json.samplers[0].magFilter, 9728, 'ingrandimento NEAREST: sono pixel');
+});
+
+test('i materiali sono unlit, perché l\'ombra è già nei colori', () => {
+  const bytes = buildGlb(collectParts([quad()]), [fakePng(1)]);
+  const { json } = readGlb(bytes);
+  assert(json.extensionsUsed.includes('KHR_materials_unlit'), 'estensione dichiarata');
+  for (const m of json.materials) {
+    assert(m.extensions && m.extensions.KHR_materials_unlit, 'ogni materiale è unlit');
+  }
+});
+
+test('acqua e vetro escono trasparenti e a due facce', () => {
+  const bytes = buildGlb(collectParts([quad({ kind: 'clear' })]), [fakePng(1)]);
+  const { json } = readGlb(bytes);
+  assertEqual(json.materials[0].alphaMode, 'BLEND', 'si mescola');
+  assertEqual(json.materials[0].doubleSided, true, 'si vede da dentro');
+});
+
+test('senza texture il materiale non ritaglia contro il colore', () => {
+  const bare = quad();
+  bare.uvs = null; bare.layers = null;
+  const { json } = readGlb(buildGlb(collectParts([bare]), []));
+  assertEqual(json.materials[0].alphaMode, 'OPAQUE', 'niente MASK senza sprite');
+  assert(!json.images, 'nessuna immagine');
+});
+
+test('le immagini finiscono nel binario, non in un file a fianco', () => {
+  const png = fakePng(7);
+  const { json, bin } = readGlb(buildGlb(collectParts([quad()]), [png]));
+  const view = json.bufferViews[json.images[0].bufferView];
+  assertEqual(json.images[0].mimeType, 'image/png', 'dichiarata come PNG');
+  assertEqual(bin[view.byteOffset], png[0], 'i byte sono quelli dell\'immagine');
+  assertEqual(view.byteLength, png.length, 'lunga quanto l\'immagine');
+});
+
+test('la posizione porta il suo minimo e massimo, come chiede lo standard', () => {
+  const { json } = readGlb(buildGlb(collectParts([quad()]), [fakePng(1)]));
+  const position = json.accessors.find((a) => a.type === 'VEC3' && a.min);
+  assert(position, 'l\'accessore della posizione c\'è');
+  assertEqual(position.min.join(','), '0,0,0', 'minimo');
+  assertEqual(position.max.join(','), '1,0,1', 'massimo');
+});
+
+test('la provenienza della porzione resta scritta nel file', () => {
+  const extras = { world: { minX: -320, minY: 48, minZ: 96 } };
+  const { json } = readGlb(buildGlb(collectParts([quad()]), [fakePng(1)], extras));
+  assertEqual(json.asset.extras.world.minX, -320, 'le coordinate del mondo');
+});
+
+
 (async () => {
   for (const item of tests) {
     if (item.kind === 'section') { console.log(`\n${item.title}`); continue; }

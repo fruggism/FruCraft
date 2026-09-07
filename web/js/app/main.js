@@ -13,6 +13,7 @@ import {
 import * as Atlas from './atlas.js';
 import * as Archive from './archive.js';
 import * as Reader from './reader.js';
+import * as Atlas3D from './atlas3d.js';
 import {
   supportsHandles, pickDirectory, restoreLastWorld, sourceFromFileList, forgetWorld,
 } from './worldPicker.js';
@@ -69,13 +70,19 @@ function showScreen(name) {
   if (name === 'reader-atlas' || name === 'reader-archive') lastReaderScreen = name;
   if (name === 'atlas' && Atlas.getMap()) setTimeout(() => Atlas.getMap().invalidateSize(), 60);
   if (name === 'archive') Archive.renderList();
+  // The 3D screen holds a canvas sized to its stage, which is zero-sized
+  // while hidden: it has to measure itself once it is on screen.
+  if (name === 'atlas3d') Atlas3D.show();
 }
+
+const MODE_LABEL = { reader: ' Lettore', atlas3d: ' Atlante 3D', editor: ' Editor' };
 
 function setMode(mode) {
   document.querySelectorAll('#mode-tabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.mode === mode));
   el('editor-tabs').classList.toggle('hidden', mode !== 'editor');
   el('reader-tabs').classList.toggle('hidden', mode !== 'reader');
-  el('mode-label').textContent = mode === 'reader' ? ' Lettore' : ' Editor';
+  el('mode-label').textContent = MODE_LABEL[mode] || MODE_LABEL.editor;
+  if (mode === 'atlas3d') { showScreen('atlas3d'); return; }
   showScreen(mode === 'reader' ? lastReaderScreen : lastEditorScreen);
 }
 
@@ -93,6 +100,7 @@ async function openWorldFromInit(init, { silent = false } = {}) {
     }
     openWorldInit = init;
     state.world = scan;
+    Atlas3D.worldChanged();
     fillDimensions(scan);
     el('world-details').classList.remove('hidden');
     // The filter now lives here, before the atlas exists, so it needs its
@@ -642,6 +650,23 @@ async function init() {
   // interfaceMode.js already applied the stored choice to <html> on import;
   // this just syncs the select and wires switching it further, same
   // "must survive anything else throwing" reasoning as the tabs above.
+  // The 3D screen reads the world the Editor already has open rather than
+  // asking for the folder again; the worker behind it is its own.
+  Atlas3D.init({
+    getWorldInit: () => openWorldInit,
+    getDimension: () => (el('world-dimension') ? el('world-dimension').value : null),
+  });
+  el('btn-see-3d').addEventListener('click', () => {
+    if (!openWorldInit) { toast('Apri prima un mondo', 'err'); return; }
+    // Without an atlas open there is no map, so there is no "here" to carry
+    // over — say so rather than quietly landing the portion on 0, 0.
+    const map = Atlas.getMap();
+    if (!map) { toast('Apri prima un atlante: il 3D parte da dove guardi sulla mappa', 'err'); return; }
+    const c = Atlas.fromLatLng(map.getCenter());
+    setMode('atlas3d');
+    Atlas3D.focusOn(Math.round(c.x), Math.round(c.z));
+  });
+
   el('interface-mode-select').value = getInterfaceMode();
   el('interface-mode-select').addEventListener('change', (e) => {
     setInterfaceMode(e.target.value);
@@ -775,6 +800,13 @@ async function initRest() {
   });
 
   await refreshProjectList();
+
+  // Development shortcut: open the world tools/serve.js exposes, so the whole
+  // chain can be driven without the folder picker. Never reached in normal use.
+  if (new URLSearchParams(location.search).has('dev')) {
+    await openWorldFromInit({ kind: 'http', base: '/__world', name: 'testworld' });
+    return;
+  }
 
   // Offer to reopen the world we mapped last time, if the browser kept it.
   const restored = await restoreLastWorld();

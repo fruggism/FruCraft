@@ -8,7 +8,7 @@
  * transferred rather than copied.
  */
 
-import { FileMapSource, DirectoryHandleSource } from './core/source.js';
+import { sourceFromInit } from './core/source.js';
 import * as worldScan from './core/worldScan.js';
 import * as tiler from './core/tiler.js';
 import * as anvil from './core/anvil.js';
@@ -187,8 +187,7 @@ const metaKey = (dimId) => `render|${scan.worldKey}|${dimId}`;
 
 const handlers = {
   async openWorld({ init }) {
-    if (init.kind === 'files') source = new FileMapSource(init.files, init.name);
-    else source = new DirectoryHandleSource(init.handle);
+    source = sourceFromInit(init);
     regionSets.clear();
     caches.clear();
     anvil.clearRegionCache();

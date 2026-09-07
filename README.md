@@ -9,15 +9,17 @@ soprattutto: il salvataggio **non viene caricato da nessuna parte**. La pagina
 legge la cartella del mondo sul tuo computer e fa tutto lì, anche quando l'app
 è aperta da un indirizzo web.
 
-## Editor e Lettore
+## Editor, Lettore e Atlante 3D
 
-L'app è divisa in due, cambiabile dai due bottoni in alto:
+L'app è divisa in tre, cambiabile dai bottoni in alto:
 
 - **✏️ Editor** — dove si fa tutto il lavoro: apri il mondo, disegni la mappa
   a layer, scrivi i documenti dell'Archivio. Richiede il mondo Minecraft.
 - **📖 Lettore** — un visualizzatore leggero per i file che l'Editor ha già
   esportato. Non serve nessun mondo: è pensato per chi deve solo *guardare*
   quello che hai fatto, anche su un altro computer.
+- **🧊 Atlante 3D** — la stessa mappa, ma dentro: una porzione del mondo
+  ricostruita blocco per blocco, con le texture vere del gioco.
 
 Entrambi hanno le stesse due sezioni, **Atlante** e **Archivio** — nell'Editor
 sono dove crei le cose, nel Lettore dove le apri e le guardi:
@@ -29,6 +31,34 @@ sono dove crei le cose, nel Lettore dove le apri e le guardi:
   come nell'Editor.
 - **Archivio** (Lettore) — apri un documento esportato dall'Archivio
   dell'Editor e leggilo impaginato.
+
+### Atlante 3D
+
+Prende il mondo che hai **già aperto nell'Editor** — non te lo richiede — e ne
+ricostruisce una porzione in tre dimensioni, con le forme vere dei blocchi
+(lastre, scale, recinti, piante, acqua, vetro) e le texture del tuo Minecraft,
+lette dal `.jar` che indichi. Senza `.jar` funziona lo stesso: ogni blocco
+diventa una tinta piatta.
+
+Ci si arriva in due modi:
+
+- dalla scheda **🧊 Atlante 3D**, scegliendo il centro e il lato della porzione;
+- dal pulsante **🧊** nella barra delle coordinate della mappa, che porta in 3D
+  **la zona che stai guardando** — è la strada più corta: inquadri sulla mappa,
+  clicchi, ci sei dentro.
+
+Il lato va da 64 a 1024 blocchi; sopra una certa taglia l'app chiede conferma,
+perché le porzioni molto grandi possono esaurire la memoria del browser. Il
+cursore *Taglia sopra Y* serve a guardare dentro le costruzioni, e la vista si
+porta via in due formati: **PNG** dell'inquadratura, o **`.glb`** — il modello
+vero, geometria e texture in un file solo, che si apre in Blender, in Anteprima
+su macOS e in qualunque visualizzatore glTF. Quello che vedi è quello che esce:
+anche il taglio in altezza, applicato sul piano esatto.
+
+Il 3D ha un worker suo, separato da quello che disegna la mappa: leggere volumi
+e costruire triangoli non è lo stesso mestiere che dipingere tessere dall'alto.
+Il lettore del salvataggio, invece, è lo stesso — `web/js/core/` non è
+duplicato.
 
 ---
 
@@ -261,14 +291,28 @@ web/                       l'applicazione: file statici, nessuna build
     tiler.js               piramide di tile (pixel RGBA grezzi)
     renderJob.js           generazione della mappa, con avanzamento
     book.js                impaginazione e comandi /give
-    source.js              accesso al salvataggio (cartella o elenco file)
+    source.js              accesso al salvataggio (cartella, file o HTTP)
+  js/voxel/                lettura di volumi e costruzione della geometria
+    blockKinds.js          che forma ha un blocco (cubo, lastra, scala, pianta…)
+    volume.js              una scatola di mondo letta in una griglia di stati
+    mesher.js              da griglia a triangoli, con occlusione ambientale
+  js/pack/                 le texture del gioco
+    zip.js                 lettura di .jar e .zip
+    resources.js           dai modelli del gioco alle texture di ogni faccia
+    textures.js            gli sprite come array di texture
+  js/export/glb.js         la porzione come modello glTF binario
   js/worker.js             il motore fuori dal thread dell'interfaccia
+  js/worker3d.js           lo stesso, per i volumi dell'Atlante 3D
   js/app/                  interfaccia: mappa, layer, archivio, storage
     main.js                app shell: cambio modalità (Editor/Lettore) e schermata
     atlas.js                schermata Atlante: mappa, layer, disegno, export
     archive.js               schermata Archivio: interfaccia ed export libri
     documents.js             modello dei documenti: indipendenti, versionati e firmati
     reader.js                schermata Lettore: apre mappe e documenti già esportati
+    atlas3d.js               schermata Atlante 3D: porzione, caricamento, export
+    viewer3d.js              scena, telecamera in orbita, mirino, HUD, materiali
+    engine3d.js              client del worker 3D
+    packPicker.js            scelta del .jar / resource pack
 tools/
   serve.js                 server statico per lo sviluppo
   make-textures.js         genera le texture (con encoder PNG incluso)
@@ -278,7 +322,8 @@ test/
 ```
 
 Il progetto **non ha dipendenze**: `npm test` e `npm run web` funzionano su una
-copia appena clonata, senza `npm install`. Leaflet è incluso in `web/vendor/`.
+copia appena clonata, senza `npm install`. Leaflet e three.js sono inclusi in
+`web/vendor/`.
 
 ### Come funzionano le coordinate
 
@@ -319,7 +364,7 @@ i blocchi sbagliati.
 ## Test
 
 ```bash
-npm test           # 68 test, nessuna dipendenza
+npm test           # 129 test, nessuna dipendenza
 npm run world      # rigenera i mondi sintetici di prova
 npm run textures   # rigenera le texture dell'interfaccia
 ```

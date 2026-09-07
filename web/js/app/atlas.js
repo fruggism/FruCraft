@@ -2528,4 +2528,6 @@ export {
   beginPlaceStation, orderedStationsForLine, openLineVisibilityMenu, setStationStyle,
 };
 export function getMap() { return map; }
+/** Map coordinates as the world's own X/Z — what the 3D screen aims at. */
+export { fromLatLng };
 export function getCurrentTool() { return currentTool; }

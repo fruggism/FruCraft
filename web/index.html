@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="vendor/leaflet.draw.css">
 <link rel="stylesheet" href="css/textures.css">
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/atlas3d.css">
 </head>
 <body>
 
@@ -23,6 +24,7 @@
     <nav class="tabs" id="mode-tabs">
       <button class="tab active" data-mode="editor" title="Crea e modifica atlanti e documenti">✏️ Editor</button>
       <button class="tab" data-mode="reader" title="Apri mappe e documenti già esportati">📖 Lettore</button>
+      <button class="tab" data-mode="atlas3d" title="Guarda una porzione del mondo in tre dimensioni">🧊 Atlante 3D</button>
     </nav>
     <nav class="tabs sub-tabs" id="editor-tabs">
       <button class="tab active" data-screen="atlas">Atlante</button>
@@ -187,6 +189,7 @@
         <div class="coord-readout" id="coord-readout">X <b>—</b>  Z <b>—</b></div>
         <button class="map-icon-btn" id="btn-compass" title="Vai alle coordinate">🧭</button>
         <button class="map-icon-btn" id="btn-map-search" title="Cerca una stazione o un edificio per nome">🔍</button>
+        <button class="map-icon-btn" id="btn-see-3d" title="Guarda in 3D la zona al centro della mappa">🧊</button>
       </div>
       <div class="map-utility-panel map-popover hidden" id="map-utility-panel">
         <h3>Vai alle coordinate</h3>
@@ -349,6 +352,133 @@
         <p class="book-author" id="reader-doc-author"></p>
         <div id="reader-doc-pages"></div>
       </div>
+    </main>
+  </div>
+
+
+  <!-- ATLANTE 3D ----------------------------------------------------------- -->
+  <div class="screen" id="screen-atlas3d">
+    <aside class="sidebar" id="a3d-sidebar">
+
+      <section class="panel">
+        <h2><span class="num">1</span> Texture</h2>
+        <div class="hint">Le texture non sono qui dentro: stanno nel gioco che hai
+          già installato. Indica il file <code>.jar</code> della tua versione —
+          su macOS è in <code>~/Library/Application&nbsp;Support/minecraft/versions/</code><i>versione</i>/ —
+          e vengono lette da lì, in locale. Puoi indicare anche un resource pack
+          <code>.zip</code> insieme al gioco: quello scelto per ultimo vince.</div>
+        <button class="btn" id="btn-pick-pack">Scegli il .jar di Minecraft…</button>
+        <button class="btn btn-sm hidden" id="btn-reopen-pack">Riapri l'ultimo</button>
+        <input type="file" id="pack-input" accept=".jar,.zip" multiple class="hidden">
+        <div id="pack-status" class="status">Senza texture ogni blocco è una tinta piatta.</div>
+        <label class="check hidden" id="pack-toggle-row">
+          <input type="checkbox" id="pack-toggle" checked>
+          <span>Usa le texture</span>
+        </label>
+      </section>
+
+      <div class="status warn hidden" id="a3d-world-note"></div>
+
+      <section class="panel hidden" id="panel-portion">
+        <h2><span class="num">2</span> Porzione</h2>
+
+        <div class="row">
+          <label class="grow"><span class="lbl">Centro X</span>
+            <input type="number" id="center-x" step="16"></label>
+          <label class="grow"><span class="lbl">Centro Z</span>
+            <input type="number" id="center-z" step="16"></label>
+        </div>
+        <div class="row">
+          <button class="btn btn-sm grow" id="btn-spawn">Punto di spawn</button>
+          <button class="btn btn-sm grow" id="btn-player">Dov'ero io</button>
+        </div>
+
+        <label>
+          <span class="lbl">Lato <b id="size-label">192</b> blocchi</span>
+          <input type="range" id="radius" min="2" max="32" step="1" value="6">
+        </label>
+
+        <label>
+          <span class="lbl">Altezza</span>
+          <select id="height-mode">
+            <option value="auto">Automatica (segue il terreno)</option>
+            <option value="manual">La scelgo io</option>
+          </select>
+        </label>
+        <div class="row hidden" id="height-manual">
+          <label class="grow"><span class="lbl">da Y</span>
+            <input type="number" id="min-y" step="16" value="48"></label>
+          <label class="grow"><span class="lbl">per <b id="height-label">96</b> blocchi</span>
+            <input type="number" id="height-blocks" step="16" min="16" value="96"></label>
+        </div>
+
+        <div class="preview-wrap">
+          <canvas id="preview" width="256" height="256" title="Clicca per spostare il centro"></canvas>
+          <button class="nudge up"    id="nudge-n" type="button" title="Sposta verso nord (Z−). Con Shift, di un lato intero.">▲</button>
+          <button class="nudge down"  id="nudge-s" type="button" title="Sposta verso sud (Z+). Con Shift, di un lato intero.">▼</button>
+          <button class="nudge left"  id="nudge-w" type="button" title="Sposta verso ovest (X−). Con Shift, di un lato intero.">◀</button>
+          <button class="nudge right" id="nudge-e" type="button" title="Sposta verso est (X+). Con Shift, di un lato intero.">▶</button>
+        </div>
+        <div class="hint" id="preview-hint">Clicca sull'anteprima per spostare il centro, oppure
+          usa le frecce ai lati: un passo è un quarto del lato, con <kbd>Shift</kbd> un lato intero.</div>
+
+        <details class="sub">
+          <summary>Blocchi da ignorare</summary>
+          <div class="hint">Letti come se fossero aria. Le barriere sono già escluse
+            sempre: qui servono i blocchi che vuoi togliere di mezzo tu, per esempio
+            il vetro di una serra per vedere cosa c'è dentro.</div>
+          <textarea id="a3d-block-custom" rows="3" spellcheck="false"
+            placeholder="glass&#10;oak_leaves"></textarea>
+        </details>
+
+        <div id="estimate" class="status"></div>
+        <button class="btn btn-primary" id="btn-load">Carica in 3D</button>
+        <div id="load-status" class="status"></div>
+        <div class="progress hidden" id="progress"><div id="progress-bar"></div></div>
+      </section>
+
+      <section class="panel hidden" id="panel-view">
+        <h2><span class="num">3</span> Vista</h2>
+        <label>
+          <span class="lbl">Taglia sopra Y <b id="cut-label">—</b></span>
+          <input type="range" id="cut" min="0" max="1" step="1" value="1">
+        </label>
+        <div class="hint">Serve per guardare dentro una costruzione. Il terreno
+          pieno, invece, si apre: le facce fra due blocchi pieni non esistono —
+          non sono disegnate perché non si vedrebbero — quindi sotto il taglio
+          non c'è niente da mostrare.</div>
+        <button class="btn btn-sm" id="btn-snapshot">📷 Salva immagine</button>
+        <button class="btn btn-sm" id="btn-export">🧊 Esporta il modello (.glb)</button>
+        <div class="hint">Il <code>.glb</code> contiene la geometria e le texture
+          della porzione: si apre in Blender, in Anteprima su macOS e in
+          qualunque visualizzatore 3D. Esce quello che vedi — se hai tagliato in
+          altezza, il taglio vale anche qui.</div>
+        <div id="view-stats" class="status"></div>
+        <details class="sub" open>
+          <summary>Comandi</summary>
+          <div class="keys">
+            <div>Trascina per girare intorno alla porzione, rotellina per
+              avvicinarti, tasto destro (o trascina con due dita) per spostare
+              il punto attorno a cui giri.</div>
+          </div>
+        </details>
+      </section>
+    </aside>
+
+    <main id="a3d-stage">
+      <div id="a3d-empty">
+        <div class="empty-cube"></div>
+        <h3>Scegli una porzione, guardala in 3D</h3>
+        <p>La porzione viene letta dal salvataggio che hai già aperto nell'Editor
+          e ricostruita blocco per blocco: poi ci si gira dentro.</p>
+      </div>
+      <canvas id="scene" class="hidden"></canvas>
+      <div id="crosshair" class="hidden"></div>
+      <div id="hud" class="hidden">
+        <div class="hud-line"><span id="hud-pos">—</span></div>
+        <div class="hud-line dim"><span id="hud-look">—</span></div>
+      </div>
+      <div id="hud-right" class="hidden"></div>
     </main>
   </div>
 
