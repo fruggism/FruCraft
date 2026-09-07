@@ -60,6 +60,11 @@ e costruire triangoli non è lo stesso mestiere che dipingere tessere dall'alto.
 Il lettore del salvataggio, invece, è lo stesso — `web/js/core/` non è
 duplicato.
 
+> Se devi **metterci le mani** — capire com'è fatto dentro, aggiungere una
+> forma, correggere qualcosa — leggi [GUIDA-3D.md](GUIDA-3D.md): racconta il
+> percorso di un blocco dal file `.mca` al pixel, i punti in cui è facile
+> sbagliare e perché certe cose sono state lasciate fuori.
+
 ---
 
 ## Come si apre

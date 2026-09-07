@@ -7,7 +7,8 @@
     "test": "node test/run-tests.js",
     "web": "node tools/serve.js",
     "world": "node test/make-test-world.js",
-    "textures": "node tools/make-textures.js"
+    "textures": "node tools/make-textures.js",
+    "showcase": "node test/make-showcase-world.js"
   },
   "repository": {
     "type": "git",
