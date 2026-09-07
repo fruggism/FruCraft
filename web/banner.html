@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cube-Atlas — Stemmi</title>
+<meta name="description" content="Disegna uno stendardo/banner di Minecraft e ottieni subito il comando /give per portarlo in gioco.">
+<meta name="theme-color" content="#2b2b2b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%236b4a2a'/%3E%3Crect width='16' height='6' fill='%235fa839'/%3E%3Crect y='6' width='16' height='2' fill='%234a7a2a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/textures.css">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/banner.css">
+</head>
+<body>
+
+<div id="app">
+  <header id="topbar">
+    <div class="logo"><span class="cube"></span><span>CUBE<b>-ATLAS</b></span><small> Stemmi</small></div>
+    <div class="topbar-spacer"></div>
+    <a class="btn btn-sm" href="index.html">← Torna alla mappa</a>
+  </header>
+
+  <div class="screen active" id="screen-banner">
+    <aside class="sidebar">
+
+      <section class="panel">
+        <h2><span class="num">1</span> Colore di base</h2>
+        <div class="hint">È il colore dello stendardo grezzo prima di aggiungere disegni.</div>
+        <div class="swatch-grid" id="base-color-grid"></div>
+      </section>
+
+      <section class="panel">
+        <h2><span class="num">2</span> Disegni <small id="pattern-count">(0/6)</small></h2>
+        <div class="hint">Ogni disegno si applica sopra i precedenti, dal basso verso l'alto —
+          come quando li si tinge in gioco. Trascina per riordinare.</div>
+        <ul class="pattern-list" id="pattern-list"></ul>
+        <button class="btn btn-primary btn-sm" id="btn-add-pattern">+ Aggiungi disegno</button>
+      </section>
+
+      <section class="panel">
+        <h2><span class="num">3</span> Quantità</h2>
+        <label>
+          <span class="lbl">Numero di stendardi da dare</span>
+          <input type="number" id="banner-count" min="1" max="64" value="1">
+        </label>
+      </section>
+    </aside>
+
+    <main class="banner-main">
+      <div class="banner-preview-wrap">
+        <canvas id="banner-canvas" width="200" height="400"></canvas>
+      </div>
+
+      <aside class="book-pane">
+        <h3 class="book-title">Comando /give</h3>
+        <p class="book-author">Incollalo in chat o in un blocco comandi.</p>
+        <label>
+          <span class="lbl">Versione di Minecraft</span>
+          <select id="banner-version">
+            <option value="modern">1.20.5 e successive</option>
+            <option value="legacy">1.20.4 e precedenti</option>
+          </select>
+        </label>
+        <div class="cmd-box" id="banner-command">—</div>
+        <button class="btn btn-sm" id="btn-copy-cmd">Copia comando</button>
+        <button class="btn btn-sm" id="btn-download-mcfunction">Scarica .mcfunction</button>
+        <div class="hint" id="craftable-warning"></div>
+      </aside>
+    </main>
+  </div>
+</div>
+
+<div id="toast-host"></div>
+<div id="modal-host"></div>
+
+<script type="module" src="js/app/bannerPage.js"></script>
+<noscript>
+  <p style="padding:20px">Questa pagina ha bisogno di JavaScript.</p>
+</noscript>
+</body>
+</html>
