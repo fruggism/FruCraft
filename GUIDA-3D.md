@@ -46,6 +46,15 @@ gioco, sezione vera del terreno quando si taglia in altezza.
 L'Atlante 3D è arrivato da fuori — era un'applicazione separata — e questo
 spiega la forma che ha.
 
+Come le altre due sezioni ha due modalità: l'**Editor**, che ha bisogno del
+mondo aperto e costruisce la porzione, e la **Lettura**, che non ha bisogno di
+niente e riapre un `.glb` già esportato (`app/glbReader.js`). Attenzione a un
+dettaglio che si sbaglia facilmente: anche il lettore deve fare
+`THREE.ColorManagement.enabled = false` e tenere l'`outputColorSpace` lineare,
+come `viewer3d.js` e per lo stesso motivo (§7). Senza, i colori cotti nei
+vertici vengono convertiti una seconda volta e lo stesso modello esce
+visibilmente più chiaro di com'era nell'Editor che l'ha prodotto.
+
 **`web/js/core/` è condiviso con la mappa 2D, ed è una copia sola.** Sono i
 file — `nbt.js`, `anvil.js`, `worldScan.js`, `source.js`, `blockColors.js` —
 che sanno leggere NBT, aprire i file di regione, trovare le dimensioni dentro
@@ -755,7 +764,9 @@ stato fatto: è questa.)*
 | `web/js/worker3d.js` | i quattro handler, fuori dal thread dell'interfaccia | sì |
 | `web/js/app/engine3d.js` | client del worker: promesse, progresso, stream | raramente |
 | `web/js/app/viewer3d.js` | scena, telecamera in orbita, mirino, HUD, materiali | sì |
-| `web/js/app/atlas3d.js` | porzione, anteprima, caricamento, cablaggio | sì |
+| `web/js/app/atlas3d.js` | Editor: porzione, anteprima, caricamento, cablaggio | sì |
+| `web/js/app/glbReader.js` | Lettura: apre un `.glb` da disco e lo mostra | sì |
+| `web/vendor/GLTFLoader.js` | il lettore glTF di three.js (MIT) | solo per aggiornare |
 | `web/js/export/glb.js` | la porzione come modello glTF binario | sì |
 | `web/js/app/packPicker.js` | scelta del .jar / resource pack | sì |
 | `web/js/core/source.js` | accesso al salvataggio, `HttpSource` compresa | no, è condiviso con la mappa |

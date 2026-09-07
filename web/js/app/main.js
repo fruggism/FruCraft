@@ -14,6 +14,7 @@ import * as Atlas from './atlas.js';
 import * as Archive from './archive.js';
 import * as Reader from './reader.js';
 import * as Atlas3D from './atlas3d.js';
+import { GlbViewer } from './glbReader.js';
 import {
   supportsHandles, pickDirectory, restoreLastWorld, sourceFromFileList, forgetWorld,
 } from './worldPicker.js';
@@ -51,39 +52,56 @@ function renderMapSearchResults(hostId, results, onPick) {
 let openWorldInit = null;
 
 // ---------------------------------------------------------------- screens
-// The app is really two programs sharing one page: the Editor (Atlante +
-// Archivio, everything that touches a world/project) and the Lettore, a
-// standalone viewer for files the Editor has already exported. Switching
-// mode never touches world/project state — only which screen is visible.
-let lastEditorScreen = 'atlas';
-let lastReaderScreen = 'reader-atlas';
+/*
+ * Navigation has two axes: *what* you are looking at and *how*.
+ *
+ * The three sections are three ways of looking at the same world — from
+ * above, from inside, and as the documents written in it. Each has an Editor,
+ * which needs the world open and makes something, and a Lettura, which needs
+ * nothing but a file the Editor exported. Six screens, one per pair.
+ *
+ * Switching never touches world or project state: it only decides which
+ * screen is visible.
+ */
+const SECTIONS = {
+  atlas2d: { label: 'Atlante 2D', editor: 'atlas', reader: 'reader-atlas' },
+  atlas3d: { label: 'Atlante 3D', editor: 'atlas3d', reader: 'reader-atlas3d' },
+  docs: { label: 'Documenti', editor: 'archive', reader: 'reader-archive' },
+};
 
+let glbViewer = null;
+let section = 'atlas2d';
+// Which mode each section was left in, so coming back lands where you were.
+const lastMode = { atlas2d: 'editor', atlas3d: 'editor', docs: 'editor' };
+
+/** Show one screen and let it know, for the ones that need to measure. */
 function showScreen(name) {
-  // Scoped to the sub-tabs, not a bare `.tab`: the mode tabs are also `.tab`
-  // elements but have no `data-screen`, so a bare selector here would wrongly
-  // clear their active state on every screen switch.
-  document.querySelectorAll('#editor-tabs .tab, #reader-tabs .tab').forEach((t) => (
-    t.classList.toggle('active', t.dataset.screen === name)
+  document.querySelectorAll('.screen').forEach((s) => (
+    s.classList.toggle('active', s.id === `screen-${name}`)
   ));
-  document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === `screen-${name}`));
-  if (name === 'atlas' || name === 'archive') lastEditorScreen = name;
-  if (name === 'reader-atlas' || name === 'reader-archive') lastReaderScreen = name;
+  // A Leaflet map and a WebGL canvas are both sized to their container, which
+  // is zero while the screen is hidden: they have to measure once shown.
   if (name === 'atlas' && Atlas.getMap()) setTimeout(() => Atlas.getMap().invalidateSize(), 60);
   if (name === 'archive') Archive.renderList();
-  // The 3D screen holds a canvas sized to its stage, which is zero-sized
-  // while hidden: it has to measure itself once it is on screen.
   if (name === 'atlas3d') Atlas3D.show();
+  if (name === 'reader-atlas3d' && glbViewer) glbViewer.resize();
 }
 
-const MODE_LABEL = { reader: ' Lettore', atlas3d: ' Atlante 3D', editor: ' Editor' };
+/** Go to a section, in a mode — remembering the mode per section. */
+function go(nextSection, mode) {
+  if (!SECTIONS[nextSection]) nextSection = 'atlas2d';
+  section = nextSection;
+  const chosen = mode || lastMode[section];
+  lastMode[section] = chosen;
 
-function setMode(mode) {
-  document.querySelectorAll('#mode-tabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.mode === mode));
-  el('editor-tabs').classList.toggle('hidden', mode !== 'editor');
-  el('reader-tabs').classList.toggle('hidden', mode !== 'reader');
-  el('mode-label').textContent = MODE_LABEL[mode] || MODE_LABEL.editor;
-  if (mode === 'atlas3d') { showScreen('atlas3d'); return; }
-  showScreen(mode === 'reader' ? lastReaderScreen : lastEditorScreen);
+  document.querySelectorAll('#section-tabs .tab').forEach((t) => (
+    t.classList.toggle('active', t.dataset.section === section)
+  ));
+  document.querySelectorAll('#mode-tabs .tab').forEach((t) => (
+    t.classList.toggle('active', t.dataset.mode === chosen)
+  ));
+  el('mode-label').textContent = ` ${SECTIONS[section].label}`;
+  showScreen(SECTIONS[section][chosen]);
 }
 
 // ------------------------------------------------------------------ world
@@ -641,11 +659,11 @@ async function init() {
   // if literally anything else in this function throws (stale cached JS
   // after a deploy, a corrupted saved project, whatever), the mode/screen
   // tabs must still respond instead of leaving the whole page inert.
-  document.querySelectorAll('#mode-tabs .tab').forEach((btn) => {
-    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  document.querySelectorAll('#section-tabs .tab').forEach((btn) => {
+    btn.addEventListener('click', () => go(btn.dataset.section));
   });
-  document.querySelectorAll('#editor-tabs .tab, #reader-tabs .tab').forEach((tab) => {
-    tab.addEventListener('click', () => showScreen(tab.dataset.screen));
+  document.querySelectorAll('#mode-tabs .tab').forEach((btn) => {
+    btn.addEventListener('click', () => go(section, btn.dataset.mode));
   });
   // interfaceMode.js already applied the stored choice to <html> on import;
   // this just syncs the select and wires switching it further, same
@@ -663,8 +681,47 @@ async function init() {
     const map = Atlas.getMap();
     if (!map) { toast('Apri prima un atlante: il 3D parte da dove guardi sulla mappa', 'err'); return; }
     const c = Atlas.fromLatLng(map.getCenter());
-    setMode('atlas3d');
+    go('atlas3d', 'editor');
     Atlas3D.focusOn(Math.round(c.x), Math.round(c.z));
+  });
+
+  // Atlante 3D · Lettura: a model opened from disk, no world needed.
+  el('btn-reader-open-glb').addEventListener('click', () => el('reader-glb-input').click());
+  el('reader-glb-input').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setStatus('reader-glb-status', `Sto aprendo ${file.name}…`, 'busy');
+    try {
+      if (!glbViewer) {
+        glbViewer = new GlbViewer(el('reader-glb-scene'));
+        new ResizeObserver(() => glbViewer.resize()).observe(el('reader-glb-stage'));
+      }
+      const info = await glbViewer.load(await file.arrayBuffer());
+      el('reader-glb-empty').classList.add('hidden');
+      el('reader-glb-scene').classList.remove('hidden');
+      el('reader-glb-panel').classList.remove('hidden');
+      glbViewer.resize();
+      glbViewer.start();
+      setStatus('reader-glb-status', file.name, 'ok');
+      const from = info.extras && info.extras.world
+        ? ` · da X ${info.extras.world.minX}, Z ${info.extras.world.minZ}` : '';
+      setStatus('reader-glb-stats',
+        `${(info.triangles / 1000).toFixed(0)}k triangoli · ${info.textures} texture`
+        + ` · ${info.size.x}×${info.size.y}×${info.size.z} blocchi${from}`);
+    } catch (err) {
+      setStatus('reader-glb-status', `Non riesco a leggerlo: ${err.message}`, 'err');
+    }
+  });
+  el('btn-reader-glb-snapshot').addEventListener('click', async () => {
+    if (!glbViewer) return;
+    const blob = await glbViewer.snapshot();
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'modello.png';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   });
 
   el('interface-mode-select').value = getInterfaceMode();
@@ -819,8 +876,8 @@ async function initRest() {
 }
 
 // Expose the pieces the other modules call back into.
-window.Main = { renderLayerList, showScreen, openProject, refreshProjectList, selectLayer };
+window.Main = { renderLayerList, showScreen, go, openProject, refreshProjectList, selectLayer };
 
 document.addEventListener('DOMContentLoaded', init);
 
-export { renderLayerList, showScreen, openProject };
+export { renderLayerList, showScreen, go, openProject };

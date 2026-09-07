@@ -9,40 +9,53 @@ soprattutto: il salvataggio **non viene caricato da nessuna parte**. La pagina
 legge la cartella del mondo sul tuo computer e fa tutto lì, anche quando l'app
 è aperta da un indirizzo web.
 
-## Editor, Lettore e Atlante 3D
+## Come è organizzata
 
-L'app è divisa in tre, cambiabile dai bottoni in alto:
+Tre **sezioni** — tre modi di guardare lo stesso mondo — e per ognuna due
+**modalità**. Le sezioni stanno nella riga di bottoni in alto, le modalità
+subito accanto:
 
-- **✏️ Editor** — dove si fa tutto il lavoro: apri il mondo, disegni la mappa
-  a layer, scrivi i documenti dell'Archivio. Richiede il mondo Minecraft.
-- **📖 Lettore** — un visualizzatore leggero per i file che l'Editor ha già
-  esportato. Non serve nessun mondo: è pensato per chi deve solo *guardare*
-  quello che hai fatto, anche su un altro computer.
-- **🧊 Atlante 3D** — la stessa mappa, ma dentro: una porzione del mondo
-  ricostruita blocco per blocco, con le texture vere del gioco.
+|  | ✏️ **Editor** | 📖 **Lettura** |
+|---|---|---|
+| 🗺️ **Atlante 2D** | apri il mondo e disegni la mappa a layer | apri un atlante già esportato |
+| 🧊 **Atlante 3D** | scegli una porzione e la guardi in tre dimensioni | apri un modello `.glb` già esportato |
+| 📄 **Documenti** | scrivi libri e documenti del mondo | apri un documento già esportato |
 
-Entrambi hanno le stesse due sezioni, **Atlante** e **Archivio** — nell'Editor
-sono dove crei le cose, nel Lettore dove le apri e le guardi:
+La differenza fra le due modalità è sempre la stessa: **l'Editor ha bisogno
+del mondo Minecraft**, la Lettura no. La Lettura apre un file che l'Editor ha
+prodotto, e basta a sé stessa — è pensata per chi deve solo *guardare* quello
+che hai fatto, anche su un altro computer dove Minecraft non c'è.
 
-- **Atlante** (Lettore) — apri un atlante esportato con *"🗺️ Esporta
-  atlante"* (file "<i>nome-mondo</i>_ATLAS"): il terreno è un'immagine
-  piatta, ma i layer restano vivi: si possono ancora nascondere/mostrare
-  uno per uno, e passandoci sopra col mouse se ne vedono le informazioni,
-  come nell'Editor.
-- **Archivio** (Lettore) — apri un documento esportato dall'Archivio
-  dell'Editor e leggilo impaginato.
+Ogni sezione si ricorda in quale modalità l'avevi lasciata, così tornarci ti
+riporta dov'eri.
 
-### Atlante 3D
+Cosa apre la Lettura, in concreto:
 
-Prende il mondo che hai **già aperto nell'Editor** — non te lo richiede — e ne
+- **Atlante 2D** — un file "<i>nome-mondo</i>_ATLAS" esportato con *"🗺️
+  Esporta atlante"*: il terreno è un'immagine piatta, ma i layer restano vivi
+  — si nascondono e si mostrano uno per uno, e passandoci sopra col mouse se
+  ne vedono le informazioni, come nell'Editor.
+- **Atlante 3D** — un `.glb` esportato con *"🧊 Esporta il modello"*, o
+  qualunque altro modello glTF binario.
+- **Documenti** — un documento esportato con *"📖 Esporta per il Lettore"*,
+  impaginato.
+
+### Atlante 3D, più da vicino
+
+Prende il mondo che hai **già aperto nell'Atlante 2D** — non te lo richiede — e ne
 ricostruisce una porzione in tre dimensioni, con le forme vere dei blocchi
 (lastre, scale, recinti, piante, acqua, vetro) e le texture del tuo Minecraft,
-lette dal `.jar` che indichi. Senza `.jar` funziona lo stesso: ogni blocco
-diventa una tinta piatta.
+lette dal `.jar` che indichi — e siccome `level.dat` registra con quale
+versione il mondo è stato salvato, il pulsante ti dice **quale** file cercare
+invece di chiederti genericamente "il .jar". Prenderlo da solo non può: il
+mondo sta in `saves/`, il gioco in `versions/`, e da una cartella concessa dal
+browser non si può risalire. Comunque lo scegli **una volta sola** — viene
+ricordato — e senza `.jar` funziona lo stesso: ogni blocco diventa una tinta
+piatta.
 
 Ci si arriva in due modi:
 
-- dalla scheda **🧊 Atlante 3D**, scegliendo il centro e il lato della porzione;
+- dalla sezione **🧊 Atlante 3D**, scegliendo il centro e il lato della porzione;
 - dal pulsante **🧊** nella barra delle coordinate della mappa, che porta in 3D
   **la zona che stai guardando** — è la strada più corta: inquadri sulla mappa,
   clicchi, ci sei dentro.
@@ -313,8 +326,9 @@ web/                       l'applicazione: file statici, nessuna build
     atlas.js                schermata Atlante: mappa, layer, disegno, export
     archive.js               schermata Archivio: interfaccia ed export libri
     documents.js             modello dei documenti: indipendenti, versionati e firmati
-    reader.js                schermata Lettore: apre mappe e documenti già esportati
-    atlas3d.js               schermata Atlante 3D: porzione, caricamento, export
+    reader.js                lettura di mappe e documenti già esportati
+    atlas3d.js               Atlante 3D · Editor: porzione, caricamento, export
+    glbReader.js             Atlante 3D · Lettura: apre un .glb da disco
     viewer3d.js              scena, telecamera in orbita, mirino, HUD, materiali
     engine3d.js              client del worker 3D
     packPicker.js            scelta del .jar / resource pack
@@ -327,8 +341,8 @@ test/
 ```
 
 Il progetto **non ha dipendenze**: `npm test` e `npm run web` funzionano su una
-copia appena clonata, senza `npm install`. Leaflet e three.js sono inclusi in
-`web/vendor/`.
+copia appena clonata, senza `npm install`. Leaflet, three.js e il suo
+`GLTFLoader` sono inclusi in `web/vendor/`.
 
 ### Come funzionano le coordinate
 

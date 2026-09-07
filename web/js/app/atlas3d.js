@@ -22,6 +22,7 @@ const $ = (id) => document.getElementById(id);
 
 const el = {
   pickPack: $('btn-pick-pack'), reopenPack: $('btn-reopen-pack'), packInput: $('pack-input'),
+  packHint: $('pack-hint'),
   packStatus: $('pack-status'), packToggleRow: $('pack-toggle-row'), packToggle: $('pack-toggle'),
   hiddenBlocks: $('a3d-block-custom'),
   panelPortion: $('panel-portion'), centerX: $('center-x'), centerZ: $('center-z'),
@@ -160,6 +161,7 @@ async function syncWorld() {
       }
       const changedWorld = state.init !== init;
       state.scan = scan;
+      nameTheJar(scan.version);
       state.init = init;
       state.dimension = scan.dimensions.some((d) => d.id === dimension)
         ? dimension : scan.dimensions[0].id;
@@ -178,6 +180,26 @@ async function syncWorld() {
     }
   })();
   return opening;
+}
+
+/**
+ * Say which .jar to look for.
+ *
+ * The browser cannot go and fetch it: the save lives in `saves/<mondo>/` and
+ * the game in `versions/<versione>/`, and a granted folder cannot be climbed
+ * out of. But `level.dat` records the version the world was saved with, so
+ * the app can at least name the file instead of asking for "the .jar".
+ */
+function nameTheJar(version) {
+  if (!version) return;
+  const clean = String(version).trim();
+  if (!/^[\w.\- ]{1,32}$/.test(clean)) return;   // a version string, not a sentence
+  el.pickPack.textContent = `Scegli ${clean}.jar…`;
+  el.packHint.classList.remove('hidden');
+  el.packHint.innerHTML = 'Il mondo è stato salvato con <b>' + clean + '</b>:'
+    + ' su macOS il file è <code>~/Library/Application&nbsp;Support/minecraft/versions/'
+    + clean + '/' + clean + '.jar</code>. Va bene anche una versione diversa —'
+    + ' cambia solo qualche texture.';
 }
 
 /** Textures are used when a pack is open and the box is ticked. */

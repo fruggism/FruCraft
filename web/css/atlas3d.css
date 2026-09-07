@@ -114,3 +114,17 @@
 #hud-right { right: 10px; top: 10px; color: var(--ink-dim); text-align: right; }
 .hud-line b { color: var(--accent-bright); font-weight: normal; }
 .hud-line.dim { color: var(--ink-dim); }
+
+/* ------------------------------------------------- Atlante 3D · Lettura */
+#reader-glb-stage { flex: 1; position: relative; min-width: 0; background: #0e1116; }
+#reader-glb-scene { display: block; width: 100%; height: 100%; }
+
+#reader-glb-empty {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; padding: 30px;
+  color: var(--ink-faint);
+}
+#reader-glb-empty h3 { margin: 16px 0 6px; font-size: 15px; font-weight: normal; color: var(--ink-dim); }
+#reader-glb-empty p { margin: 0; max-width: 330px; font-size: 12px; line-height: 1.6; }

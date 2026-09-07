@@ -20,19 +20,17 @@
 
   <header id="topbar">
     <button id="sidebar-toggle" class="hidden" title="Mostra/nascondi il pannello">☰</button>
-    <div class="logo"><span class="cube"></span><span>CUBE<b>-ATLAS</b></span><small id="mode-label"> Editor</small></div>
-    <nav class="tabs" id="mode-tabs">
-      <button class="tab active" data-mode="editor" title="Crea e modifica atlanti e documenti">✏️ Editor</button>
-      <button class="tab" data-mode="reader" title="Apri mappe e documenti già esportati">📖 Lettore</button>
-      <button class="tab" data-mode="atlas3d" title="Guarda una porzione del mondo in tre dimensioni">🧊 Atlante 3D</button>
+    <div class="logo"><span class="cube"></span><span>CUBE<b>-ATLAS</b></span><small id="mode-label"> Atlante 2D</small></div>
+    <!-- Cosa stai guardando, e con quale delle due modalità: le sezioni sono
+         l'asse principale, la modalità il secondo. -->
+    <nav class="tabs" id="section-tabs">
+      <button class="tab active" data-section="atlas2d" title="La mappa del mondo, vista dall'alto">🗺️ Atlante 2D</button>
+      <button class="tab" data-section="atlas3d" title="Una porzione del mondo in tre dimensioni">🧊 Atlante 3D</button>
+      <button class="tab" data-section="docs" title="Libri e documenti del mondo">📄 Documenti</button>
     </nav>
-    <nav class="tabs sub-tabs" id="editor-tabs">
-      <button class="tab active" data-screen="atlas">Atlante</button>
-      <button class="tab" data-screen="archive">Archivio</button>
-    </nav>
-    <nav class="tabs sub-tabs hidden" id="reader-tabs">
-      <button class="tab active" data-screen="reader-atlas">Atlante</button>
-      <button class="tab" data-screen="reader-archive">Archivio</button>
+    <nav class="tabs sub-tabs" id="mode-tabs">
+      <button class="tab active" data-mode="editor" title="Crea e modifica">✏️ Editor</button>
+      <button class="tab" data-mode="reader" title="Apri quello che hai già esportato">📖 Lettura</button>
     </nav>
     <div class="topbar-spacer"></div>
     <label class="interface-picker" title="Passa tra l'interfaccia da scrivania e quella pensata per tablet/penna">
@@ -356,7 +354,41 @@
   </div>
 
 
-  <!-- ATLANTE 3D ----------------------------------------------------------- -->
+  <!-- ATLANTE 3D · LETTURA -------------------------------------------------- -->
+  <div class="screen" id="screen-reader-atlas3d">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2><span class="num">1</span> Modello</h2>
+        <div class="hint">Apri un <code>.glb</code> esportato dall'Atlante 3D — o
+          qualunque altro modello glTF binario. Non serve nessun mondo: quello che
+          guardi è il file, texture comprese.</div>
+        <button class="btn btn-primary" id="btn-reader-open-glb">Apri modello…</button>
+        <input type="file" id="reader-glb-input" accept=".glb,model/gltf-binary" class="hidden">
+        <div id="reader-glb-status" class="status"></div>
+      </section>
+
+      <section class="panel hidden" id="reader-glb-panel">
+        <h2><span class="num">2</span> Vista</h2>
+        <div class="hint">Trascina per girare intorno al modello, rotellina per
+          avvicinarti, tasto destro per spostare il punto attorno a cui giri.</div>
+        <button class="btn btn-sm" id="btn-reader-glb-snapshot">📷 Salva immagine</button>
+        <div id="reader-glb-stats" class="status"></div>
+      </section>
+    </aside>
+
+    <main id="reader-glb-stage">
+      <div id="reader-glb-empty">
+        <div class="empty-cube"></div>
+        <h3>Apri un modello 3D</h3>
+        <p>I <code>.glb</code> che l'Atlante 3D esporta si riaprono qui, su
+          qualunque computer: il mondo Minecraft non serve.</p>
+      </div>
+      <canvas id="reader-glb-scene" class="hidden"></canvas>
+      <div id="reader-glb-hud" class="hidden"></div>
+    </main>
+  </div>
+
+  <!-- ATLANTE 3D · EDITOR ---------------------------------------------------- -->
   <div class="screen" id="screen-atlas3d">
     <aside class="sidebar" id="a3d-sidebar">
 
@@ -367,6 +399,7 @@
           su macOS è in <code>~/Library/Application&nbsp;Support/minecraft/versions/</code><i>versione</i>/ —
           e vengono lette da lì, in locale. Puoi indicare anche un resource pack
           <code>.zip</code> insieme al gioco: quello scelto per ultimo vince.</div>
+        <div class="hint hidden" id="pack-hint"></div>
         <button class="btn" id="btn-pick-pack">Scegli il .jar di Minecraft…</button>
         <button class="btn btn-sm hidden" id="btn-reopen-pack">Riapri l'ultimo</button>
         <input type="file" id="pack-input" accept=".jar,.zip" multiple class="hidden">
