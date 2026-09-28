@@ -1,0 +1,68 @@
+/* Cube-Atlas — Stemmi: banner builder, layout on top of style.css. */
+
+.banner-main {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  background: var(--panel-bg-2);
+}
+
+.banner-preview-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+}
+
+#banner-canvas {
+  width: 220px;
+  height: 440px;
+  image-rendering: pixelated;
+  box-shadow: 0 0 0 3px var(--border), 0 8px 0 rgba(0, 0, 0, .4);
+}
+
+.swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border: none;
+  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, .35), inset 2px 2px 0 rgba(255, 255, 255, .25), 0 0 0 2px #101010;
+  cursor: pointer;
+  padding: 0;
+}
+.swatch.selected { box-shadow: 0 0 0 2px var(--accent-bright), inset -2px -2px 0 rgba(0, 0, 0, .35), inset 2px 2px 0 rgba(255, 255, 255, .25); }
+
+.pattern-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pattern-row {
+  display: grid;
+  grid-template-columns: 16px 1fr auto auto auto;
+  align-items: center;
+  gap: 6px;
+  background: var(--slot-bg);
+  box-shadow: inset 1px 1px 0 #000, 0 0 0 1px #0d0d0d;
+  padding: 4px 6px;
+}
+.pattern-row select { font-size: 11px; padding: 3px 4px; }
+.pattern-row .drag-handle { cursor: grab; opacity: .6; text-align: center; }
+.pattern-row .drag-handle:active { cursor: grabbing; }
+.pattern-row.dragging { opacity: .4; }
+.pattern-row .p-swatch { width: 20px; height: 20px; border: none; padding: 0; box-shadow: 0 0 0 1px #101010; cursor: pointer; }
+.pattern-row .p-kill { cursor: pointer; opacity: .7; }
+.pattern-row .p-kill:hover { opacity: 1; color: var(--danger); }
+.pattern-empty { font-size: 11px; color: var(--ink-faint); padding: 6px 0; }
