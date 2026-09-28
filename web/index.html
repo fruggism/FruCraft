@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="css/textures.css">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/atlas3d.css">
+<link rel="stylesheet" href="css/redesign.css">
 </head>
 <body>
 
@@ -24,9 +25,9 @@
     <!-- Cosa stai guardando, e con quale delle due modalità: le sezioni sono
          l'asse principale, la modalità il secondo. -->
     <nav class="tabs" id="section-tabs">
-      <button class="tab active" data-section="atlas2d" title="La mappa del mondo, vista dall'alto">🗺️ Atlante 2D</button>
-      <button class="tab" data-section="atlas3d" title="Una porzione del mondo in tre dimensioni">🧊 Atlante 3D</button>
-      <button class="tab" data-section="docs" title="Libri e documenti del mondo">📄 Documenti</button>
+      <button class="tab active" data-section="atlas2d" title="La mappa del mondo, vista dall'alto"><img src="img/icons/map.png" alt=""> Atlante 2D</button>
+      <button class="tab" data-section="atlas3d" title="Una porzione del mondo in tre dimensioni"><img src="img/icons/grass.png" alt=""> Atlante 3D</button>
+      <button class="tab" data-section="docs" title="Libri e documenti del mondo"><img src="img/icons/book.png" alt=""> Documenti</button>
     </nav>
     <nav class="tabs sub-tabs" id="mode-tabs">
       <button class="tab active" data-mode="editor" title="Crea e modifica">✏️ Editor</button>
@@ -45,10 +46,18 @@
 
   <!-- ============================== ATLANTE ========================== -->
   <div class="screen active" id="screen-atlas">
-    <aside class="sidebar">
+    <aside class="sidebar" id="atlas-sidebar" data-active="world">
+      <!-- Redesign: una scheda alla volta invece di sei pannelli impilati -->
+      <nav class="side-tabs" id="side-tabs" role="tablist">
+        <button class="side-tab active" data-panel="world" title="Mondo"><img src="img/icons/grass.png" alt=""></button>
+        <button class="side-tab" data-panel="project" title="Progetto"><img src="img/icons/chest.png" alt=""></button>
+        <button class="side-tab" data-panel="layers" title="Layer (E)"><img src="img/icons/map.png" alt=""></button>
+        <button class="side-tab" data-panel="props" title="Proprietà"><img src="img/icons/note.png" alt=""></button>
+        <button class="side-tab" data-panel="export" title="Esporta"><img src="img/icons/crafting.png" alt=""></button>
+      </nav>
 
-      <section class="panel">
-        <h2><span class="num">1</span> Mondo</h2>
+      <section class="panel" data-panel="world">
+        <h2><span class="num">1</span> <span class="welcome-title">Seleziona il mondo</span><span class="std-title">Mondo</span></h2>
         <button class="btn btn-primary" id="btn-pick-world">Scegli la cartella del mondo…</button>
         <button class="btn btn-sm hidden" id="btn-reopen-world">Riapri l'ultimo mondo</button>
         <input type="file" id="world-input" webkitdirectory directory multiple class="hidden">
@@ -81,7 +90,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-panel="project">
         <h2><span class="num">2</span> Progetto</h2>
         <label>
           <span class="lbl">Apri dei layer già creati</span>
@@ -103,8 +112,8 @@
         <div id="save-status" class="status"></div>
       </section>
 
-      <section class="panel">
-        <h2><span class="num">3</span> Creazione Layer</h2>
+      <section class="panel" data-panel="layers">
+        <h2><span class="num">3</span> Layer</h2>
         <div class="hint">I sublayer (➕ su un layer) creano elenchi come regione › provincia ›
           quartiere, con strade/trasporti/punti annidati dentro.</div>
         <ul class="layer-list" id="layer-list"></ul>
@@ -126,22 +135,9 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-panel="layers">
         <h2><span class="num">4</span> Strumenti</h2>
-        <div class="tool-grid">
-          <button class="tool" data-tool="draw" id="tool-draw" disabled>
-            <span class="ico" id="tool-draw-ico">✏️</span><span id="tool-draw-label">Disegna</span>
-          </button>
-          <button class="tool" data-tool="select" id="tool-select">
-            <span class="ico">🖱️</span><span>Seleziona</span>
-          </button>
-          <button class="tool" data-tool="edit" id="tool-edit" disabled>
-            <span class="ico">📐</span><span>Modifica nodi</span>
-          </button>
-          <button class="tool" data-tool="delete" id="tool-delete" disabled>
-            <span class="ico">🗑️</span><span>Cancella</span>
-          </button>
-        </div>
+        
         <button class="btn btn-sm hidden" id="btn-new-independent-station" style="margin-top:6px">🚉 Nuova stazione</button>
         <div class="hint" id="tool-hint">Seleziona un layer per attivare gli strumenti.</div>
         <div id="transit-layer-tools" class="hidden" style="margin-top:8px">
@@ -160,12 +156,12 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-panel="props">
         <h2><span class="num">5</span> Proprietà</h2>
         <div id="props"><div class="prop-empty">Nessun elemento selezionato.<br>Clicca un elemento sulla mappa.</div></div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-panel="export">
         <h2><span class="num">6</span> Esporta mappa</h2>
         <div class="hint">Ogni esportazione chiede prima l'area: la vista attuale, tutto il
           mondo generato, oppure disegnala tu sulla mappa.</div>
@@ -183,11 +179,27 @@
 
     <main class="map-wrap">
       <div id="map"></div>
+      <!-- Redesign: hotbar degli strumenti (tasti 1–5) -->
+      <div class="hotbar tool-grid" id="hotbar">
+        <button class="tool" data-tool="draw" id="tool-draw" disabled title="Disegna (1)">
+          <span class="key">1</span><img src="img/icons/pencil.png" alt=""><span class="ico" id="tool-draw-ico">✏️</span><span class="lbl-tool" id="tool-draw-label">Disegna</span>
+        </button>
+        <button class="tool" data-tool="select" id="tool-select" title="Seleziona (2)">
+          <span class="key">2</span><img src="img/icons/cursor.png" alt=""><span class="lbl-tool">Seleziona</span>
+        </button>
+        <button class="tool" data-tool="edit" id="tool-edit" disabled title="Modifica nodi (3)">
+          <span class="key">3</span><img src="img/icons/nodes.png" alt=""><span class="lbl-tool">Modifica nodi</span>
+        </button>
+        <button class="tool" data-tool="delete" id="tool-delete" disabled title="Cancella (4)">
+          <span class="key">4</span><img src="img/icons/barrier.png" alt=""><span class="lbl-tool">Cancella</span>
+        </button>
+        <button class="tool-btn" id="hb-station" title="Nuova stazione (5)"><span class="key">5</span><img src="img/icons/minecart.png" alt=""><span class="lbl-tool">Nuova stazione</span></button>
+      </div>
       <div class="coord-bar">
         <div class="coord-readout" id="coord-readout">X <b>—</b>  Z <b>—</b></div>
-        <button class="map-icon-btn" id="btn-compass" title="Vai alle coordinate">🧭</button>
-        <button class="map-icon-btn" id="btn-map-search" title="Cerca una stazione o un edificio per nome">🔍</button>
-        <button class="map-icon-btn" id="btn-see-3d" title="Guarda in 3D la zona al centro della mappa">🧊</button>
+        <button class="map-icon-btn" id="btn-compass" title="Vai alle coordinate (7)"><img src="img/icons/compass.png" alt=""></button>
+        <button class="map-icon-btn" id="btn-map-search" title="Cerca una stazione o un edificio per nome (6)"><img src="img/icons/search.png" alt=""></button>
+        <button class="map-icon-btn" id="btn-see-3d" title="Guarda in 3D la zona al centro della mappa (8)"><img src="img/icons/grass.png" alt=""></button>
       </div>
       <div class="map-utility-panel map-popover hidden" id="map-utility-panel">
         <h3>Vai alle coordinate</h3>
@@ -512,6 +524,14 @@
         <div class="hud-line dim"><span id="hud-look">—</span></div>
       </div>
       <div id="hud-right" class="hidden"></div>
+      <!-- Redesign: 1h (anteprima + pannello) ⇄ 1g (HUD a tutto schermo) -->
+      <button class="a3d-full-btn" id="a3d-full-btn" title="Schermo intero (F)">⛶ <span>Schermo intero</span></button>
+      <div class="a3d-hotbar hotbar" id="a3d-hotbar">
+        <button class="tool-btn" data-click="btn-snapshot" title="Foto PNG (1)"><span class="key">1</span><img src="img/icons/camera.png" alt=""><span class="lbl-tool">Foto</span></button>
+        <button class="tool-btn" data-click="btn-export" title="Esporta .glb (2)"><span class="key">2</span><img src="img/icons/chest.png" alt=""><span class="lbl-tool">Esporta .glb</span></button>
+        <button class="tool-btn" data-click="btn-load" title="Ricarica (3)"><span class="key">3</span><img src="img/icons/stone.png" alt=""><span class="lbl-tool">Ricarica</span></button>
+        <button class="tool-btn" id="a3d-exit-full" title="Esci (Esc)"><span class="key">Esc</span><img src="img/icons/map.png" alt=""><span class="lbl-tool">Torna</span></button>
+      </div>
     </main>
   </div>
 
@@ -523,6 +543,7 @@
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/leaflet.draw.js"></script>
 <script type="module" src="js/app/main.js"></script>
+<script type="module" src="js/app/redesign.js"></script>
 <noscript>
   <p style="padding:20px">Cube-Atlas ha bisogno di JavaScript: tutta l'elaborazione avviene nel browser.</p>
 </noscript>
