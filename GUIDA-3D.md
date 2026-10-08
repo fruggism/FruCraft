@@ -81,31 +81,33 @@ web/css/atlas3d.css
 test/make-showcase-world.js  test/make-zip.js
 ```
 
-### 2.1 Il mondo arriva dall'Editor, il worker no
+### 2.1 Una scheda dell'editor, non più una sezione
 
-Due cose che sembrano una sola e non lo sono:
+Dalla v2 dell'interfaccia il 3D è la sesta scheda della barra laterale
+dell'Atlante («Modello 3D», tasto `M`). Tre cose da sapere:
 
-- **il salvataggio** è lo stesso che l'Editor ha già aperto. `atlas3d.js` non
-  ha un selettore di cartella: riceve da `main.js` come raggiungere il mondo
-  (`getWorldInit`) e quale dimensione è selezionata, e li riapre sul worker
-  suo. Entrare nella schermata due volte sullo stesso mondo non costa niente:
-  `syncWorld()` riscansiona solo se cartella o dimensione sono cambiate.
-- **il worker è un altro.** `web/js/worker.js` dipinge tessere dall'alto,
-  `web/js/worker3d.js` legge volumi e costruisce triangoli. Non è pigrizia:
-  sono due mestieri con cache, strutture dati e tempi diversi, e tenerli
-  separati significa che generare la mappa e caricare una porzione 3D non si
-  bloccano a vicenda.
+- **la zona si sceglie sulla mappa.** `selectionBox.js` disegna su Leaflet un
+  riquadro trascinabile e ridimensionabile; le regole (multipli di 16, lato
+  fra 32 e 1024, la misura consigliata da `navigator.deviceMemory` e
+  `hardwareConcurrency`) stanno in `boxMath.js`, separate dal disegno così si
+  testano senza browser. Il box ora può essere rettangolare: `currentBox()`
+  ha `sizeX ≠ sizeZ`, e il worker e il mesher li trattavano già come due
+  numeri distinti.
+- **il modello si apre al posto della mappa**, che resta lì sotto intatta.
+  Il contenitore del viewer si sceglie con `mountViewer(nodo)`: oggi è
+  `.map-wrap`, una finestra flottante (la 3f del mockup) avrebbe bisogno
+  solo di chiamarlo con il proprio elemento.
+- **API per chi la usa da fuori**: `setBox`, `getBox`, `create`, `focusOn`,
+  `openTab` / `closeTab` (le chiama `redesign.js` quando cambi scheda),
+  `handleKey`.
 
-Il ponte fra i due sta in `main.js`, dove `Atlas3D.init({...})` passa i due
-getter, e in `showScreen()`, che chiama `Atlas3D.show()` quando la schermata
-diventa visibile — serve perché la tela 3D si misura da sola e mentre è
-nascosta è larga zero.
-
-L'unica dipendenza esterna è **three.js r169** (MIT), messa a mano in
-`web/vendor/three.module.js`. Niente `npm install`, niente build: `npm test` e
-`npm run web` funzionano su una copia appena scaricata. Se aggiorni three.js,
-scarica il file `build/three.module.js` della versione che vuoi e sostituiscilo
-— non c'è nient'altro da fare.
+Il salvataggio è lo stesso che l'Editor ha già aperto: `atlas3d.js` non ha un
+selettore di cartella, riceve da `main.js` come raggiungere il mondo
+(`getWorldInit`) e la dimensione dell'atlante aperto, e li riapre sul worker
+suo. **Il worker è un altro**: `web/js/worker.js` dipinge tessere dall'alto,
+`web/js/worker3d.js` legge volumi e costruisce triangoli. Sono due mestieri
+con cache e tempi diversi, e tenerli separati significa che generare la mappa
+e caricare un modello non si bloccano a vicenda.
 
 ---
 
@@ -113,7 +115,7 @@ scarica il file `build/three.module.js` della versione che vuoi e sostituiscilo
 
 ```bash
 npm run web        # http://127.0.0.1:5173
-npm test           # 129 test, 57 dei quali sull'Atlante 3D
+npm test           # 141 test, 57 dei quali sull'Atlante 3D
 npm run showcase   # rigenera il mondo vetrina delle forme
 npm run world      # rigenera il mondo sintetico di terreno
 ```
@@ -764,7 +766,9 @@ stato fatto: è questa.)*
 | `web/js/worker3d.js` | i quattro handler, fuori dal thread dell'interfaccia | sì |
 | `web/js/app/engine3d.js` | client del worker: promesse, progresso, stream | raramente |
 | `web/js/app/viewer3d.js` | scena, telecamera in orbita, mirino, HUD, materiali | sì |
-| `web/js/app/atlas3d.js` | Editor: porzione, anteprima, caricamento, cablaggio | sì |
+| `web/js/app/atlas3d.js` | scheda Modello 3D: box, caricamento, viewer, cablaggio | sì |
+| `web/js/app/selectionBox.js` | il riquadro sulla mappa (Leaflet, eventi pointer) | sì |
+| `web/js/app/boxMath.js` | regole del riquadro, testate a parte | sì |
 | `web/js/app/glbReader.js` | Lettura: apre un `.glb` da disco e lo mostra | sì |
 | `web/vendor/GLTFLoader.js` | il lettore glTF di three.js (MIT) | solo per aggiornare |
 | `web/js/export/glb.js` | la porzione come modello glTF binario | sì |
@@ -774,7 +778,7 @@ stato fatto: è questa.)*
 | `web/js/app/main.js` | il ponte: scheda, pulsante 🧊, getter del mondo | sì |
 | `web/vendor/three.module.js` | three.js r169 (MIT) | solo per aggiornare |
 | `tools/serve.js` | server statico + mondo di sviluppo via HTTP | sì |
-| `test/run-tests.js` | i 129 test, 57 dei quali qui | sì, sempre |
+| `test/run-tests.js` | i 141 test, 57 dei quali qui | sì, sempre |
 | `test/make-showcase-world.js` | mondo vetrina delle forme | sì, quando aggiungi forme |
 | `test/make-zip.js` | zip costruiti a mano per i test | raramente |
 | `test/make-test-world.js`, `nbt-write.js`, `node-source.js` | mondo di terreno e appoggi | no, sono di tutta la suite |

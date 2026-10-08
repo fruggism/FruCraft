@@ -11,62 +11,83 @@ legge la cartella del mondo sul tuo computer e fa tutto lì, anche quando l'app
 
 ## Come è organizzata
 
-Tre **sezioni** — tre modi di guardare lo stesso mondo — e per ognuna due
-**modalità**. Le sezioni stanno nella riga di bottoni in alto, le modalità
-subito accanto:
+### L'ingresso
+
+All'avvio c'è una **schermata titolo**. La prima cosa che chiede è la
+**cartella dei mondi** — di solito `.minecraft/saves` — non un mondo singolo:
+la scegli una volta, viene ricordata, e da lì in poi ogni mondo è a un clic.
+Se hai già lavorato a un atlante, **Riprendi «nome»** lo riapre insieme al suo
+mondo. Da qui si va anche al **Lettore** e ai **Documenti**, e si sceglie
+l'interfaccia Desktop o iPad.
+
+Poi c'è l'**elenco dei mondi** che la cartella contiene, come nel menu del
+gioco: nome, miniatura (`icon.png`), ultima partita, modalità, versione,
+regioni salvate, e un segno «Atlante salvato» per quelli su cui hai già un
+atlante. I mondi che non si possono leggere — salvati prima della 1.13, o mai
+esplorati — sono già spenti, con il motivo scritto, invece di farti scoprire
+il problema dopo. Un mondo che sta altrove (un backup del server, un download)
+si aggiunge con **Aggiungi un mondo…** e resta in elenco.
+
+A destra si sceglie la **dimensione** e quali **blocchi trattare come aria**
+(barriere, vetro, foglie…): la mappa mostra quello che c'è sotto. **Apri**
+crea l'atlante di quel mondo, o riapre quello che c'è già.
+
+> Ogni atlante è di **una** dimensione: strade e stazioni hanno le coordinate
+> di quella. Il Nether di un mondo ha un atlante suo; cambiando dimensione
+> dalla scheda Mondo, l'app apre (o crea) quello giusto.
+
+### Le sezioni
+
+Due **sezioni** in alto — **Atlante** e **Documenti** — e per ognuna due
+**modalità**:
 
 |  | ✏️ **Editor** | 📖 **Lettura** |
 |---|---|---|
-| 🗺️ **Atlante 2D** | apri il mondo e disegni la mappa a layer | apri un atlante già esportato |
-| 🧊 **Atlante 3D** | scegli una porzione e la guardi in tre dimensioni | apri un modello `.glb` già esportato |
-| 📄 **Documenti** | scrivi libri e documenti del mondo | apri un documento già esportato |
+| 🗺️ **Atlante** | mappa a layer e modelli 3D del mondo | un atlante esportato, o un modello `.glb` |
+| 📄 **Documenti** | scrivi libri e documenti del mondo | un documento esportato |
 
-La differenza fra le due modalità è sempre la stessa: **l'Editor ha bisogno
-del mondo Minecraft**, la Lettura no. La Lettura apre un file che l'Editor ha
-prodotto, e basta a sé stessa — è pensata per chi deve solo *guardare* quello
-che hai fatto, anche su un altro computer dove Minecraft non c'è.
+**L'Editor ha bisogno del mondo Minecraft, la Lettura no**: apre un file che
+l'Editor ha prodotto, e basta a sé stessa — anche su un computer dove
+Minecraft non c'è. Nella Lettura dell'Atlante, due pulsanti in cima scelgono
+fra **Mappa** (il file "<i>nome-mondo</i>_ATLAS", con i layer ancora vivi) e
+**Modello 3D** (un `.glb`, anche non fatto qui).
 
-Ogni sezione si ricorda in quale modalità l'avevi lasciata, così tornarci ti
-riporta dov'eri.
+### Le schede dell'editor
 
-Cosa apre la Lettura, in concreto:
+La barra laterale dell'Atlante ha sei schede: **Mondo**, Progetto, Layer,
+Proprietà, Esporta e **Modello 3D**.
 
-- **Atlante 2D** — un file "<i>nome-mondo</i>_ATLAS" esportato con *"🗺️
-  Esporta atlante"*: il terreno è un'immagine piatta, ma i layer restano vivi
-  — si nascondono e si mostrano uno per uno, e passandoci sopra col mouse se
-  ne vedono le informazioni, come nell'Editor.
-- **Atlante 3D** — un `.glb` esportato con *"🧊 Esporta il modello"*, o
-  qualunque altro modello glTF binario.
-- **Documenti** — un documento esportato con *"📖 Esporta per il Lettore"*,
-  impaginato.
+**Mondo** — dove sei e come ci arrivi. *Vai a* accetta le coordinate anche
+incollate dal gioco: un `/tp 812 72 -344`, i numeri di F3 o "812, -344"
+riempiono da soli X e Z; arrivati, un mirino con il numero resta sulla mappa
+per tre secondi. Poi *Spawn*, *Dov'ero io* (la posizione salvata in
+`level.dat`), *Tutto il mondo*, e i **luoghi salvati**: «+ salva la vista»
+memorizza il centro della mappa con un nome, nel progetto. In fondo, dimensione
+e blocchi come aria. La bussola sulla mappa (tasto `7`) apre questa scheda.
 
-### Atlante 3D, più da vicino
+**Modello 3D** (tasto `M`) — sulla mappa compare un **riquadro** già della
+misura consigliata per il tuo computer. Si trascina per spostarlo; le maniglie
+agli angoli lo ridimensionano, quelle a metà lato allungano un lato solo, così
+diventa rettangolare. Tutto scatta a multipli di 16 blocchi (un chunk), da 32
+a 1024 di lato. Da tastiera: frecce per spostare di un chunk (Shift: di un
+lato), `+` / `−` per la misura, Invio per creare, Esc per uscire. Il pulsante
+3D sulla mappa (tasto `8`) porta il riquadro su quello che stai guardando.
 
-Prende il mondo che hai **già aperto nell'Atlante 2D** — non te lo richiede — e ne
-ricostruisce una porzione in tre dimensioni, con le forme vere dei blocchi
+**Crea modello 3D** ricostruisce la zona blocco per blocco, con le forme vere
 (lastre, scale, recinti, piante, acqua, vetro) e le texture del tuo Minecraft,
-lette dal `.jar` che indichi — e siccome `level.dat` registra con quale
-versione il mondo è stato salvato, il pulsante ti dice **quale** file cercare
-invece di chiederti genericamente "il .jar". Prenderlo da solo non può: il
-mondo sta in `saves/`, il gioco in `versions/`, e da una cartella concessa dal
-browser non si può risalire. Comunque lo scegli **una volta sola** — viene
-ricordato — e senza `.jar` funziona lo stesso: ogni blocco diventa una tinta
-piatta.
+lette dal `.jar` che indichi. `level.dat` dice con quale versione il mondo è
+stato salvato, quindi il pulsante ti dice **quale** file cercare; prenderlo da
+solo il browser non può — il mondo sta in `saves/`, il gioco in `versions/`, e
+da una cartella concessa non si risale. Lo scegli una volta e viene ricordato;
+senza `.jar` funziona lo stesso, a tinte piatte.
 
-Ci si arriva in due modi:
-
-- dalla sezione **🧊 Atlante 3D**, scegliendo il centro e il lato della porzione;
-- dal pulsante **🧊** nella barra delle coordinate della mappa, che porta in 3D
-  **la zona che stai guardando** — è la strada più corta: inquadri sulla mappa,
-  clicchi, ci sei dentro.
-
-Il lato va da 64 a 1024 blocchi; sopra una certa taglia l'app chiede conferma,
-perché le porzioni molto grandi possono esaurire la memoria del browser. Il
-cursore *Taglia sopra Y* serve a guardare dentro le costruzioni, e la vista si
-porta via in due formati: **PNG** dell'inquadratura, o **`.glb`** — il modello
-vero, geometria e texture in un file solo, che si apre in Blender, in Anteprima
-su macOS e in qualunque visualizzatore glTF. Quello che vedi è quello che esce:
-anche il taglio in altezza, applicato sul piano esatto.
+Il modello compare **al posto della mappa**: si gira trascinando, *Taglia
+sopra Y* apre le costruzioni, e si porta via come **PNG** o come **`.glb`**
+(geometria e texture in un file solo, per Blender, Anteprima su macOS e
+qualunque visualizzatore glTF; il taglio in altezza vale anche lì). `F` va a
+schermo intero, *Torna alla mappa* (o Esc) rimette la mappa com'era, con il
+riquadro dove l'avevi lasciato. Il modello resta in memoria: *Rivedi l'ultimo
+modello* lo riapre senza rileggerlo.
 
 Il 3D ha un worker suo, separato da quello che disegna la mappa: leggere volumi
 e costruire triangoli non è lo stesso mestiere che dipingere tessere dall'alto.
@@ -310,6 +331,7 @@ web/                       l'applicazione: file statici, nessuna build
     renderJob.js           generazione della mappa, con avanzamento
     book.js                impaginazione e comandi /give
     source.js              accesso al salvataggio (cartella, file o HTTP)
+    worldList.js           i mondi di una cartella saves, da level.dat
   js/voxel/                lettura di volumi e costruzione della geometria
     blockKinds.js          che forma ha un blocco (cubo, lastra, scala, pianta…)
     volume.js              una scatola di mondo letta in una griglia di stati
@@ -327,8 +349,13 @@ web/                       l'applicazione: file statici, nessuna build
     archive.js               schermata Archivio: interfaccia ed export libri
     documents.js             modello dei documenti: indipendenti, versionati e firmati
     reader.js                lettura di mappe e documenti già esportati
-    atlas3d.js               Atlante 3D · Editor: porzione, caricamento, export
-    glbReader.js             Atlante 3D · Lettura: apre un .glb da disco
+    entry.js                 schermata titolo ed elenco dei mondi
+    worldTab.js              scheda Mondo: vai a, dov'ero io, luoghi salvati
+    coords.js                coordinate incollate dal gioco (/tp, F3)
+    atlas3d.js               scheda Modello 3D: riquadro, caricamento, viewer, export
+    selectionBox.js          il riquadro sulla mappa (Leaflet)
+    boxMath.js               le regole del riquadro: chunk, 32–1024, misura consigliata
+    glbReader.js             Lettura: apre un .glb da disco
     viewer3d.js              scena, telecamera in orbita, mirino, HUD, materiali
     engine3d.js              client del worker 3D
     packPicker.js            scelta del .jar / resource pack
@@ -383,7 +410,7 @@ i blocchi sbagliati.
 ## Test
 
 ```bash
-npm test           # 129 test, nessuna dipendenza
+npm test           # 141 test, nessuna dipendenza
 npm run world      # rigenera i mondi sintetici di prova
 npm run textures   # rigenera le texture dell'interfaccia
 ```
