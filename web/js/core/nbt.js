@@ -21,6 +21,22 @@ export const TAG = {
   ByteArray: 7, String: 8, List: 9, Compound: 10, IntArray: 11, LongArray: 12,
 };
 
+/*
+ * Typed wrappers. The plain decode above is lossy for a writer: a Byte, a
+ * Short, a Float and a Double all come back as a bare number, and an empty
+ * List forgets its element type. A caller that has to write a tree back
+ * (the editor) parses with { typed: true }, which wraps exactly those values,
+ * and also uses these classes to say what it means when it builds new tags.
+ */
+export class TLong { constructor(v) { this.v = BigInt(v); } }
+export class TFloat { constructor(v) { this.v = v; } }
+export class TDouble { constructor(v) { this.v = v; } }
+export class TByte { constructor(v) { this.v = v; } }
+export class TShort { constructor(v) { this.v = v; } }
+export class TIntArray { constructor(v) { this.v = Int32Array.from(v); } }
+export class TLongArray { constructor(v) { this.v = BigInt64Array.from(v.map(BigInt)); } }
+export class TList { constructor(itemType, items) { this.itemType = itemType; this.items = items; } }
+
 const utf8 = new TextDecoder('utf-8');
 
 const isGzip = (b) => b.length > 2 && b[0] === 0x1f && b[1] === 0x8b;
@@ -85,14 +101,14 @@ class Reader {
   }
 }
 
-function readPayload(r, type) {
+function readPayload(r, type, typed) {
   switch (type) {
-    case TAG.Byte: return r.byte();
-    case TAG.Short: return r.short();
+    case TAG.Byte: return typed ? new TByte(r.byte()) : r.byte();
+    case TAG.Short: return typed ? new TShort(r.short()) : r.short();
     case TAG.Int: return r.int();
     case TAG.Long: return r.long();
-    case TAG.Float: return r.float();
-    case TAG.Double: return r.double();
+    case TAG.Float: return typed ? new TFloat(r.float()) : r.float();
+    case TAG.Double: return typed ? new TDouble(r.double()) : r.double();
     case TAG.ByteArray: {
       const len = r.int();
       const out = new Int8Array(len);
@@ -104,15 +120,15 @@ function readPayload(r, type) {
       const itemType = r.ubyte();
       const len = r.int();
       const out = new Array(len);
-      for (let i = 0; i < len; i++) out[i] = readPayload(r, itemType);
-      return out;
+      for (let i = 0; i < len; i++) out[i] = readPayload(r, itemType, typed);
+      return typed ? new TList(itemType, out) : out;
     }
     case TAG.Compound: {
       const obj = {};
       for (;;) {
         const t = r.ubyte();
         if (t === TAG.End) break;
-        obj[r.string()] = readPayload(r, t);
+        obj[r.string()] = readPayload(r, t, typed);
       }
       return obj;
     }
@@ -134,15 +150,15 @@ function readPayload(r, type) {
 }
 
 /** Parse already-decompressed NBT bytes. */
-export function parseRaw(bytes) {
+export function parseRaw(bytes, options = {}) {
   const r = new Reader(bytes);
   const rootType = r.ubyte();
   if (rootType === TAG.End) return { name: '', value: {} };
   const name = r.string();
-  return { name, value: readPayload(r, rootType) };
+  return { name, value: readPayload(r, rootType, !!options.typed) };
 }
 
 /** Parse NBT bytes, decompressing first when they are gzip/zlib. */
-export async function parse(bytes) {
-  return parseRaw(await decompress(bytes));
+export async function parse(bytes, options = {}) {
+  return parseRaw(await decompress(bytes), options);
 }

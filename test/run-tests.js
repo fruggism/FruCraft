@@ -1623,6 +1623,9 @@ test('la provenienza della porzione resta scritta nel file', () => {
 });
 
 
+import { register as registerCantiere } from '../editor/test/cantiere.test.js';
+registerCantiere({ test, section, assert, assertEqual });
+
 (async () => {
   for (const item of tests) {
     if (item.kind === 'section') { console.log(`\n${item.title}`); continue; }
