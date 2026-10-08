@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Cantiere · incolla</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.app{width:1440px;height:900px;display:flex;flex-direction:column;overflow:hidden;background:var(--bg0);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;font-size:12.5px;--bg0:#14161a;--bg1:#1b1e23;--bg2:#23272d;--bg3:#2c3138;--line:#333940;--line2:#454c55;--tx:#e8eaed;--tx2:#a3abb5;--tx3:#8a939e;--gr:#62b84c;--grInk:#0d1a09;--grDim:#24421d;--am:#f2b13b;--amDim:#43340f;--rd:#ee6a62;--rdDim:#4a1f1c;--bl:#62a8f0;--hov:rgba(255,255,255,.07)}
+.opt{height:36px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:14px;padding:0 12px;background:var(--bg1);border-bottom:1px solid var(--line)}
+.opt .nm{font-weight:600;font-size:13px}
+.hint{color:var(--tx2)}
+.body{flex:1;display:flex;min-height:0}
+.map{position:relative;width:970px;height:718px;overflow:hidden;background:#6aae4e;flex:none}
+.panel{width:320px;height:718px;box-sizing:border-box;background:var(--bg1);border-left:1px solid var(--line);display:flex;flex-direction:column;flex:none}
+.pts{display:flex;height:34px;flex:none;border-bottom:1px solid var(--line);background:var(--bg0)}
+.pt{flex:1 1 auto;border:0;background:transparent;color:var(--tx2);font:inherit;font-size:12px;padding:0 6px;cursor:default;display:flex;align-items:center;justify-content:center;gap:5px}
+.pt.on{background:var(--bg1);color:var(--tx);font-weight:600}
+.pd{width:6px;height:6px;border-radius:50%;background:var(--am);display:block}
+.pc{padding:4px 14px 14px;overflow:hidden}
+.sec{padding:12px 0;border-bottom:1px solid var(--line)}
+.sec:last-child{border-bottom:0}
+.sh{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin-bottom:8px}
+.row{display:flex;align-items:center;justify-content:space-between;height:28px}
+.v{color:var(--tx2)}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px}
+.sw{position:relative;width:28px;height:16px;border:0;border-radius:8px;background:var(--bg3);box-shadow:inset 0 0 0 1px var(--line2);padding:0;cursor:default;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--tx2)}
+.sw.on{background:var(--gr);box-shadow:none}
+.sw.on::after{left:14px;background:var(--grInk)}
+.seg{display:flex;background:var(--bg0);border-radius:6px;padding:2px;gap:2px}
+.sg{flex:1;height:24px;border:0;border-radius:4px;background:transparent;color:var(--tx2);font:inherit;font-size:12px;cursor:default;padding:0 8px}
+.sg.on{background:var(--bg3);color:var(--tx);box-shadow:inset 0 0 0 1px var(--line2)}
+.btn{height:26px;padding:0 11px;border:0;border-radius:6px;background:var(--bg3);color:var(--tx);font:inherit;font-size:12.5px;box-shadow:inset 0 0 0 1px var(--line2);cursor:default;display:inline-flex;align-items:center;gap:7px}
+.btn.pri{background:var(--gr);color:var(--grInk);font-weight:700;box-shadow:inset 0 -2px 0 rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.3),0 0 0 1px rgba(0,0,0,.35)}
+.btn:focus-visible,.sw:focus-visible,.sg:focus-visible{outline:2px solid var(--bl);outline-offset:1px}
+.sl{display:block;width:100%;margin:2px 0 6px;accent-color:var(--gr)}
+.sl-h{display:flex;justify-content:space-between;color:var(--tx)}
+.chip{background:rgba(20,22,26,.88);color:#f1f3f5;border-radius:6px;padding:5px 9px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.fl{position:absolute;left:196px;top:174px;width:560px;box-sizing:border-box;padding:8px;border-radius:10px;background:var(--bg2);box-shadow:0 8px 24px rgba(0,0,0,.5),0 0 0 1px var(--line2);display:flex;flex-direction:column;gap:6px}
+.fl .r{display:flex;align-items:center;gap:6px}
+.fl .sp{width:1px;height:18px;background:var(--line);margin:0 3px}
+.ok{background:var(--gr);color:var(--grInk);font-weight:700}
+.no{background:var(--bg3);color:var(--tx)}
+.hd{position:absolute;width:10px;height:10px;background:#fff;box-shadow:0 0 0 1.5px #000}
+</style>
+</helmet>
+<div class="app">
+<dc-import name="Chrome" theme="dark" menu="Modifica" tab="0" hint-size="1440px,116px"></dc-import>
+<div class="opt">
+<span class="nm">Incolla</span>
+<span class="hint">“Torre del faro” · da Isole del Nord · <span class="mono" style="color:var(--tx)">96 × 64</span> · 6.124 blocchi</span>
+<span class="hint" style="margin-left:auto">Trascina per spostare · <span class="mono" style="color:var(--tx)">R</span> ruota · <span class="mono" style="color:var(--tx)">⇧H</span> / <span class="mono" style="color:var(--tx)">⇧V</span> specchia · <span class="mono" style="color:var(--tx)">⌘↩</span> conferma</span>
+</div>
+<div class="body">
+<dc-import name="Sidebar" theme="dark" active="rect" hint-size="150px,718px"></dc-import>
+<div class="map">
+<img src="./map.svg" alt="Mappa del mondo vista dall'alto" style="position:absolute;left:0;top:0;width:990px;height:718px;image-rendering:pixelated">
+<div style="position:absolute;inset:0;background-image:linear-gradient(to right,rgba(255,255,255,.2) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.2) 1px,transparent 1px);background-size:48px 48px;background-position:10px 14px"></div>
+<div style="position:absolute;left:560px;top:330px;width:184px;height:150px;box-sizing:border-box;border:2px dashed #ff9f1a;border-radius:4px;background-image:repeating-linear-gradient(45deg,rgba(255,159,26,.5) 0 5px,rgba(255,159,26,.08) 5px 10px);box-shadow:0 0 0 1px #000"></div>
+<div class="chip" style="position:absolute;left:566px;top:486px;white-space:nowrap">Costruzione protetta · villaggio</div>
+<div style="position:absolute;left:294px;top:264px;width:372px;height:252px;box-sizing:border-box;border:2px dashed #c79bff;border-radius:22px;box-shadow:0 0 0 1px #000,inset 0 0 0 1px #000,0 0 30px 6px rgba(181,123,255,.4),inset 0 0 44px 10px rgba(181,123,255,.4)"></div>
+<div style="position:absolute;left:330px;top:300px;width:300px;height:180px;box-shadow:0 0 0 2px #fff,0 0 0 3px #000">
+<svg width="300" height="180" viewBox="0 0 300 180" shape-rendering="crispEdges" style="display:block;opacity:.82" aria-label="Anteprima del pezzo da incollare">
+<rect width="300" height="180" fill="#dfe8ee"/>
+<rect x="0" y="0" width="300" height="180" fill="#eef3f6"/>
+<rect x="24" y="18" width="30" height="24" fill="#cfd9e0"/><rect x="210" y="120" width="42" height="30" fill="#cfd9e0"/><rect x="66" y="138" width="36" height="24" fill="#cfd9e0"/>
+<path d="M0 126H72V156H132V180H0z" fill="#3a6fb8"/>
+<rect x="96" y="48" width="108" height="84" fill="#7a7d82"/><rect x="108" y="60" width="84" height="60" fill="#9a9da2"/>
+<rect x="84" y="36" width="24" height="24" fill="#6b6e73"/><rect x="192" y="36" width="24" height="24" fill="#6b6e73"/><rect x="84" y="120" width="24" height="24" fill="#6b6e73"/><rect x="192" y="120" width="24" height="24" fill="#6b6e73"/>
+<rect x="132" y="72" width="36" height="36" fill="#b07840"/><rect x="144" y="84" width="12" height="12" fill="#f2b13b"/>
+<rect x="150" y="132" width="12" height="36" fill="#a98a5a"/>
+</svg>
+</div>
+<i class="hd" style="left:325px;top:295px"></i><i class="hd" style="left:475px;top:295px"></i><i class="hd" style="left:625px;top:295px"></i><i class="hd" style="left:325px;top:385px"></i><i class="hd" style="left:625px;top:385px"></i><i class="hd" style="left:325px;top:475px"></i><i class="hd" style="left:475px;top:475px"></i><i class="hd" style="left:625px;top:475px"></i>
+<div class="fl" role="toolbar" aria-label="Incolla">
+<div class="r">
+<button class="btn" title="Ruota (R)">⟳ Ruota</button>
+<button class="btn" title="Specchia orizzontale (⇧H)">↔</button>
+<button class="btn" title="Specchia verticale (⇧V)">↕</button>
+<i class="sp"></i>
+<button class="btn" aria-label="Abbassa di un blocco">−</button><span class="mono">Y 64</span><button class="btn" aria-label="Alza di un blocco">+</button>
+<button class="btn">Appoggia sul terreno</button>
+</div>
+<div class="r">
+<span class="hint">Incolla aria</span><button class="sw" role="switch" aria-checked="false" aria-label="Incolla aria"></button>
+<i class="sp"></i>
+<span class="hint">Entità</span><button class="sw on" role="switch" aria-checked="true" aria-label="Entità"></button>
+<i class="sp"></i>
+<span class="hint">Biomi</span><button class="sw on" role="switch" aria-checked="true" aria-label="Biomi"></button>
+<span style="margin-left:auto;display:flex;gap:6px"><button class="btn no">✕ Annulla</button><button class="btn ok">✓ Conferma</button></span>
+</div>
+</div>
+</div>
+<div class="panel" role="complementary" aria-label="Pannello">
+<div class="pts"><button class="pt on">Proprietà</button><button class="pt">Appunti</button><button class="pt">Cronologia<i class="pd"></i></button><button class="pt">Risultati</button></div>
+<div class="pc">
+<div class="sec">
+<div class="sh">Pezzo</div>
+<div class="row"><span>Torre del faro</span><span class="v mono">96 × 64 × 41</span></div>
+<div class="row"><span>Origine</span><span class="v">Isole del Nord</span></div>
+<div class="row"><span>Posizione</span><span class="v mono">X 1.220, Z −452</span></div>
+</div>
+<div class="sec">
+<div class="sh">Fusione dei bordi</div>
+<div class="sl-h"><label for="f1">Larghezza fascia</label><span class="mono">12 blocchi</span></div>
+<input id="f1" class="sl" type="range" min="0" max="48" value="12">
+<div class="sl-h"><label for="f2">Intensità</label><span class="mono">70%</span></div>
+<input id="f2" class="sl" type="range" min="0" max="100" value="70">
+<div class="sl-h"><label for="f3">Irregolarità</label><span class="mono">35%</span></div>
+<input id="f3" class="sl" type="range" min="0" max="100" value="35">
+<div class="seg" style="margin:10px 0 10px"><button class="sg on">Solo esterno</button><button class="sg">Anche interno</button></div>
+<button class="btn" style="width:100%;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16" style="image-rendering:pixelated" aria-hidden="true"><path fill="#e8eaed" d="M2 2h12v12H2z"/><path fill="#14161a" d="M4 4h2v2H4zM10 4h2v2h-2zM7 7h2v2H7zM4 10h2v2H4zM10 10h2v2h-2z"/></svg>Rimescola</button>
+</div>
+<div class="sec">
+<div class="sh">Protezione</div>
+<div class="row"><span>Proteggi le costruzioni</span><button class="sw on" role="switch" aria-checked="true" aria-label="Proteggi le costruzioni"></button></div>
+<div class="row"><span>Mantieni acqua e lava</span><button class="sw on" role="switch" aria-checked="true" aria-label="Mantieni acqua e lava"></button></div>
+<div class="row"><span class="v">Zone protette: 1 villaggio</span></div>
+</div>
+</div>
+</div>
+</div>
+<dc-import name="StatusBar" theme="dark" pending="12" hint-size="1440px,30px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

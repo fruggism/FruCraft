@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Cantiere · avvio</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.app{width:1440px;height:900px;display:flex;flex-direction:column;overflow:hidden;background:#14161a;color:#e8eaed;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;font-size:13px;--bg1:#1b1e23;--bg3:#2c3138;--line:#333940;--line2:#454c55;--tx2:#a3abb5;--tx3:#8a939e;--gr:#62b84c}
+.tb{height:38px;flex:none;box-sizing:border-box;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid var(--line);gap:8px}
+.tb i{width:12px;height:12px;border-radius:50%;display:block}
+.wrap{flex:1;display:flex;justify-content:center;padding-top:64px}
+.col{width:780px}
+.hd{display:flex;align-items:center;gap:18px;margin-bottom:30px}
+.hd h1{margin:0;font-size:28px;font-weight:700;letter-spacing:-.01em}
+.hd p{margin:4px 0 0;color:var(--tx2);font-size:14px}
+.dir{display:flex;align-items:center;gap:10px;height:40px;box-sizing:border-box;padding:0 8px 0 14px;border-radius:8px;background:var(--bg1);box-shadow:inset 0 0 0 1px var(--line);margin-bottom:18px;color:var(--tx2)}
+.dir b{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-weight:400;font-size:12px;color:#e8eaed}
+.btn{height:26px;padding:0 12px;border:0;border-radius:6px;background:var(--bg3);color:#e8eaed;font:inherit;font-size:12.5px;box-shadow:inset 0 0 0 1px var(--line2);cursor:default}
+.btn:focus-visible,.wr:focus-visible{outline:2px solid #62a8f0;outline-offset:1px}
+.lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin:0 0 8px 2px}
+.wr{display:flex;align-items:center;gap:16px;width:100%;box-sizing:border-box;padding:10px 14px 10px 10px;margin-bottom:6px;border:0;border-radius:10px;background:var(--bg1);box-shadow:inset 0 0 0 1px var(--line);color:inherit;font:inherit;text-align:left;cursor:default}
+.wr.on{background:#24421d;box-shadow:inset 0 0 0 1px var(--gr)}
+.wr.off{opacity:.62}
+.th{width:72px;height:72px;overflow:hidden;position:relative;flex:none;border-radius:6px;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.th img{position:absolute;width:990px;height:718px;image-rendering:pixelated}
+.nm{font-size:15px;font-weight:600}
+.meta{color:var(--tx2);font-size:12.5px;margin-top:3px}
+.ver{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px;padding:2px 7px;border-radius:5px;background:var(--bg3);color:#e8eaed}
+.ver.bad{background:#4a1f1c;color:#ee6a62}
+.foot{margin-top:18px;display:flex;align-items:center;gap:12px;color:var(--tx2)}
+.foot span.k{width:8px;height:8px;border-radius:2px;background:var(--gr);display:block}
+</style>
+</helmet>
+<div class="app">
+<div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span style="margin-left:14px;color:var(--tx2)">Cube-Atlas Cantiere</span></div>
+<div class="wrap">
+<div class="col">
+<div class="hd">
+<svg width="56" height="56" viewBox="0 0 16 16" style="image-rendering:pixelated" aria-hidden="true"><path fill="#8a5a32" d="M1 5h14v10H1z"/><path fill="#62b84c" d="M1 2h14v4H1z"/><path fill="#62b84c" d="M2 6h2v2H2zM7 6h2v1H7zM11 6h3v2h-3z"/><path fill="#76ca5e" d="M3 3h3v1H3zM9 4h4v1H9z"/><path fill="#6e4524" d="M3 10h2v2H3zM9 9h3v2H9zM6 13h3v1H6z"/></svg>
+<div><h1>Cantiere</h1><p>Scegli un mondo da modificare. Le modifiche vanno sempre in una copia.</p></div>
+</div>
+<div class="lbl">Cartella dei salvataggi</div>
+<div class="dir"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="#f2b13b" d="M2 4h5v2H2zM2 6h12v7H2z"/></svg><b>~/Library/Application Support/minecraft/saves</b><button class="btn" style="margin-left:auto">Apri altra cartella…</button></div>
+<div class="lbl">4 mondi trovati</div>
+<sc-for list="{{worlds}}" as="w" hint-placeholder-count="4">
+<button class="{{w.cls}}">
+<div class="th"><img src="./map.svg" alt="" style="{{w.crop}}"></div>
+<div style="flex:1;min-width:0"><div class="nm">{{w.name}}</div><div class="meta">{{w.meta}}</div></div>
+<span class="{{w.vcls}}">{{w.ver}}</span>
+<div style="width:150px;text-align:right;color:var(--tx2);font-size:12.5px">{{w.note}}</div>
+</button>
+</sc-for>
+<div class="foot"><span class="k"></span>L’originale non viene mai modificato: Applica crea “nome — Cantiere” accanto al mondo.</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const worlds = [
+{ name: 'Mondo Frugg', meta: 'Overworld · modificato oggi, 17:42 · 1,3 GB', ver: '1.21.4', note: 'Aperto di recente', on: true, crop: 'left:-300px;top:-160px' },
+{ name: 'Isole del Nord', meta: 'Overworld · modificato 3 ott · 640 MB', ver: '1.21.1', note: '', on: false, crop: 'left:-560px;top:-20px' },
+{ name: 'Server Lilla', meta: 'Overworld, Nether, End · modificato 28 set · 2,8 GB', ver: '1.20.6', note: '', on: false, crop: 'left:-40px;top:-420px' },
+{ name: 'Vecchio Mondo 2016', meta: 'Overworld · modificato 12 mar 2016 · 210 MB', ver: '1.12.2', note: 'Sola lettura · serve 1.18 o più recente', on: false, bad: true, crop: 'left:-640px;top:-380px' }
+].map((w) => ({ ...w, cls: 'wr' + (w.on ? ' on' : '') + (w.bad ? ' off' : ''), vcls: 'ver' + (w.bad ? ' bad' : '') }));
+return { worlds };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Cantiere · applica</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.wrap{position:relative;width:1440px;height:900px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;font-size:12.5px;color:#e8eaed;--bg0:#14161a;--bg1:#1b1e23;--bg2:#23272d;--bg3:#2c3138;--line:#333940;--line2:#454c55;--tx:#e8eaed;--tx2:#a3abb5;--tx3:#8a939e;--gr:#62b84c;--grInk:#0d1a09;--grDim:#24421d;--am:#f2b13b;--rd:#ee6a62;--bl:#62a8f0}
+.scrim{position:absolute;inset:0;background:rgba(8,10,12,.62)}
+.dlg{position:absolute;left:440px;top:92px;width:560px;border-radius:14px;background:var(--bg2);box-shadow:0 24px 70px rgba(0,0,0,.65),0 0 0 1px var(--line2);overflow:hidden}
+.dh{padding:20px 24px 14px}
+.dh h2{margin:0;font-size:18px}
+.dh p{margin:4px 0 0;color:var(--tx2);font-size:13px;line-height:1.45}
+.sec{padding:14px 24px;border-top:1px solid var(--line)}
+.sh{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin-bottom:8px}
+.lbl{display:block;margin-bottom:5px;color:var(--tx2)}
+.fld{display:block;width:100%;height:32px;box-sizing:border-box;padding:0 10px;border:0;border-radius:6px;background:var(--bg0);color:var(--tx);font:inherit;font-size:13px;box-shadow:inset 0 0 0 1px var(--line2)}
+.path{display:flex;align-items:center;gap:8px;margin-top:8px;color:var(--tx2);font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px}
+.sum{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 24px}
+.sum div{display:flex;justify-content:space-between;height:24px;align-items:center}
+.sum b{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-weight:600;font-size:12px}
+.chk{display:flex;align-items:center;gap:10px;height:28px}
+.ok,.ko{width:18px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;flex:none;font-weight:800;font-size:12px}
+.ok{background:var(--grDim);color:var(--gr)}
+.ko{background:#4a1f1c;color:var(--rd)}
+.chk small{color:var(--tx3);margin-left:auto}
+.df{padding:14px 24px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);background:var(--bg1)}
+.btn{height:30px;padding:0 16px;border:0;border-radius:6px;background:var(--bg3);color:var(--tx);font:inherit;font-size:13px;box-shadow:inset 0 0 0 1px var(--line2);cursor:default}
+.btn.pri{background:var(--gr);color:var(--grInk);font-weight:700;box-shadow:inset 0 -2px 0 rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.3),0 0 0 1px rgba(0,0,0,.35)}
+.btn:focus-visible,.fld:focus-visible{outline:2px solid var(--bl);outline-offset:1px}
+.mini{position:absolute;left:1030px;top:92px;width:330px;border-radius:12px;background:var(--bg2);box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 0 1px var(--line2);padding:18px 20px}
+.mini h3{margin:0 0 4px;font-size:14px}
+.pb{height:10px;border-radius:5px;background:var(--bg0);box-shadow:inset 0 0 0 1px var(--line2);overflow:hidden;margin:10px 0 6px}
+.pb i{display:block;height:100%;width:62%;background:var(--gr)}
+.mini small{color:var(--tx2)}
+.done{color:var(--gr);font-weight:700}
+</style>
+</helmet>
+<div class="wrap">
+<dc-import name="Main" theme="dark" mode="pan" hint-size="1440px,900px"></dc-import>
+<div class="scrim"></div>
+<div class="dlg" role="dialog" aria-label="Applica le modifiche">
+<div class="dh"><h2>Applica le modifiche</h2><p>Il mondo originale non viene toccato: il Cantiere crea una copia e scrive lì le 12 modifiche in sospeso.</p></div>
+<div class="sec">
+<label class="lbl" for="nc">Nome della copia</label>
+<input id="nc" class="fld" value="Mondo Frugg — Cantiere">
+<div class="path"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="#f2b13b" d="M2 4h5v2H2zM2 6h12v7H2z"/></svg>~/Library/Application Support/minecraft/saves/</div>
+</div>
+<div class="sec">
+<div class="sh">Riepilogo</div>
+<div class="sum">
+<div><span>Biomi dipinti</span><b>3</b></div>
+<div><span>Pezzi incollati</span><b>2</b></div>
+<div><span>Sostituzioni</span><b>3 regole</b></div>
+<div><span>Terreno</span><b>4</b></div>
+<div><span>Spawn</span><b>1</b></div>
+<div><span>Chunk toccati</span><b>218</b></div>
+</div>
+</div>
+<div class="sec">
+<div class="sh">Controlli</div>
+<div class="chk"><span class="ok">✓</span>Minecraft è chiuso<small>nessun lock sul mondo</small></div>
+<div class="chk"><span class="ok">✓</span>Spazio su disco sufficiente<small>4,2 GB liberi · servono ~1,5 GB</small></div>
+<div class="chk"><span class="ok">✓</span>Il mondo originale resta com’è<small>sola lettura</small></div>
+</div>
+<div class="df"><span style="color:var(--tx2)">Tempo stimato: circa 40 secondi</span><span style="margin-left:auto;display:flex;gap:8px"><button class="btn">Annulla</button><button class="btn pri">Crea la copia e applica</button></span></div>
+</div>
+<div class="mini" role="status" aria-label="Avanzamento">
+<h3>Scrittura in corso…</h3>
+<small>region/r.2.−1.mca · 134 di 218 chunk</small>
+<div class="pb"><i></i></div>
+<small>62% · ancora circa 15 secondi</small>
+<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><div class="done">Copia creata</div><small>218 chunk riscritti, 0 errori. Il mondo originale non è stato toccato.</small><div style="margin-top:12px"><button class="btn pri" style="height:28px;font-size:12.5px">Apri la copia</button></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

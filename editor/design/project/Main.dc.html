@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Cantiere · mondo aperto</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.app{width:1440px;height:900px;display:flex;flex-direction:column;overflow:hidden;background:var(--bg0);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;font-size:12.5px}
+.opt{height:36px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:14px;padding:0 12px;background:var(--bg1);border-bottom:1px solid var(--line)}
+.opt .nm{font-weight:600;font-size:13px}
+.opt .hint{color:var(--tx2)}
+.body{flex:1;display:flex;min-height:0}
+.map{position:relative;width:970px;height:718px;overflow:hidden;background:#6aae4e;flex:none}
+.panel{width:320px;height:718px;box-sizing:border-box;background:var(--bg1);border-left:1px solid var(--line);display:flex;flex-direction:column;flex:none}
+.pts{display:flex;height:34px;flex:none;border-bottom:1px solid var(--line);background:var(--bg0)}
+.pt{flex:1 1 auto;border:0;background:transparent;color:var(--tx2);font:inherit;font-size:12px;padding:0 6px;cursor:default;display:flex;align-items:center;justify-content:center;gap:5px}
+.pt.on{background:var(--bg1);color:var(--tx);font-weight:600}
+.pt:focus-visible,.btn:focus-visible,.sw:focus-visible,.fld:focus-visible,.sg:focus-visible{outline:2px solid var(--bl);outline-offset:1px}
+.pd{width:6px;height:6px;border-radius:50%;background:var(--am);display:block}
+.pc{padding:6px 14px 14px;overflow:hidden}
+.sec{padding:12px 0;border-bottom:1px solid var(--line)}
+.sec:last-child{border-bottom:0}
+.sh{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin-bottom:8px}
+.row{display:flex;align-items:center;justify-content:space-between;height:28px}
+.row .k{color:var(--tx)}
+.row .v{color:var(--tx2)}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px}
+.sw{position:relative;width:28px;height:16px;border:0;border-radius:8px;background:var(--bg3);box-shadow:inset 0 0 0 1px var(--line2);padding:0;cursor:default;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--tx2)}
+.sw.on{background:var(--gr);box-shadow:none}
+.sw.on::after{left:14px;background:var(--grInk)}
+.seg{display:flex;background:var(--bg0);border-radius:6px;padding:2px;gap:2px}
+.sg{flex:1;height:24px;border:0;border-radius:4px;background:transparent;color:var(--tx2);font:inherit;font-size:12px;cursor:default;padding:0 8px}
+.sg.on{background:var(--bg3);color:var(--tx);box-shadow:inset 0 0 0 1px var(--line2)}
+.btn{height:26px;padding:0 11px;border:0;border-radius:6px;background:var(--bg3);color:var(--tx);font:inherit;font-size:12.5px;box-shadow:inset 0 0 0 1px var(--line2);cursor:default}
+.fld{width:64px;height:24px;box-sizing:border-box;padding:0 7px;border:0;border-radius:5px;background:var(--bg0);color:var(--tx);font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px;box-shadow:inset 0 0 0 1px var(--line2)}
+.safe{display:flex;gap:10px;padding:10px 12px;border-radius:8px;background:var(--grDim);color:var(--tx);line-height:1.45}
+.safe b{font-weight:600}
+.chip{background:rgba(20,22,26,.86);color:#f1f3f5;border-radius:6px;padding:5px 9px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+</style>
+</helmet>
+<div class="app" style="{{vars}}">
+<dc-import name="Chrome" theme="{{theme}}" menu="{{menu}}" tab="0" hint-size="1440px,116px"></dc-import>
+<div class="opt">
+<sc-if value="{{isSel}}" hint-placeholder-val="{{ false }}">
+<span class="nm">Poligono</span>
+<div class="seg" style="width:268px"><button class="sg on">Nuova</button><button class="sg">Aggiungi</button><button class="sg">Sottrai</button><button class="sg">Interseca</button></div>
+<label for="ymin" class="hint">Y min</label><input id="ymin" class="fld" value="−64">
+<label for="ymax" class="hint">Y max</label><input id="ymax" class="fld" value="319">
+<span class="hint">Tutta la colonna</span><button class="sw on" role="switch" aria-checked="true" aria-label="Tutta la colonna"></button>
+<span class="hint" style="margin-left:auto"><b class="mono" style="color:var(--tx)">212 × 148</b> · 31.376 blocchi</span>
+</sc-if>
+<sc-if value="{{isPan}}" hint-placeholder-val="{{ true }}">
+<span class="nm">Sposta</span>
+<span class="hint">Trascina per spostarti · scorri per ingrandire · tieni premuto spazio con qualsiasi strumento</span>
+<button class="btn" style="margin-left:auto">Adatta alla finestra</button>
+<button class="btn">Vai a coordinate…</button>
+</sc-if>
+</div>
+<div class="body">
+<dc-import name="Sidebar" theme="{{theme}}" active="{{tool}}" hint-size="150px,718px"></dc-import>
+<div class="map">
+<img src="./map.svg" alt="Mappa del mondo vista dall'alto" style="position:absolute;left:0;top:0;width:990px;height:718px;image-rendering:pixelated">
+<div style="position:absolute;inset:0;background-image:linear-gradient(to right,rgba(255,255,255,.2) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.2) 1px,transparent 1px);background-size:48px 48px;background-position:10px 14px"></div>
+<div style="position:absolute;left:497px;top:272px;width:72px;height:72px;border-radius:50%;box-shadow:0 0 0 1px #000,inset 0 0 0 1px #000;border:2px dashed #fff;box-sizing:border-box;background:rgba(255,255,255,.1)"></div>
+<svg width="24" height="24" viewBox="0 0 16 16" style="position:absolute;left:521px;top:296px;image-rendering:pixelated" aria-label="Spawn"><path fill="#000" d="M2 1h2v14H2zM4 1h10v7H4z"/><path fill="#fff" d="M3 2h1v12H3z"/><path fill="#ee6a62" d="M4 2h9v1H4zM4 3h8v1H4zM4 4h9v1H4zM4 5h8v1H4zM4 6h7v1H4z"/></svg>
+<div style="position:absolute;left:318px;top:402px"><div style="width:24px;height:24px;box-shadow:0 0 0 2px #fff,0 0 0 3px #000"><svg width="24" height="24" viewBox="0 0 16 16" style="display:block;image-rendering:pixelated"><path fill="#5a3d28" d="M1 1h14v4H1z"/><path fill="#d9a066" d="M1 5h14v10H1z"/><path fill="#fff" d="M3 8h3v2H3zM10 8h3v2h-3z"/><path fill="#3b4a9c" d="M6 8h2v2H6zM8 8h2v2H8z"/><path fill="#7a4a2a" d="M5 12h6v2H5z"/></svg></div><div class="chip" style="margin-top:6px;margin-left:-8px;white-space:nowrap">Frugg</div></div>
+<div style="position:absolute;left:770px;top:490px"><div style="width:24px;height:24px;box-shadow:0 0 0 2px #fff,0 0 0 3px #000"><svg width="24" height="24" viewBox="0 0 16 16" style="display:block;image-rendering:pixelated"><path fill="#2a2018" d="M1 1h14v4H1z"/><path fill="#c98f5f" d="M1 5h14v10H1z"/><path fill="#fff" d="M3 8h3v2H3zM10 8h3v2h-3z"/><path fill="#2f6f4a" d="M6 8h2v2H6zM8 8h2v2H8z"/><path fill="#6b3d22" d="M5 12h6v2H5z"/></svg></div><div class="chip" style="margin-top:6px;margin-left:-8px;white-space:nowrap">Lilla</div></div>
+<sc-if value="{{isSel}}" hint-placeholder-val="{{ false }}">
+<svg width="970" height="718" style="position:absolute;left:0;top:0" aria-label="Selezione a poligono">
+<polygon points="300,170 520,140 650,230 610,370 380,392 280,290" fill="rgba(34,211,238,.16)" stroke="#000" stroke-width="3" stroke-dasharray="7 7" stroke-linejoin="round"/>
+<polygon points="300,170 520,140 650,230 610,370 380,392 280,290" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="7 7" stroke-dashoffset="7" stroke-linejoin="round"/>
+<g stroke="#000" stroke-width="1.5" fill="#fff"><rect x="295" y="165" width="10" height="10"/><rect x="515" y="135" width="10" height="10"/><rect x="645" y="225" width="10" height="10"/><rect x="605" y="365" width="10" height="10"/><rect x="375" y="387" width="10" height="10"/><rect x="275" y="285" width="10" height="10"/></g>
+</svg>
+<div class="chip" style="position:absolute;left:342px;top:402px"><span class="mono">212 × 148</span> · 31.376 blocchi · Y −64…319</div>
+</sc-if>
+<sc-if value="{{isPan}}" hint-placeholder-val="{{ true }}">
+<div class="chip" style="position:absolute;left:606px;top:322px;line-height:1.5"><span class="mono">X 1.284 · Z −392</span><br>Erba · Pianura · Y 71</div>
+<svg width="26" height="26" viewBox="0 0 26 26" style="position:absolute;left:594px;top:310px" aria-hidden="true"><path d="M13 2v22M2 13h22" stroke="#000" stroke-width="3"/><path d="M13 2v22M2 13h22" stroke="#fff" stroke-width="1"/></svg>
+</sc-if>
+<div style="position:absolute;left:14px;bottom:14px;display:flex;align-items:flex-end;gap:12px">
+<div class="chip" style="font-weight:700;width:26px;text-align:center;padding:5px 0">N</div>
+<div><div class="chip" style="padding:3px 8px;margin-bottom:4px;font-size:11px">50 blocchi</div><div style="width:150px;height:6px;background:#fff;box-shadow:0 0 0 1px #000"></div></div>
+</div>
+</div>
+<div class="panel" role="complementary" aria-label="Pannello">
+<div class="pts">
+<button class="pt on">Proprietà</button><button class="pt">Appunti</button><button class="pt">Cronologia<i class="pd"></i></button><button class="pt">Risultati</button>
+</div>
+<div class="pc">
+<sc-if value="{{isPan}}" hint-placeholder-val="{{ true }}">
+<div class="sec">
+<div class="sh">Vista</div>
+<sc-for list="{{views}}" as="v" hint-placeholder-count="3">
+<div class="row"><span class="k">{{v.label}}</span><button class="{{v.cls}}" role="switch" aria-checked="{{v.on}}" aria-label="{{v.label}}"></button></div>
+</sc-for>
+<div class="row" style="margin-top:6px"><span class="k">Zoom</span></div>
+<div class="seg"><button class="sg">100%</button><button class="sg">200%</button><button class="sg on">300%</button><button class="sg">400%</button></div>
+</div>
+<div class="sec">
+<div class="sh">Livelli sulla mappa</div>
+<sc-for list="{{layers}}" as="v" hint-placeholder-count="4">
+<div class="row"><span class="k">{{v.label}} <span class="v">{{v.n}}</span></span><button class="{{v.cls}}" role="switch" aria-checked="{{v.on}}" aria-label="{{v.label}}"></button></div>
+</sc-for>
+</div>
+<div class="sec">
+<div class="sh">Mondo</div>
+<div class="row"><span class="k">Mondo Frugg</span><span class="v">Overworld</span></div>
+<div class="row"><span class="k">Versione</span><span class="v mono">1.21.4</span></div>
+<div class="row"><span class="k">Dimensione</span><span class="v mono">1,3 GB</span></div>
+</div>
+<div class="sec">
+<div class="safe"><svg width="16" height="16" viewBox="0 0 16 16" style="flex:none;margin-top:1px;image-rendering:pixelated" aria-hidden="true"><path fill="#62b84c" d="M3 2h10v1H3zM3 3h10v6H3zM4 9h8v2H4zM5 11h6v1H5zM6 12h4v1H6zM7 13h2v1H7z"/><path fill="#14161a" d="M5 7h2v2H5zM7 9h2v1H7zM9 6h2v3H9z"/></svg><span><b>Originale al sicuro.</b> Le modifiche restano in sospeso; Applica le scrive in una copia, “Mondo Frugg — Cantiere”.</span></div>
+</div>
+</sc-if>
+<sc-if value="{{isSel}}" hint-placeholder-val="{{ false }}">
+<div class="sec">
+<div class="sh">Selezione</div>
+<div class="row"><span class="k">Dimensioni</span><span class="v mono">212 × 148</span></div>
+<div class="row"><span class="k">Blocchi</span><span class="v mono">31.376</span></div>
+<div class="row"><span class="k">Angolo</span><span class="v mono">X 1.140, Z −520</span></div>
+<div class="row"><span class="k">Chunk toccati</span><span class="v mono">34</span></div>
+</div>
+<div class="sec">
+<div class="sh">Intervallo Y</div>
+<div class="row"><span class="k">Da</span><input class="fld" value="−64" aria-label="Y minima"></div>
+<div class="row"><span class="k">A</span><input class="fld" value="319" aria-label="Y massima"></div>
+<div class="row"><span class="k">Tutta la colonna</span><button class="sw on" role="switch" aria-checked="true" aria-label="Tutta la colonna"></button></div>
+</div>
+<div class="sec">
+<div class="sh">Azioni</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px">
+<button class="btn">Copia negli appunti</button><button class="btn">Taglia</button><button class="btn">Elimina chunk</button><button class="btn">Sfuma bordo</button>
+</div>
+</div>
+</sc-if>
+</div>
+</div>
+</div>
+<dc-import name="StatusBar" theme="{{theme}}" pending="12" hint-size="1440px,30px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"mode":{"editor":"enum","options":["pan","selection"],"default":"pan"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const dark = '--bg0:#14161a;--bg1:#1b1e23;--bg2:#23272d;--bg3:#2c3138;--line:#333940;--line2:#454c55;--tx:#e8eaed;--tx2:#a3abb5;--tx3:#8a939e;--gr:#62b84c;--grInk:#0d1a09;--grDim:#24421d;--am:#f2b13b;--amDim:#43340f;--rd:#ee6a62;--rdDim:#4a1f1c;--bl:#62a8f0;--hov:rgba(255,255,255,.07);';
+const light = '--bg0:#e6e9ed;--bg1:#f5f6f8;--bg2:#ffffff;--bg3:#e3e6ea;--line:#d2d7dd;--line2:#b4bbc4;--tx:#171a1f;--tx2:#454d57;--tx3:#5f6872;--gr:#2b7a1c;--grInk:#ffffff;--grDim:#d9eed3;--am:#c77d00;--amDim:#fbebc9;--rd:#c4352d;--rdDim:#fbdad7;--bl:#1d6fc2;--hov:rgba(0,0,0,.06);';
+const theme = this.props.theme === 'light' ? 'light' : 'dark';
+const sel = this.props.mode === 'selection';
+const sw = (label, on, n) => ({ label, on, n, cls: 'sw' + (on ? ' on' : '') });
+return {
+vars: theme === 'light' ? light : dark,
+theme,
+isSel: sel,
+isPan: !sel,
+tool: sel ? 'poly' : 'move',
+menu: sel ? 'Selezione' : 'Modifica',
+views: [sw('Griglia dei chunk', true), sw('Griglia delle region', false), sw('Vista biomi', false)],
+layers: [sw('Spawn', true, ''), sw('Giocatori', true, '2'), sw('Villaggi', true, '1'), sw('Bordo del mondo', false, '')]
+};
+}
+}
+</script>
+</body>
+</html>

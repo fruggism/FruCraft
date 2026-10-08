@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Colonna strumenti</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.sb{width:150px;height:718px;box-sizing:border-box;background:var(--bg1);border-right:1px solid var(--line);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;color:var(--tx);display:flex;flex-direction:column;padding:6px 8px 8px}
+.gl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);padding:10px 8px 4px}
+.grp+.grp{border-top:1px solid var(--line);margin-top:6px}
+.tool{position:relative;display:flex;align-items:center;gap:9px;width:100%;height:30px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--tx);font:inherit;font-size:12.5px;text-align:left;cursor:default;margin:1px 0}
+.tool:hover{background:var(--hov)}
+.tool.on{background:var(--grDim);box-shadow:inset 0 0 0 1px var(--gr)}
+.tool:focus-visible{outline:2px solid var(--bl);outline-offset:1px}
+.tool svg{flex:none;width:16px;height:16px;image-rendering:pixelated}
+.tri{position:absolute;right:4px;bottom:4px;width:0;height:0;border-left:5px solid transparent;border-bottom:5px solid var(--tx3)}
+.foot{margin-top:auto;display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;color:var(--tx2);font:inherit;font-size:12px;cursor:default}
+</style>
+</helmet>
+<div class="sb" style="{{vars}}">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+<symbol id="t-move" viewBox="0 0 16 16"><path fill="currentColor" d="M7 1h2v1H7zM6 2h4v1H6zM7 3h2v10H7zM6 13h4v1H6zM7 14h2v1H7zM1 7h1v2H1zM2 6h1v4H2zM3 7h4v2H3zM9 7h4v2H9zM13 6h1v4h-1zM14 7h1v2h-1z"/></symbol>
+<symbol id="t-rect" viewBox="0 0 16 16"><path fill="currentColor" d="M2 3h3v1H2zM7 3h2v1H7zM11 3h3v1h-3zM2 4h1v3H2zM2 9h1v3H2zM13 4h1v3h-1zM13 9h1v3h-1zM2 12h3v1H2zM7 12h2v1H7zM11 12h3v1h-3z"/><path fill="#62a8f0" d="M7 7h2v2H7z"/></symbol>
+<symbol id="t-poly" viewBox="0 0 16 16"><path fill="currentColor" d="M8 2h1v1H8zM6 3h2v1H6zM9 3h2v1H9zM4 4h2v1H4zM11 4h1v1h-1zM3 5h1v3H3zM12 5h1v3h-1zM4 9h1v3H4zM11 9h1v3h-1zM5 12h2v1H5zM9 12h2v1H9z"/><path fill="#62a8f0" d="M7 7h2v2H7z"/></symbol>
+<symbol id="t-lasso" viewBox="0 0 16 16"><path fill="currentColor" d="M5 3h6v1H5zM3 4h2v1H3zM11 4h2v1h-2zM2 5h1v3H2zM13 5h1v3h-1zM3 8h2v1H3zM11 8h2v1h-2zM5 9h2v1H5zM9 9h2v1H9zM7 10h1v2H7z"/><path fill="#b07840" d="M6 12h1v2H6zM7 14h2v1H7z"/></symbol>
+<symbol id="t-sbrush" viewBox="0 0 16 16"><path fill="currentColor" d="M11 2h2v1h-2zM10 3h2v1h-2zM9 4h2v1H9zM8 5h2v1H8zM7 6h2v1H7z"/><path fill="#62a8f0" d="M5 7h3v1H5zM4 8h4v1H4zM3 9h4v2H3zM3 11h3v1H3z"/></symbol>
+<symbol id="t-biome" viewBox="0 0 16 16"><path fill="#62b84c" d="M9 2h4v1H9zM6 3h7v1H6zM5 4h8v2H5zM4 6h8v2H4zM4 8h6v2H4zM5 10h4v1H5z"/><path fill="currentColor" d="M3 11h1v1H3zM2 12h1v2H2zM6 7h1v1H6zM7 6h1v1H7z"/></symbol>
+<symbol id="t-terrain" viewBox="0 0 16 16"><path fill="#b07840" d="M2 9h12v4H2z"/><path fill="#62b84c" d="M2 8h4v1H2zM5 6h5v2H5zM10 7h4v2h-4z"/><path fill="#8a5a32" d="M4 11h2v1H4zM9 10h2v1H9z"/></symbol>
+<symbol id="t-veg" viewBox="0 0 16 16"><path fill="#62b84c" d="M6 1h4v1H6zM4 2h8v3H4zM3 5h10v3H3zM5 8h6v1H5z"/><path fill="#b07840" d="M7 9h2v5H7z"/><path fill="#3f8a34" d="M5 4h2v1H5zM9 6h2v1H9z"/></symbol>
+<symbol id="t-river" viewBox="0 0 16 16"><path fill="#62a8f0" d="M1 4h2v1H1zM3 3h3v1H3zM6 4h2v1H6zM8 3h3v1H8zM11 4h4v1h-4zM1 8h2v1H1zM3 7h3v1H3zM6 8h2v1H6zM8 7h3v1H8zM11 8h4v1h-4zM1 12h2v1H1zM3 11h3v1H3zM6 12h2v1H6zM8 11h3v1H8zM11 12h4v1h-4z"/></symbol>
+<symbol id="t-replace" viewBox="0 0 16 16"><path fill="#f2b13b" d="M2 4h8v2H2zM10 2h1v6h-1zM11 3h1v4h-1zM12 4h1v2h-1z"/><path fill="#62a8f0" d="M6 10h8v2H6zM5 8h1v6H5zM4 9h1v4H4zM3 10h1v2H3z"/></symbol>
+<symbol id="t-spawn" viewBox="0 0 16 16"><path fill="currentColor" d="M3 2h1v12H3zM2 14h3v1H2z"/><path fill="#ee6a62" d="M4 2h9v1H4zM4 3h8v1H4zM4 4h9v1H4zM4 5h8v1H4zM4 6h7v1H4z"/></symbol>
+<symbol id="t-border" viewBox="0 0 16 16"><path fill="currentColor" d="M2 2h12v1H2zM2 13h12v1H2zM2 3h1v10H2zM13 3h1v10h-1z"/><path fill="#ee6a62" d="M6 6h4v4H6z"/></symbol>
+<symbol id="t-players" viewBox="0 0 16 16"><path fill="#5a3d28" d="M3 2h10v3H3z"/><path fill="#d9a066" d="M3 5h10v7H3z"/><path fill="#fff" d="M4 8h2v1H4zM10 8h2v1h-2z"/><path fill="#3b4a9c" d="M6 8h1v1H6zM9 8h1v1H9z"/><path fill="#7a4a2a" d="M6 11h4v1H6z"/></symbol>
+<symbol id="t-search" viewBox="0 0 16 16"><path fill="currentColor" d="M5 2h4v1H5zM4 3h1v1H4zM9 3h1v1H9zM3 4h1v4H3zM10 4h1v4h-1zM4 8h1v1H4zM9 8h1v1H9zM5 9h4v1H5z"/><path fill="#b07840" d="M10 10h2v1h-2zM11 11h2v1h-2zM12 12h2v2h-2z"/></symbol>
+<symbol id="t-prune" viewBox="0 0 16 16"><path fill="currentColor" d="M3 2h2v1H3zM4 3h2v1H4zM5 4h2v1H5zM6 5h2v1H6zM11 2h2v1h-2zM10 3h2v1h-2zM9 4h2v1H9zM8 5h2v1H8zM7 6h2v1H7zM6 7h2v1H6zM8 7h2v1H8zM5 8h2v1H5zM9 8h2v1H9z"/><path fill="#ee6a62" d="M2 10h3v3H2zM11 10h3v3h-3z"/></symbol>
+</defs>
+</svg>
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+<div class="grp">
+<div class="gl">{{g.label}}</div>
+<sc-for list="{{g.items}}" as="it" hint-placeholder-count="3">
+<button class="{{it.cls}}" aria-pressed="{{it.pressed}}">
+<svg viewBox="0 0 16 16" aria-hidden="true"><use href="{{it.href}}"/></svg>
+<span>{{it.label}}</span>
+<sc-if value="{{it.variant}}" hint-placeholder-val="{{ false }}"><i class="tri"></i></sc-if>
+</button>
+</sc-for>
+</div>
+</sc-for>
+<button class="foot" aria-label="Comprimi la colonna a sole icone">
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9 3h1v1H9zM8 4h1v1H8zM7 5h1v1H7zM6 6h1v4H6zM7 10h1v1H7zM8 11h1v1H8zM9 12h1v1H9z"/></svg>
+<span>Comprimi</span>
+</button>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"active":{"editor":"enum","options":["move","rect","poly","lasso","sbrush","biome","terrain","veg","river","replace","spawn","border","players","search","prune"],"default":"move"},"$preview":{"width":150,"height":718}}'>
+class Component extends DCLogic {
+renderVals() {
+const dark = '--bg0:#14161a;--bg1:#1b1e23;--bg2:#23272d;--bg3:#2c3138;--line:#333940;--line2:#454c55;--tx:#e8eaed;--tx2:#a3abb5;--tx3:#8a939e;--gr:#62b84c;--grInk:#0d1a09;--grDim:#24421d;--am:#f2b13b;--amDim:#43340f;--rd:#ee6a62;--rdDim:#4a1f1c;--bl:#62a8f0;--hov:rgba(255,255,255,.07);';
+const light = '--bg0:#e6e9ed;--bg1:#f5f6f8;--bg2:#ffffff;--bg3:#e3e6ea;--line:#d2d7dd;--line2:#b4bbc4;--tx:#171a1f;--tx2:#454d57;--tx3:#5f6872;--gr:#2b7a1c;--grInk:#ffffff;--grDim:#d9eed3;--am:#c77d00;--amDim:#fbebc9;--rd:#c4352d;--rdDim:#fbdad7;--bl:#1d6fc2;--hov:rgba(0,0,0,.06);';
+const active = this.props.active || 'move';
+const defs = [
+['Naviga', [['move','Sposta']]],
+['Seleziona', [['rect','Rettangolo'],['poly','Poligono'],['lasso','Lazo'],['sbrush','Pennello',true]]],
+['Modifica', [['biome','Bioma'],['terrain','Terreno',true],['veg','Vegetazione'],['river','Fiume e lago'],['replace','Sostituisci']]],
+['Mondo', [['spawn','Spawn'],['border','Bordo del mondo'],['players','Giocatori'],['search','Cerca'],['prune','Pota chunk']]]
+];
+const groups = defs.map(([label, items]) => ({
+label,
+items: items.map(([id, name, v]) => ({ id, label: name, href: '#t-' + id, variant: !!v, cls: 'tool' + (id === active ? ' on' : ''), pressed: id === active }))
+}));
+return { groups, vars: (this.props.theme === 'light' ? light : dark) };
+}
+}
+</script>
+</body>
+</html>

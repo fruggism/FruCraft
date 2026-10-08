@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Cantiere · design system</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.ds{width:1440px;min-height:2140px;box-sizing:border-box;padding:56px 64px 80px;background:#14161a;color:#e8eaed;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;font-size:13px;line-height:1.5;--bg0:#14161a;--bg1:#1b1e23;--bg2:#23272d;--bg3:#2c3138;--line:#333940;--line2:#454c55;--tx:#e8eaed;--tx2:#a3abb5;--tx3:#8a939e;--gr:#62b84c;--grInk:#0d1a09;--grDim:#24421d;--am:#f2b13b;--amDim:#43340f;--rd:#ee6a62;--rdDim:#4a1f1c;--bl:#62a8f0;--hov:rgba(255,255,255,.07)}
+h1{margin:0;font-size:34px;letter-spacing:-.01em}
+.lead{margin:6px 0 0;color:var(--tx2);font-size:15px;max-width:760px}
+h2{margin:56px 0 4px;font-size:20px}
+.sub{margin:0 0 18px;color:var(--tx2)}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.sw-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.sw{height:62px;box-sizing:border-box;padding:7px 9px;border-radius:6px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:inset 0 0 0 1px rgba(128,128,128,.35)}
+.sw b{font-size:11.5px}
+.sw span{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:10.5px}
+.ptitle{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin:0 0 8px}
+.ov{display:grid;grid-template-columns:150px repeat(4,minmax(0,1fr));gap:6px;align-items:center}
+.ov .cell{position:relative;height:64px;border-radius:6px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(0,0,0,.4)}
+.ov .hd{color:var(--tx2);font-size:12px}
+.card{background:var(--bg1);border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);padding:18px 20px}
+.type div{display:flex;align-items:baseline;gap:18px;padding:6px 0;border-bottom:1px solid var(--line)}
+.type div:last-child{border-bottom:0}
+.type span.k{width:120px;color:var(--tx3);font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;flex:none}
+.chips{display:flex;gap:10px;align-items:flex-end}
+.chips i{display:block;background:var(--gr);opacity:.85}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.comp{background:var(--bg1);border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.comp .n{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3)}
+.cl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cap{font-size:11px;color:var(--tx3);margin-top:2px}
+.wt{height:28px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 8px 0 11px;border:0;border-radius:7px 7px 0 0;background:transparent;color:var(--tx2);font:inherit;font-size:12.5px}
+.wt.on{background:var(--bg3);color:var(--tx)}
+.wt.hv{background:var(--hov)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--am);display:block}
+.tool{display:flex;align-items:center;gap:9px;width:134px;height:30px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--tx);font:inherit;font-size:12.5px;text-align:left}
+.tool.hv{background:var(--hov)}
+.tool.on{background:var(--grDim);box-shadow:inset 0 0 0 1px var(--gr)}
+.tool.dis{opacity:.4}
+.tool.fo{outline:2px solid var(--bl);outline-offset:1px}
+.btn{height:28px;padding:0 14px;border:0;border-radius:6px;background:var(--bg3);color:var(--tx);font:inherit;font-size:12.5px;box-shadow:inset 0 0 0 1px var(--line2)}
+.btn.pri{background:var(--gr);color:var(--grInk);font-weight:700;box-shadow:inset 0 -2px 0 rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.3),0 0 0 1px rgba(0,0,0,.35)}
+.btn.dis{opacity:.4}
+.btn.dng{background:var(--rdDim);color:var(--rd);box-shadow:inset 0 0 0 1px var(--rd)}
+.fld{width:100px;height:28px;box-sizing:border-box;padding:0 8px;border:0;border-radius:5px;background:var(--bg0);color:var(--tx);font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px;box-shadow:inset 0 0 0 1px var(--line2)}
+.fld.fo{box-shadow:inset 0 0 0 1px var(--bl),0 0 0 2px var(--bl)}
+.sl{width:160px;accent-color:var(--gr)}
+.sws{position:relative;width:28px;height:16px;border-radius:8px;background:var(--bg3);box-shadow:inset 0 0 0 1px var(--line2);display:block}
+.sws::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--tx2)}
+.sws.on{background:var(--gr);box-shadow:none}
+.sws.on::after{left:14px;background:var(--grInk)}
+.bt{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.bt div{display:flex;align-items:center;gap:6px;height:30px;padding:0 8px;border-radius:6px;background:var(--bg0);box-shadow:inset 0 0 0 1px var(--line2);font-size:11.5px;white-space:nowrap;overflow:hidden}
+.bt div.on{box-shadow:inset 0 0 0 1px var(--gr);background:var(--grDim)}
+.bt i,.tile{display:block;width:16px;height:16px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45)}
+.rule{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:var(--bg0);box-shadow:inset 0 0 0 1px var(--line)}
+.mix{display:flex;height:8px;border-radius:2px;overflow:hidden;width:90px;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.hi{display:flex;gap:10px;align-items:center;padding:6px 8px;border-radius:6px;background:var(--bg0)}
+.toast{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:var(--bg2);box-shadow:0 8px 24px rgba(0,0,0,.5),0 0 0 1px var(--line2)}
+.pb{height:10px;border-radius:5px;background:var(--bg0);box-shadow:inset 0 0 0 1px var(--line2);overflow:hidden}
+.pb i{display:block;height:100%;background:var(--gr)}
+.dlgm{border-radius:10px;background:var(--bg2);box-shadow:0 12px 36px rgba(0,0,0,.55),0 0 0 1px var(--line2);padding:14px 16px}
+.notes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.notes h3{margin:0 0 8px;font-size:14px}
+.notes ul{margin:0;padding-left:18px;color:var(--tx2)}
+.notes li{margin:3px 0}
+.notes b{color:var(--tx)}
+.kbd{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;padding:1px 6px;border-radius:4px;background:var(--bg3);color:var(--tx)}
+</style>
+</helmet>
+<div class="ds">
+<h1>Cube-Atlas Cantiere · design system</h1>
+<p class="lead">Strumento da desktop sobrio, tema scuro di default. L’identità di Minecraft vive nelle icone pixel art 16×16 e in un solo rilievo, sul pulsante Applica; tutto il resto è piatto e si traduce direttamente in CSS.</p>
+
+<h2>Colori</h2>
+<p class="sub">Token come variabili CSS, due temi. Verde erba = azione primaria e stato sicuro · ambra = in sospeso · rosso = blocco.</p>
+<div class="two">
+<div><div class="ptitle">Tema scuro</div><div class="sw-grid"><sc-for list="{{dark}}" as="c" hint-placeholder-count="8"><div class="sw" style="{{c.style}}"><b>{{c.name}}</b><span>{{c.hex}}</span></div></sc-for></div></div>
+<div><div class="ptitle">Tema chiaro</div><div class="sw-grid"><sc-for list="{{light}}" as="c" hint-placeholder-count="8"><div class="sw" style="{{c.style}}"><b>{{c.name}}</b><span>{{c.hex}}</span></div></sc-for></div></div>
+</div>
+
+<h2>Sovrapposizioni sulla mappa</h2>
+<p class="sub">Contorno doppio chiaro/scuro: leggibili sopra neve, oceano, deserto e Nether. Stessi colori in entrambi i temi.</p>
+<div class="ov">
+<span></span><span class="hd">Neve</span><span class="hd">Oceano</span><span class="hd">Deserto</span><span class="hd">Nether</span>
+<sc-for list="{{overlays}}" as="o" hint-placeholder-count="4">
+<span class="hd"><b style="color:var(--tx)">{{o.name}}</b><br><span class="mono">{{o.token}}</span></span>
+<sc-for list="{{o.cells}}" as="c" hint-placeholder-count="4"><div class="cell" style="{{c.bg}}"><div style="{{c.shape}}"></div></div></sc-for>
+</sc-for>
+</div>
+
+<h2>Tipografia, spaziature, raggi, ombre</h2>
+<p class="sub">SF Pro di sistema, densità da strumento: testo 12–13 px, righe 28–32 px. Numeri e coordinate in SF Mono.</p>
+<div class="two">
+<div class="card type">
+<div><span class="k">titolo 18/600</span><span style="font-size:18px;font-weight:600">Applica le modifiche</span></div>
+<div><span class="k">corpo 13/400</span><span style="font-size:13px">Il mondo originale non viene toccato.</span></div>
+<div><span class="k">controlli 12.5/400</span><span style="font-size:12.5px">Sposta · Rettangolo · Sostituisci</span></div>
+<div><span class="k">etichetta 10.5 caps</span><span style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3)">Livelli sulla mappa</span></div>
+<div><span class="k">mono 11.5</span><span class="mono">X 1.284 · Z −392 · Y 71</span></div>
+</div>
+<div class="card">
+<div class="ptitle">Spaziature (px)</div>
+<div class="chips"><i style="width:4px;height:4px"></i><i style="width:8px;height:8px"></i><i style="width:12px;height:12px"></i><i style="width:16px;height:16px"></i><i style="width:24px;height:24px"></i><i style="width:32px;height:32px"></i><span class="mono" style="color:var(--tx2)">4 · 8 · 12 · 16 · 24 · 32</span></div>
+<div class="ptitle" style="margin-top:18px">Raggi</div>
+<div class="chips"><i style="width:40px;height:28px;border-radius:4px"></i><i style="width:40px;height:28px;border-radius:6px"></i><i style="width:40px;height:28px;border-radius:8px"></i><i style="width:40px;height:28px;border-radius:12px"></i><span class="mono" style="color:var(--tx2)">4 · 6 · 8 · 12</span></div>
+<div class="ptitle" style="margin-top:18px">Ombre</div>
+<div class="chips" style="gap:18px"><div style="width:90px;height:34px;border-radius:8px;background:var(--bg2);box-shadow:0 2px 8px rgba(0,0,0,.4)"></div><div style="width:90px;height:34px;border-radius:8px;background:var(--bg2);box-shadow:0 8px 24px rgba(0,0,0,.5),0 0 0 1px var(--line2)"></div><div style="width:90px;height:34px;border-radius:12px;background:var(--bg2);box-shadow:0 24px 70px rgba(0,0,0,.65),0 0 0 1px var(--line2)"></div></div>
+</div>
+</div>
+
+<h2>Componenti</h2>
+<p class="sub">Stati: normale, hover, attivo, disabilitato, focus (anello 2 px blu, offset 1 px).</p>
+<div class="grid3">
+<div class="comp"><div class="n">Scheda del mondo</div>
+<div class="cl" style="align-items:flex-end"><button class="wt on">Mondo Frugg<i class="dot"></i></button><button class="wt hv">Nether</button><button class="wt">Isole</button></div>
+<div class="cap">28 px · pallino ambra se ci sono modifiche in sospeso</div></div>
+<div class="comp"><div class="n">Pulsante strumento</div>
+<div class="cl"><button class="tool">Sposta</button><button class="tool hv">Poligono</button></div>
+<div class="cl"><button class="tool on">Bioma</button><button class="tool dis">Cerca</button></div>
+<div class="cl"><button class="tool fo">Terreno</button></div></div>
+<div class="comp"><div class="n">Pulsanti</div>
+<div class="cl"><button class="btn pri">Applica</button><button class="btn">Annulla</button><button class="btn dis">Disabilitato</button></div>
+<div class="cl"><button class="btn dng">Elimina chunk</button></div>
+<div class="cap">Il rilievo è solo sul primario (inset 2 px)</div></div>
+<div class="comp"><div class="n">Campo, slider, interruttore</div>
+<div class="cl"><input class="fld" value="−64" aria-label="Esempio"><input class="fld fo" value="319" aria-label="Esempio con focus"></div>
+<div class="cl"><input class="sl" type="range" min="0" max="100" value="60" aria-label="Esempio slider"><span class="mono">60%</span></div>
+<div class="cl"><i class="sws on"></i><i class="sws"></i><span class="cap">attivo · spento</span></div></div>
+<div class="comp"><div class="n">Selettore bioma / blocco</div>
+<div class="bt"><div class="on"><i style="background:#76ba5a"></i>Pianura</div><div><i style="background:#3f7d35"></i>Foresta</div><div><i style="background:#d9bf72"></i>Deserto</div><div><i style="background:#3a6fb8"></i>Oceano</div><div><i style="background:#eef3f6"></i>Tundra</div><div><i style="background:#8b8e93"></i>Monti</div><div><i style="background:#8c3a3a"></i>Nether</div><div><i style="background:#d9d68a"></i>End</div></div></div>
+<div class="comp"><div class="n">Riga di regola</div>
+<div class="rule"><i class="tile" style="background:#8b8e93"></i><span style="flex:1">Pietra</span><span style="color:var(--tx3)">→</span><div class="mix"><i style="background:#7f9a7a;width:70%"></i><i style="background:#6e7075;width:30%"></i></div><span class="mono" style="color:var(--tx2)">70/30</span></div>
+<div class="cap">A → B · B può essere un mix percentuale</div></div>
+<div class="comp"><div class="n">Voce di cronologia</div>
+<div class="hi"><i class="tile" style="background:#c79bff"></i><div style="flex:1"><div>Incolla · Torre del faro</div><div class="cap" style="margin:0">96 × 64 · 6 min fa</div></div><span style="color:var(--tx3)">↶</span></div>
+<div class="cap">Ogni voce si annulla da sola</div></div>
+<div class="comp"><div class="n">Toast</div>
+<div class="toast"><span style="color:var(--gr);font-weight:800">✓</span><span>Incolla confermato</span><span style="margin-left:auto;color:var(--bl)">Annulla</span></div>
+<div class="toast"><span style="color:var(--am);font-weight:800">!</span><span>Minecraft sembra aperto</span></div></div>
+<div class="comp"><div class="n">Barra di avanzamento</div>
+<div class="pb"><i style="width:62%"></i></div>
+<div class="cl"><span class="mono">62%</span><span class="cap" style="margin:0">134 di 218 chunk</span></div>
+<div class="pb"><i style="width:100%"></i></div></div>
+<div class="comp"><div class="n">Dialogo</div>
+<div class="dlgm"><div style="font-weight:600;font-size:14px">Chiudere senza applicare?</div><div style="color:var(--tx2);margin:4px 0 12px">Ci sono 12 modifiche in sospeso.</div><div class="cl" style="justify-content:flex-end"><button class="btn">Continua a lavorare</button><button class="btn dng">Chiudi</button></div></div></div>
+</div>
+
+<h2>Note di consegna</h2>
+<p class="sub">Per lo sviluppo Electron: tutto è HTML/CSS, i token qui sopra diventano variabili su <span class="mono">:root</span> e sul tema <span class="mono">[data-theme="light"]</span>.</p>
+<div class="notes">
+<div class="card"><h3>Misure</h3><ul>
+<li>Finestra di riferimento <b>1440×900</b> e <b>1728×1117</b>, minimo 960×640.</li>
+<li>Dall’alto: titolo + menu <b>38</b> · comandi <b>44</b> · schede mondi <b>34</b> · opzioni <b>36</b> · stato <b>30</b>.</li>
+<li>Strumenti <b>150</b> (compressa <b>44</b>) · pannello destro <b>320</b>.</li>
+<li>Righe 28–32 · testo 12–13 · icone 16 (sempre <span class="mono">image-rendering: pixelated</span>).</li>
+</ul></div>
+<div class="card"><h3>Stati</h3><ul>
+<li><b>Hover</b>: velo <span class="mono">--hov</span>. <b>Attivo</b>: <span class="mono">--grDim</span> con anello 1 px <span class="mono">--gr</span>.</li>
+<li><b>Disabilitato</b>: opacità 40%, niente hover. <b>Focus</b>: anello 2 px <span class="mono">--bl</span>.</li>
+<li><b>In sospeso</b>: pallino ambra sulla scheda, contatore ambra nella barra di stato.</li>
+<li><b>Sicuro</b>: pastiglia verde “Originale intatto” sempre visibile in alto a destra.</li>
+</ul></div>
+<div class="card"><h3>Pannelli comprimibili</h3><ul>
+<li>Colonna strumenti: <span class="kbd">⌘\</span> la riduce a 44 px, solo icone; il tooltip mostra nome e tasto.</li>
+<li>Pannello destro: <span class="kbd">⌘⌥\</span> lo nasconde e lascia una linguetta di 28 px con le icone delle schede.</li>
+<li>Lo stato dei pannelli si ricorda tra una sessione e l’altra.</li>
+</ul></div>
+<div class="card"><h3>Scorciatoie nei tooltip</h3><ul>
+<li>Formato: “Ruota  R”, nome a sinistra, tasto in <span class="mono">SF Mono</span>.</li>
+<li><span class="kbd">⌘Z</span> annulla · <span class="kbd">⌘C</span> <span class="kbd">⌘V</span> copia e incolla · <span class="kbd">R</span> ruota</li>
+<li><span class="kbd">⇧H</span> <span class="kbd">⇧V</span> specchia · <span class="kbd">B</span> bioma · <span class="kbd">M</span> selezione · <span class="kbd">⌘↩</span> applica</li>
+</ul></div>
+<div class="card" style="grid-column:span 2"><h3>Finestra stretta (sotto 1180 px)</h3><ul>
+<li>La colonna strumenti passa a sole icone e il pannello destro diventa la linguetta da 28 px; riaprendolo si sovrappone alla mappa.</li>
+<li>I comandi del menu scorrono in orizzontale con frecce ai lati; la barra di stato nasconde chunk/region e sposta “Quota di taglio” in un popover.</li>
+<li>I dialoghi restano larghi al massimo 560 px (fino a 786 per Sostituisci) e scorrono internamente se l’altezza non basta.</li>
+</ul></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2140}}'>
+class Component extends DCLogic {
+renderVals() {
+const ink = (hex) => {
+const n = parseInt(hex.slice(1), 16);
+const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#14161a' : '#ffffff';
+};
+const mk = (arr) => arr.map(([name, hex, note]) => ({ name, hex: hex + ' · ' + note, style: 'background:' + hex + ';color:' + ink(hex) }));
+const dark = mk([['--bg0','#14161a','finestra'],['--bg1','#1b1e23','pannelli'],['--bg2','#23272d','dialoghi'],['--bg3','#2c3138','controlli'],['--line','#333940','linee'],['--line2','#454c55','contorni'],['--tx','#e8eaed','testo'],['--tx2','#a3abb5','secondario'],['--tx3','#8a939e','etichette'],['--gr','#62b84c','erba'],['--grDim','#24421d','erba tenue'],['--am','#f2b13b','sospeso'],['--amDim','#43340f','ambra tenue'],['--rd','#ee6a62','blocco'],['--rdDim','#4a1f1c','rosso tenue'],['--bl','#62a8f0','focus']]);
+const light = mk([['--bg0','#e6e9ed','finestra'],['--bg1','#f5f6f8','pannelli'],['--bg2','#ffffff','dialoghi'],['--bg3','#e3e6ea','controlli'],['--line','#d2d7dd','linee'],['--line2','#b4bbc4','contorni'],['--tx','#171a1f','testo'],['--tx2','#454d57','secondario'],['--tx3','#5f6872','etichette'],['--gr','#2b7a1c','erba'],['--grDim','#d9eed3','erba tenue'],['--am','#c77d00','sospeso'],['--amDim','#fbebc9','ambra tenue'],['--rd','#c4352d','blocco'],['--rdDim','#fbdad7','rosso tenue'],['--bl','#1d6fc2','focus']]);
+const terr = ['#eef3f6', '#3a6fb8', '#d9bf72', '#8c3a3a'];
+const abs = 'position:absolute;box-sizing:border-box;';
+const shapes = [
+['Selezione', '--ov-sel', abs + 'left:22px;top:12px;right:22px;bottom:12px;border:2px dashed #fff;box-shadow:0 0 0 2px #000,inset 0 0 0 1px #000;background:rgba(34,211,238,.16)'],
+['Fusione dei bordi', '--ov-fuse', abs + 'left:20px;top:10px;right:20px;bottom:10px;border:2px dashed #c79bff;border-radius:14px;box-shadow:0 0 0 1px #000,inset 0 0 0 1px #000,0 0 14px 3px rgba(181,123,255,.5),inset 0 0 16px 4px rgba(181,123,255,.45)'],
+['Costruzione protetta', '--ov-prot', abs + 'left:22px;top:12px;right:22px;bottom:12px;border:2px dashed #ff9f1a;box-shadow:0 0 0 1px #000;background-image:repeating-linear-gradient(45deg,rgba(255,159,26,.55) 0 5px,rgba(255,159,26,.1) 5px 10px)'],
+['Risultato di ricerca', '--ov-find', abs + 'left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;border:3px solid #ff3d8b;box-shadow:0 0 0 2px #fff,0 0 0 3px #000,inset 0 0 0 1px #000']
+];
+const overlays = shapes.map(([name, token, shape]) => ({ name, token, cells: terr.map((t) => ({ bg: 'background:' + t, shape })) }));
+return { dark, light, overlays };
+}
+}
+</script>
+</body>
+</html>

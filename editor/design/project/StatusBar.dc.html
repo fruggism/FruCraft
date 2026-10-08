@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Barra di stato</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.st{width:1440px;height:30px;box-sizing:border-box;display:flex;align-items:center;gap:20px;padding:0 12px;background:var(--bg1);border-top:1px solid var(--line);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;font-size:12px;color:var(--tx2)}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px;color:var(--tx)}
+.sep{width:1px;height:14px;background:var(--line)}
+.cut{display:flex;align-items:center;gap:8px}
+.cut input{width:150px;height:14px;margin:0;accent-color:var(--gr)}
+.pend{display:flex;align-items:center;gap:7px;height:20px;padding:0 9px;border-radius:10px;background:var(--amDim);color:var(--am);font-weight:600;font-size:12px}
+.pend i{width:7px;height:7px;border-radius:50%;background:var(--am);display:block}
+.ap{height:22px;padding:0 12px;border:0;border-radius:5px;background:var(--gr);color:var(--grInk);font:inherit;font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px;cursor:default;box-shadow:inset 0 -2px 0 rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.3),0 0 0 1px rgba(0,0,0,.35)}
+.ap:focus-visible{outline:2px solid var(--bl);outline-offset:2px}
+.ap .kb{font-weight:500;opacity:.8}
+</style>
+</helmet>
+<div class="st" style="{{vars}}">
+<span class="mono">X 1.284</span><span class="mono">Z −392</span><span class="mono">Y 71</span>
+<i class="sep"></i>
+<span>Erba · Pianura</span>
+<i class="sep"></i>
+<span>Chunk 80, −25 · r.2.−1</span>
+<i class="sep"></i>
+<span>Zoom 300%</span>
+<div class="cut" style="margin-left:auto"><label for="cutY">Quota di taglio</label><input id="cutY" type="range" min="-64" max="319" value="319"><span class="mono">Tutta la colonna</span></div>
+<i class="sep"></i>
+<div class="pend"><i></i>{{pending}} modifiche in sospeso</div>
+<button class="ap">Applica<span class="kb">⌘↩</span></button>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"pending":{"editor":"text","default":"12"},"$preview":{"width":1440,"height":30}}'>
+class Component extends DCLogic {
+renderVals() {
+const dark = '--bg0:#14161a;--bg1:#1b1e23;--bg2:#23272d;--bg3:#2c3138;--line:#333940;--line2:#454c55;--tx:#e8eaed;--tx2:#a3abb5;--tx3:#8a939e;--gr:#62b84c;--grInk:#0d1a09;--grDim:#24421d;--am:#f2b13b;--amDim:#43340f;--rd:#ee6a62;--rdDim:#4a1f1c;--bl:#62a8f0;--hov:rgba(255,255,255,.07);';
+const light = '--bg0:#e6e9ed;--bg1:#f5f6f8;--bg2:#ffffff;--bg3:#e3e6ea;--line:#d2d7dd;--line2:#b4bbc4;--tx:#171a1f;--tx2:#454d57;--tx3:#5f6872;--gr:#2b7a1c;--grInk:#ffffff;--grDim:#d9eed3;--am:#c77d00;--amDim:#fbebc9;--rd:#c4352d;--rdDim:#fbdad7;--bl:#1d6fc2;--hov:rgba(0,0,0,.06);';
+return { vars: (this.props.theme === 'light' ? light : dark), pending: this.props.pending ?? '12' };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Applica.dc.html": {
+      "h": 900,
+      "title": "Applica · conferma",
+      "w": 1440,
+      "x": 1520,
+      "y": 1020
+    },
+    "Avvio.dc.html": {
+      "h": 900,
+      "title": "Avvio · nessun mondo aperto",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Chrome.dc.html": {
+      "h": 116,
+      "title": "Componente · barra superiore",
+      "w": 1440,
+      "x": 1520,
+      "y": 2200
+    },
+    "DesignSystem.dc.html": {
+      "h": 2140,
+      "title": "Design system",
+      "w": 1440,
+      "x": 0,
+      "y": 2200
+    },
+    "Incolla.dc.html": {
+      "h": 900,
+      "title": "Incolla in corso · fusione dei bordi",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 900,
+      "title": "Mondo aperto · Sposta (scuro)",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Selezione.dc.html": {
+      "h": 900,
+      "title": "Selezione poligono · tema chiaro",
+      "w": 1440,
+      "x": 3040,
+      "y": 1020
+    },
+    "Sidebar.dc.html": {
+      "h": 718,
+      "title": "Componente · strumenti",
+      "w": 150,
+      "x": 1520,
+      "y": 2506
+    },
+    "Sostituisci.dc.html": {
+      "h": 900,
+      "title": "Sostituisci blocchi",
+      "w": 1440,
+      "x": 0,
+      "y": 1020
+    },
+    "StatusBar.dc.html": {
+      "h": 40,
+      "title": "Componente · barra di stato",
+      "w": 1440,
+      "x": 1520,
+      "y": 2396
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-08T17:30:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "t1": {
+      "kind": "title1",
+      "maxW": 4440,
+      "text": "Cube-Atlas Cantiere · schermate",
+      "w": 240,
+      "x": 0,
+      "y": -260
+    },
+    "t2": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "Design system e componenti",
+      "w": 240,
+      "x": 0,
+      "y": 1960
+    }
+  },
+  "order": [
+    "DesignSystem.dc.html",
+    "Chrome.dc.html",
+    "StatusBar.dc.html",
+    "Sidebar.dc.html",
+    "Main.dc.html",
+    "Avvio.dc.html",
+    "Incolla.dc.html",
+    "Sostituisci.dc.html",
+    "Applica.dc.html",
+    "Selezione.dc.html"
+  ],
+  "pages": [],
+  "title": "Cube-Atlas Cantiere"
+}

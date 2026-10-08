@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Barra superiore</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.ch{width:1440px;height:116px;display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;font-size:12.5px;color:var(--tx);background:var(--bg0)}
+.r1{height:38px;flex:none;box-sizing:border-box;display:flex;align-items:center;padding:0 14px;gap:14px;border-bottom:1px solid var(--line)}
+.tl{display:flex;gap:8px}
+.tl i{width:12px;height:12px;border-radius:50%;display:block}
+.menus{display:flex;gap:2px;margin-left:10px}
+.mn{height:26px;padding:0 11px;border:0;border-radius:6px;background:transparent;color:var(--tx2);font:inherit;font-size:13px;cursor:default}
+.mn:hover{background:var(--hov);color:var(--tx)}
+.mn.on{background:var(--bg3);color:var(--tx)}
+.mn:focus-visible,.rb:focus-visible,.wt:focus-visible{outline:2px solid var(--bl);outline-offset:1px}
+.safe{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--tx2)}
+.safe i{width:8px;height:8px;border-radius:2px;background:var(--gr);display:block}
+.r2{height:44px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:2px;padding:0 10px;background:var(--bg1);border-bottom:1px solid var(--line)}
+.rb{height:30px;padding:0 10px;display:flex;align-items:center;gap:7px;border:0;border-radius:6px;background:transparent;color:var(--tx);font:inherit;font-size:12.5px;cursor:default}
+.rb:hover{background:var(--hov)}
+.rb svg{width:16px;height:16px;flex:none}
+.sp{width:1px;height:20px;background:var(--line);margin:0 6px}
+.r3{height:34px;flex:none;box-sizing:border-box;display:flex;align-items:flex-end;gap:2px;padding:0 10px;background:var(--bg0)}
+.wt{height:28px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 8px 0 11px;border:0;border-radius:7px 7px 0 0;background:transparent;color:var(--tx2);font:inherit;font-size:12.5px;cursor:default}
+.wt:hover{background:var(--hov)}
+.wt.on{background:var(--bg1);color:var(--tx)}
+.wt svg.dm{width:16px;height:16px;flex:none}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--am);display:block}
+.x{width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:4px;color:var(--tx3)}
+.x:hover{background:var(--hov);color:var(--tx)}
+.add{width:26px;height:26px;margin-left:4px;margin-bottom:1px;border:0;border-radius:6px;background:transparent;color:var(--tx2);cursor:default;display:flex;align-items:center;justify-content:center}
+.add:hover{background:var(--hov);color:var(--tx)}
+</style>
+</helmet>
+<div class="ch" style="{{vars}}">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+<symbol id="d-over" viewBox="0 0 16 16"><path fill="#8a5a32" d="M2 6h12v8H2z"/><path fill="#62b84c" d="M2 3h12v4H2z"/><path fill="#62b84c" d="M3 7h2v2H3zM8 7h1v1H8zM11 7h2v2h-2z"/><path fill="#76ca5e" d="M4 4h2v1H4zM9 5h3v1H9z"/></symbol>
+<symbol id="d-nether" viewBox="0 0 16 16"><path fill="#8c3a3a" d="M2 3h12v11H2z"/><path fill="#a64848" d="M3 4h3v2H3zM9 7h4v2H9zM4 10h3v2H4z"/><path fill="#6e2b2b" d="M8 4h2v2H8zM3 8h2v1H3zM10 11h3v2h-3z"/></symbol>
+<symbol id="d-end" viewBox="0 0 16 16"><path fill="#d9d68a" d="M2 3h12v11H2z"/><path fill="#ece9a8" d="M3 4h4v2H3zM9 8h4v3H9z"/><path fill="#bdb86a" d="M8 4h3v2H8zM3 9h3v3H3z"/></symbol>
+<symbol id="i-undo" viewBox="0 0 16 16"><path fill="currentColor" d="M4 3h1v1H4zM3 4h2v1H3zM2 5h3v1H2zM3 6h2v1H3zM4 7h1v1H4zM5 5h5v1H5zM10 5h2v1h-2zM12 6h1v3h-1zM11 9h1v1h-1zM6 10h5v1H6z"/></symbol>
+<symbol id="i-redo" viewBox="0 0 16 16"><path fill="currentColor" d="M11 3h1v1h-1zM11 4h2v1h-2zM11 5h3v1h-3zM11 6h2v1h-2zM11 7h1v1h-1zM6 5h5v1H6zM4 5h2v1H4zM3 6h1v3H3zM4 9h1v1H4zM5 10h5v1H5z"/></symbol>
+<symbol id="i-cut" viewBox="0 0 16 16"><path fill="currentColor" d="M5 2h1v1H5zM10 2h1v1h-1zM6 3h1v2H6zM9 3h1v2H9zM7 5h2v2H7zM6 7h1v1H6zM9 7h1v1H9z"/><path fill="#ee6a62" d="M4 9h3v3H4zM9 9h3v3H9z"/></symbol>
+<symbol id="i-copy" viewBox="0 0 16 16"><path fill="currentColor" d="M2 2h7v1H2zM2 3h1v7H2zM2 10h4v1H2zM6 6h8v1H6zM6 7h1v7H6zM13 7h1v7h-1zM6 14h8v1H6z"/></symbol>
+<symbol id="i-paste" viewBox="0 0 16 16"><path fill="currentColor" d="M3 3h10v1H3zM3 4h1v10H3zM12 4h1v10h-1zM3 14h10v1H3zM6 7h4v1H6zM6 9h4v1H6zM6 11h3v1H6z"/><path fill="#f2b13b" d="M6 1h4v3H6z"/></symbol>
+<symbol id="i-rot" viewBox="0 0 16 16"><path fill="currentColor" d="M5 3h5v1H5zM3 4h2v1H3zM10 4h2v1h-2zM2 5h1v5H2zM12 5h1v3h-1zM3 10h2v1H3zM5 11h4v1H5z"/><path fill="#f2b13b" d="M10 8h4v1h-4zM11 9h2v1h-2zM12 10h1v1h-1z"/></symbol>
+<symbol id="i-flip" viewBox="0 0 16 16"><path fill="currentColor" d="M7 2h1v12H7zM5 4h2v8H5zM3 6h2v4H3z"/><path fill="#62a8f0" d="M9 4h1v8H9zM10 6h1v4h-1zM11 7h1v2h-1z"/></symbol>
+<symbol id="i-open" viewBox="0 0 16 16"><path fill="#f2b13b" d="M2 4h5v2H2zM2 6h12v7H2z"/><path fill="#c98a1c" d="M2 8h12v1H2z"/></symbol>
+<symbol id="i-check" viewBox="0 0 16 16"><path fill="#62b84c" d="M3 8h2v2H3zM5 10h2v2H5zM7 8h2v2H7zM9 6h2v2H9zM11 4h2v2h-2z"/></symbol>
+<symbol id="i-gear" viewBox="0 0 16 16"><path fill="currentColor" fill-rule="evenodd" d="M7 1h2v2H7zM7 13h2v2H7zM1 7h2v2H1zM13 7h2v2h-2zM4 4h8v8H4zM6 6h4v4H6z"/></symbol>
+<symbol id="i-grid" viewBox="0 0 16 16"><path fill="currentColor" d="M2 2h12v1H2zM2 7h12v1H2zM2 13h12v1H2zM2 2h1v12H2zM7 2h1v12H7zM13 2h1v12h-1z"/></symbol>
+<symbol id="i-plus" viewBox="0 0 16 16"><path fill="currentColor" d="M7 2h2v12H7zM2 7h12v2H2z"/></symbol>
+<symbol id="i-eye" viewBox="0 0 16 16"><path fill="currentColor" d="M4 6h8v1H4zM2 7h2v2H2zM12 7h2v2h-2zM4 9h8v1H4zM7 7h2v2H7z"/></symbol>
+</defs>
+</svg>
+<div class="r1">
+<div class="tl" aria-hidden="true"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+<div class="menus">
+<sc-for list="{{menus}}" as="m" hint-placeholder-count="6">
+<button class="{{m.cls}}">{{m.label}}</button>
+</sc-for>
+</div>
+<div class="safe"><i></i>Originale intatto · Applica scrive in una copia</div>
+</div>
+<div class="r2">
+<sc-for list="{{ribbon}}" as="b" hint-placeholder-count="6">
+<sc-if value="{{b.sep}}" hint-placeholder-val="{{ false }}"><i class="sp"></i></sc-if>
+<button class="rb" title="{{b.title}}"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="{{b.href}}"/></svg>{{b.label}}</button>
+</sc-for>
+</div>
+<div class="r3">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+<button class="{{t.cls}}"><svg class="dm" viewBox="0 0 16 16" aria-hidden="true"><use href="{{t.dim}}"/></svg>{{t.name}}<sc-if value="{{t.dirty}}" hint-placeholder-val="{{ false }}"><i class="dot" title="Modifiche in sospeso"></i></sc-if><span class="x" aria-label="Chiudi"><svg width="8" height="8" viewBox="0 0 8 8"><path d="M1 1l6 6M7 1L1 7" stroke="currentColor" stroke-width="1.4" fill="none"/></svg></span></button>
+</sc-for>
+<button class="add" aria-label="Apri un altro mondo"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-plus"/></svg></button>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"menu":{"editor":"enum","options":["File","Modifica","Selezione","Mondo","Vista","Impostazioni"],"default":"Modifica"},"tab":{"editor":"int","default":0,"min":0,"max":2},"$preview":{"width":1440,"height":116}}'>
+class Component extends DCLogic {
+renderVals() {
+const dark = '--bg0:#14161a;--bg1:#1b1e23;--bg2:#23272d;--bg3:#2c3138;--line:#333940;--line2:#454c55;--tx:#e8eaed;--tx2:#a3abb5;--tx3:#8a939e;--gr:#62b84c;--grInk:#0d1a09;--grDim:#24421d;--am:#f2b13b;--amDim:#43340f;--rd:#ee6a62;--rdDim:#4a1f1c;--bl:#62a8f0;--hov:rgba(255,255,255,.07);';
+const light = '--bg0:#e6e9ed;--bg1:#f5f6f8;--bg2:#ffffff;--bg3:#e3e6ea;--line:#d2d7dd;--line2:#b4bbc4;--tx:#171a1f;--tx2:#454d57;--tx3:#5f6872;--gr:#2b7a1c;--grInk:#ffffff;--grDim:#d9eed3;--am:#c77d00;--amDim:#fbebc9;--rd:#c4352d;--rdDim:#fbdad7;--bl:#1d6fc2;--hov:rgba(0,0,0,.06);';
+const menu = this.props.menu || 'Modifica';
+const tab = this.props.tab ?? 0;
+const menus = ['File','Modifica','Selezione','Mondo','Vista','Impostazioni'].map((label) => ({ label, cls: 'mn' + (label === menu ? ' on' : '') }));
+const R = {
+File: [['open','Apri mondo…','⌘O'],['open','Apri cartella saves',''],['plus','Chiudi mondo','⌘W'],['|'],['check','Applica…','⌘↩']],
+Modifica: [['undo','Annulla','⌘Z'],['redo','Ripeti','⇧⌘Z'],['|'],['cut','Taglia','⌘X'],['copy','Copia','⌘C'],['paste','Incolla','⌘V'],['|'],['rot','Ruota','R'],['flip','Specchia','⇧H']],
+Selezione: [['grid','Seleziona tutto','⌘A'],['eye','Deseleziona','⌘D'],['flip','Inverti','⇧⌘I'],['|'],['plus','Espandi',''],['rot','Sfuma bordo','']],
+Mondo: [['gear','Regole di gioco',''],['grid','Bordo del mondo',''],['eye','Giocatori',''],['plus','Cerca blocchi','']],
+Vista: [['grid','Griglia chunk',''],['eye','Vista biomi',''],['|'],['plus','Ingrandisci','⌘+'],['flip','Adatta alla finestra','⌘0']],
+Impostazioni: [['open','Cartella saves',''],['eye','Tema',''],['gear','Prestazioni','']]
+};
+const ribbon = (R[menu] || R.Modifica).map((r) => r[0] === '|' ? null : r);
+const out = [];
+let sep = false;
+(R[menu] || R.Modifica).forEach((r) => {
+if (r[0] === '|') { sep = true; return; }
+out.push({ sep, href: '#i-' + r[0], label: r[1], title: r[2] ? r[1] + '  ' + r[2] : r[1] });
+sep = false;
+});
+const worlds = [
+{ name: 'Mondo Frugg', dim: '#d-over', dirty: true },
+{ name: 'Nether di Frugg', dim: '#d-nether', dirty: false },
+{ name: 'Isole del Nord', dim: '#d-over', dirty: false }
+];
+const tabs = worlds.map((w, i) => ({ ...w, cls: 'wt' + (i === tab ? ' on' : '') }));
+return { vars: (this.props.theme === 'light' ? light : dark), menus, ribbon: out, tabs };
+}
+}
+</script>
+</body>
+</html>
