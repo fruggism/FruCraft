@@ -22,6 +22,7 @@ import { applyJournal, preflight, readLevel, uniqueCopyName, INCOMPLETE_MARK } f
 import { OverlaySource } from '../core/overlay.js';
 import { NodeSource } from '../core/nodeSource.js';
 import { makeWorld, makeChunk, CHUNKS } from './fixture.js';
+import { WorldSession, listWorlds } from '../main/session.js';
 
 const unlocked = () => false;
 
@@ -352,6 +353,68 @@ export function register({ test, section, assert, assertEqual }) {
     j.undo();
     assertEqual((await pixel(overlay)).join(), plain.join(), 'annullando torna com\'era');
     assertEqual(hashTree(world), before, 'il disco è cambiato');
+  });
+
+  // -------------------------------------------------------------------------
+  section('Cantiere — sessione di un mondo');
+
+  test('la sessione apre il mondo, serve tile, e lo spawn in sospeso si vede subito', async () => {
+    const saves = freshSaves();
+    const world = makeWorld(saves);
+    const dataDir = path.join(scratch, 'dati');
+    const s = await WorldSession.open(world, { dataDir });
+    const info = await s.info();
+    assertEqual(info.name, 'Prova');
+    assertEqual(info.dimensions[0].id, 'overworld');
+    assert((await s.tile('overworld', 0, 0, 0)) !== null, 'tile (0,0)');
+    assert((await s.tile('overworld', 0, 5, 5)) === null, 'tile vuoto');
+    s.push({ type: 'setSpawn', x: 50, y: 60, z: 70 });
+    assertEqual((await s.info()).spawn.x, 50, 'spawn in anteprima');
+    assertEqual((await readLevel(world)).value.Data.SpawnX, 8, 'il disco no');
+  });
+
+  test('il giornale non applicato sopravvive alla chiusura dell\'app', async () => {
+    const saves = freshSaves();
+    const world = makeWorld(saves);
+    const dataDir = path.join(scratch, 'dati2');
+    const a = await WorldSession.open(world, { dataDir });
+    a.push({ type: 'setSpawn', x: 7, y: 7, z: 7 });
+    const b = await WorldSession.open(world, { dataDir });
+    assertEqual(b.journal.size, 1, 'giornale ripristinato');
+    b.undo();
+    assert(!fs.existsSync(b.journalFile), 'giornale vuoto, file rimosso');
+  });
+
+  test('la quota di taglio mostra la superficie sotto il piano', async () => {
+    const saves = freshSaves();
+    const s = await WorldSession.open(makeWorld(saves), { dataDir: path.join(scratch, 'dati3') });
+    assertEqual((await s.probe('overworld', 6, 6)).block, 'minecraft:grass_block', 'senza taglio');
+    const cut = await s.probe('overworld', 6, 6, 20);
+    assertEqual(cut.block, 'minecraft:stone', 'sotto y=20');
+    assertEqual(cut.y, 20, 'quota');
+    assertEqual(await s.probe('overworld', 6, 6, -10), null, 'sotto il fondo del chunk non c\'è nulla');
+  });
+
+  test('lo stesso mondo si applica dalla sessione e il giornale si svuota', async () => {
+    const saves = freshSaves();
+    const s = await WorldSession.open(makeWorld(saves), { dataDir: path.join(scratch, 'dati4') });
+    s.push({ type: 'setSpawn', x: 3, y: 3, z: 3 });
+    const pre = await s.check(unlocked);
+    assert(pre.ok && pre.copyName === 'Prova (Cantiere)', 'preflight');
+    const res = await s.apply({ lockCheck: unlocked });
+    assertEqual(res.name, 'Prova (Cantiere)');
+    assertEqual(s.journal.size, 0, 'giornale svuotato');
+    assertEqual(listWorlds(saves).length, 2, 'due mondi nella cartella saves');
+    assert(listWorlds(saves).some((w) => w.cantiere), 'la copia è riconoscibile');
+  });
+
+  test('maxY in analyzeChunk non cambia nulla se non è impostato', async () => {
+    const saves = freshSaves();
+    const s = await WorldSession.open(makeWorld(saves), { dataDir: path.join(scratch, 'dati5') });
+    const a = await s.probe('overworld', 2, 2, null);
+    const b = await s.probe('overworld', 2, 2, 1000);
+    assertEqual(a.block, b.block, 'blocco');
+    assertEqual(a.y, b.y, 'quota');
   });
 
   test('pulizia delle cartelle temporanee dei test', () => {

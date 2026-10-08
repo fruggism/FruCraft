@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cube-Atlas Cantiere</title>
+  <link rel="stylesheet" href="../../web/vendor/leaflet.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <nav id="menu" aria-label="Menu"></nav>
+  <div id="ribbon"></div>
+  <div id="tabs" role="tablist" aria-label="Mondi aperti"></div>
+  <aside id="tools" aria-label="Strumenti"></aside>
+  <main id="main">
+    <div id="options"></div>
+    <div id="map"></div>
+    <div id="empty">
+      <h1>Cube-Atlas Cantiere</h1>
+      <p class="hint">Apri un mondo per vederne la mappa e modificarlo. Il Cantiere non scrive mai sull'originale:
+        quando premi <b>Applica</b> crea una copia accanto, con le modifiche.</p>
+      <button class="primary" id="empty-open">Apri un mondo… (⌘O)</button>
+      <div id="world-list"></div>
+      <div class="hint" id="saves-dir"></div>
+    </div>
+  </main>
+  <aside id="panel">
+    <div id="panel-tabs"></div>
+    <div id="panel-body"></div>
+  </aside>
+  <footer id="status"></footer>
+  <div id="modal-host"></div>
+  <script src="../../web/vendor/leaflet.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

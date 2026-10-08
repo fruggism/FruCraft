@@ -402,3 +402,19 @@ Pages va acceso una volta sola dal proprietario del repository:
 **Settings → Pages → Source: GitHub Actions**. Il workflow non può farlo da sé —
 GitHub non concede al token delle Actions il permesso di creare un sito Pages.
 Da quel momento ogni push al branch predefinito aggiorna il sito.
+
+## Cantiere (editor di mondi, in sviluppo)
+
+Un'app **separata** da Cube-Atlas (Electron, per macOS) che mostra la mappa 2D
+dall'alto e permette di modificare il mondo. Vive in `editor/` e riusa il
+codice di lettura di `web/js/core/`. I brief sono in
+[`docs/cantiere/`](docs/cantiere/README.md); lo stato dei lavori e le
+checklist "prova in gioco" sono in [`editor/PROGRESS.md`](editor/PROGRESS.md).
+
+- **Scrive sempre su una copia.** Le modifiche restano in un giornale finché
+  non premi **Applica**, che crea `<Nome> (Cantiere)` accanto all'originale; il
+  mondo originale non viene mai scritto. Minecraft dev'essere chiuso.
+- Avvio: `npm install`, poi `npm run cantiere`.
+- Creare la `.app` (dmg e zip, Apple Silicon e Intel): `npm run cantiere:build`.
+  L'app non è firmata: la prima volta si apre con tasto destro → Apri.
+- Solo mondi 1.18.2 o successivi (gli altri si aprono in sola lettura).

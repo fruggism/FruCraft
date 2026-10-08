@@ -82,6 +82,7 @@ export async function renderBaseTile(source, regionDir, tx, ty, options = {}) {
   // the tile edge matches its neighbour and no seam shows.
   const grid = await readSurface(source, regionDir, minX - 1, minZ - 1, span + 1, span + 1, {
     hiddenBlocks: options.hiddenBlocks,
+    maxY: options.maxY,
   });
   if (grid.totalChunks === 0) return { rgba: emptyTile(), empty: true };
 

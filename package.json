@@ -2,13 +2,15 @@
   "name": "cube-atlas",
   "version": "1.0.0",
   "description": "Mappa il tuo mondo Minecraft Java Edition nel browser: tutto in locale, niente server e niente caricamenti.",
-  "main": "web/index.html",
+  "main": "editor/main/main.js",
   "scripts": {
     "test": "node test/run-tests.js",
     "web": "node tools/serve.js",
     "world": "node test/make-test-world.js",
     "textures": "node tools/make-textures.js",
-    "showcase": "node test/make-showcase-world.js"
+    "showcase": "node test/make-showcase-world.js",
+    "cantiere": "electron .",
+    "cantiere:build": "electron-builder --mac --arm64 --x64"
   },
   "repository": {
     "type": "git",
@@ -27,5 +29,29 @@
     "url": "https://github.com/fruggism/FruCraft/issues"
   },
   "homepage": "https://github.com/fruggism/FruCraft#readme",
-  "type": "module"
+  "type": "module",
+  "build": {
+    "appId": "it.fruggism.cubeatlas.cantiere",
+    "productName": "Cube-Atlas Cantiere",
+    "files": [
+      "editor/**/*",
+      "web/js/core/**/*",
+      "web/vendor/leaflet.js",
+      "web/vendor/leaflet.css",
+      "web/vendor/images/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": null
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  }
 }

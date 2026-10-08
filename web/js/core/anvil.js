@@ -134,12 +134,17 @@ export function normalizeChunk(root) {
  * options.hiddenBlocks is a Set of block names to look straight through, as if
  * they were air — barriers and other invisible blocks otherwise draw solid
  * walls across the map.
+ *
+ * options.maxY cuts the world horizontally: nothing above that level exists
+ * for the analysis, so the map shows the surface *below* the plane (caves,
+ * interiors, the Nether under its bedrock roof). Default: no limit.
  */
 export function analyzeChunk(root, options = {}) {
   const sections = normalizeChunk(root);
   if (!sections) return null;
 
   const hidden = options.hiddenBlocks;
+  const maxY = options.maxY === undefined || options.maxY === null ? Infinity : options.maxY;
   const detectRails = !!options.detectRails;
   const isSkippable = hidden && hidden.size
     ? (name) => AIR_NAMES.has(name) || hidden.has(name)
@@ -157,7 +162,9 @@ export function analyzeChunk(root, options = {}) {
       let top = null;
       let floor = null;
       scan: for (const sec of sections) {
+        if (sec.yBase > maxY) continue;
         for (let ly = 15; ly >= 0; ly--) {
+          if (sec.yBase + ly > maxY) continue;
           const name = sec.getBlock(lx, ly, lz);
           if (isSkippable(name)) continue;
           const y = sec.yBase + ly;

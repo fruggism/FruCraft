@@ -1,0 +1,35 @@
+/*
+ * Every color, size and font of the Cantiere lives here, and only here.
+ * The design that arrives later (editor/design/) replaces this file; the rest
+ * of the CSS never names a literal value.
+ */
+:root {
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --bg-app: #1b1d1f;
+  --bg-bar: #25282b;
+  --bg-ribbon: #2d3135;
+  --bg-panel: #212427;
+  --bg-field: #16181a;
+  --bg-hover: #353a3f;
+  --bg-active: #3a4a3a;
+  --bg-map: #101214;
+
+  --fg: #e6e8ea;
+  --fg-dim: #9aa1a8;
+  --fg-disabled: #5d646b;
+
+  --line: #3a3f44;
+  --accent: #6fbf5a;
+  --accent-fg: #0f1a0c;
+  --warn: #e8b547;
+  --danger: #e5645a;
+  --pending: #e8b547;
+
+  --radius: 6px;
+  --row-h: 34px;
+  --tool-w: 132px;
+  --panel-w: 300px;
+  --status-h: 36px;
+}
