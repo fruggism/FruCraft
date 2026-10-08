@@ -49,6 +49,8 @@ class Engine {
   }
 
   openWorld(init) { return this.request('openWorld', { init }); }
+  listWorlds(init) { return this.request('listWorlds', { init }); }
+  player() { return this.request('player', {}); }
   setRenderSettings(settings) { return this.request('setRenderSettings', { settings }); }
   tile(dimId, z, x, y, kind) { return this.request('tile', { dimId, z, x, y, kind }); }
   probe(dimId, x, z) { return this.request('probe', { dimId, x, z }); }

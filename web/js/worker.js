@@ -9,6 +9,8 @@
  */
 
 import { sourceFromInit } from './core/source.js';
+import * as worldList from './core/worldList.js';
+import { parse as nbtParse } from './core/nbt.js';
 import * as worldScan from './core/worldScan.js';
 import * as tiler from './core/tiler.js';
 import * as anvil from './core/anvil.js';
@@ -186,6 +188,26 @@ const metaKey = (dimId) => `render|${scan.worldKey}|${dimId}`;
 // ---------------------------------------------------------------------------
 
 const handlers = {
+  /** The worlds in a picked folder — usually saves/ — for the world list. */
+  async listWorlds({ init }) {
+    return worldList.listWorlds(sourceFromInit(init));
+  },
+
+  /** Where the player logged out, when the save records it. */
+  async player() {
+    if (!source) return null;
+    const bytes = await source.readFile('level.dat');
+    if (!bytes) return null;
+    try {
+      const { value } = await nbtParse(bytes);
+      const pos = value && value.Data && value.Data.Player && value.Data.Player.Pos;
+      if (!Array.isArray(pos) || pos.length < 3) return null;
+      return { x: Math.round(Number(pos[0])), y: Math.round(Number(pos[1])), z: Math.round(Number(pos[2])) };
+    } catch {
+      return null;
+    }
+  },
+
   async openWorld({ init }) {
     source = sourceFromInit(init);
     regionSets.clear();

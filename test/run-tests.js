@@ -33,6 +33,10 @@ import { collectParts, buildGlb } from '../web/js/export/glb.js';
 import { makeZip, bufferSource } from './make-zip.js';
 import { clearRegionCache } from '../web/js/core/anvil.js';
 import { scanWorld } from '../web/js/core/worldScan.js';
+import { listWorlds, describeWorld, SubSource } from '../web/js/core/worldList.js';
+import os from 'node:os';
+import { parseCoords } from '../web/js/app/coords.js';
+import * as boxMath from '../web/js/app/boxMath.js';
 
 let passed = 0;
 let failed = 0;
@@ -1622,6 +1626,151 @@ test('la provenienza della porzione resta scritta nel file', () => {
   assertEqual(json.asset.extras.world.minX, -320, 'le coordinate del mondo');
 });
 
+
+
+// ======================================================================
+// Elenco dei mondi di una cartella saves (schermata «Seleziona il mondo»).
+// ======================================================================
+section('Elenco dei mondi');
+
+/** A saves folder built on the spot: four worlds and a folder that is not one. */
+function makeSavesFolder() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cube-atlas-saves-'));
+  const region = fs.readFileSync(path.join(fixture.WORLD_DIR, 'region', 'r.0.0.mca'));
+  const world = (name, data, { withRegion = true, icon = false } = {}) => {
+    const dir = path.join(root, name);
+    fs.mkdirSync(path.join(dir, 'region'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'level.dat'), nbtWrite.gzip(nbtWrite.build('', { Data: data })));
+    if (withRegion) fs.writeFileSync(path.join(dir, 'region', 'r.0.0.mca'), region);
+    if (icon) fs.writeFileSync(path.join(dir, 'icon.png'), Buffer.from([137, 80, 78, 71, 1, 2, 3]));
+  };
+  world('Nuovo', {
+    LevelName: 'Valdiporto', DataVersion: 3465, LastPlayed: new nbtWrite.TLong(2000),
+    GameType: 1, Version: { Name: '1.20.1' },
+  }, { icon: true });
+  world('Altro', { LevelName: 'Isola', DataVersion: 3465, LastPlayed: new nbtWrite.TLong(5000) });
+  world('Vecchio', {
+    LevelName: 'Mondo 2017', DataVersion: 1343, LastPlayed: new nbtWrite.TLong(1000),
+    Version: { Name: '1.12.2' },
+  });
+  world('Vuoto', { LevelName: 'Mai esplorato', DataVersion: 3465 }, { withRegion: false });
+  fs.mkdirSync(path.join(root, 'screenshots'));
+  return root;
+}
+
+test('elenca solo le cartelle che sono mondi, dalla partita più recente', async () => {
+  const { single, worlds } = await listWorlds(new NodeSource(makeSavesFolder()));
+  assertEqual(single, false, 'è una cartella di mondi');
+  assertEqual(worlds.map((w) => w.folder).join(','), 'Altro,Nuovo,Vecchio,Vuoto', 'ordine e filtro');
+});
+
+test('per ogni mondo: nome, modalità, versione, regioni e icona', async () => {
+  const { worlds } = await listWorlds(new NodeSource(makeSavesFolder()));
+  const w = worlds.find((x) => x.folder === 'Nuovo');
+  assertEqual(w.levelName, 'Valdiporto', 'nome da level.dat');
+  assertEqual(w.gameTypeLabel, 'Creativa', 'modalità');
+  assertEqual(w.version, '1.20.1', 'versione');
+  assertEqual(w.regionCount, 1, 'regioni');
+  assertEqual(w.lastPlayed, 2000, 'ultima partita come numero');
+  assert(w.icon && w.icon[0] === 137, 'icon.png letta');
+  assert(w.readable, 'leggibile');
+});
+
+test('un mondo prima della 1.13 è riconosciuto e spiegato', async () => {
+  const { worlds } = await listWorlds(new NodeSource(makeSavesFolder()));
+  const w = worlds.find((x) => x.folder === 'Vecchio');
+  assertEqual(w.readable, false, 'non leggibile');
+  assert(/1\.12\.2/.test(w.reason) && /1\.13/.test(w.reason), `motivo: ${w.reason}`);
+});
+
+test('un mondo senza regioni non si può aprire', async () => {
+  const { worlds } = await listWorlds(new NodeSource(makeSavesFolder()));
+  const w = worlds.find((x) => x.folder === 'Vuoto');
+  assertEqual(w.readable, false, 'non leggibile');
+  assert(/regione/.test(w.reason), w.reason);
+});
+
+test('scegliere direttamente la cartella di un mondo dà quel mondo solo', async () => {
+  const { single, worlds } = await listWorlds(new NodeSource(fixture.WORLD_DIR));
+  assertEqual(single, true, 'cartella di un mondo');
+  assertEqual(worlds.length, 1, 'un elemento');
+  assertEqual(worlds[0].path, '', 'radice');
+  assert(worlds[0].readable, 'leggibile');
+});
+
+test('le regioni si contano anche fuori da region/ (layout annidati)', async () => {
+  const w = await describeWorld(new NodeSource(fixture.NESTED_WORLD_DIR), '');
+  assert(w.regionCount >= 2, `regioni contate: ${w.regionCount}`);
+  assert(w.readable, 'leggibile anche senza region/ in radice');
+});
+
+test('una sottocartella si legge come se fosse la radice', async () => {
+  const root = makeSavesFolder();
+  const sub = new SubSource(new NodeSource(root), 'Nuovo');
+  assert(await sub.exists('level.dat'), 'level.dat raggiungibile');
+  const scan = await scanWorld(sub);
+  assert(scan.ok, 'il mondo dentro la cartella si apre');
+});
+
+
+section('Coordinate incollate e riquadro 3D');
+
+test('le coordinate si incollano come le dà il gioco', () => {
+  assertEqual(JSON.stringify(parseCoords('/tp 812 72 -344')), '{"x":812,"y":72,"z":-344}', '/tp');
+  assertEqual(JSON.stringify(parseCoords('/tp @s 100 64 -200')), '{"x":100,"y":64,"z":-200}', '/tp @s');
+  assertEqual(JSON.stringify(parseCoords('812.5 / 72.0 / -344.7')), '{"x":813,"y":72,"z":-345}', 'F3');
+  assertEqual(JSON.stringify(parseCoords('812, -344')), '{"x":812,"z":-344}', 'x, z');
+  assertEqual(JSON.stringify(parseCoords('−1204 96')), '{"x":-1204,"z":96}', 'meno tipografico');
+  assertEqual(parseCoords('812'), null, 'un numero solo non basta');
+  assertEqual(parseCoords('ciao'), null, 'niente numeri');
+});
+
+test('la misura consigliata segue memoria e core', () => {
+  assertEqual(boxMath.recommendedSide({ deviceMemory: 8, hardwareConcurrency: 8 }), 256, 'potente');
+  assertEqual(boxMath.recommendedSide({ deviceMemory: 4, hardwareConcurrency: 4 }), 192, 'medio');
+  assertEqual(boxMath.recommendedSide({ deviceMemory: 2, hardwareConcurrency: 8 }), 128, 'poca memoria');
+  assertEqual(boxMath.recommendedSide({}), 192, 'senza indizi');
+});
+
+test('il riquadro scatta ai chunk e resta fra 32 e 1024', () => {
+  const b = boxMath.boxAround(812, -344, 192);
+  assertEqual(b.minX % 16, 0, 'minX a 16'); assertEqual(b.minZ % 16, 0, 'minZ a 16');
+  assertEqual(b.sizeX, 192, 'lato');
+  assertEqual(boxMath.boxAround(0, 0, 5).sizeX, 32, 'minimo');
+  assertEqual(boxMath.boxAround(0, 0, 5000).sizeX, 1024, 'massimo');
+  const m = boxMath.moveBox(b, 7, 9);
+  assertEqual(m.minX, b.minX, 'uno spostamento sotto mezzo chunk non sposta');
+  assertEqual(boxMath.moveBox(b, 16, -16).minZ, b.minZ - 16, 'un chunk');
+});
+
+test('le maniglie lo rendono rettangolare senza muovere il lato opposto', () => {
+  const b = { minX: 0, minZ: 0, sizeX: 192, sizeZ: 192 };
+  const e = boxMath.resizeBox(b, 'e', 300, 999);
+  assertEqual(e.sizeX, 304, 'lato est allungato'); assertEqual(e.sizeZ, 192, 'Z intatto');
+  assertEqual(e.minX, 0, 'ovest fermo');
+  const nw = boxMath.resizeBox(b, 'nw', 180, 180);
+  assertEqual(nw.sizeX, 32, 'non sotto il minimo'); assertEqual(nw.minX + nw.sizeX, 192, 'est fermo');
+  const big = boxMath.resizeBox(b, 's', 0, 5000);
+  assertEqual(big.sizeZ, 1024, 'non oltre il massimo');
+  const g = boxMath.growBox(b, 16);
+  assertEqual(g.sizeX, 208, '+16'); assertEqual(g.minX % 16, 0, 'sempre a chunk');
+});
+
+
+test('i luoghi salvati sopravvivono al salvataggio, ripuliti', () => {
+  const p = projects.normalizeProject({ name: 'A', places: [
+    { name: 'Stazione', x: 812.4, z: -344, icon: 'chest' },
+    { name: 'Rotto', x: 'no', z: 1 },
+    { x: 1, z: 2, icon: 'sconosciuta' },
+  ] });
+  assertEqual(p.places.length, 2, 'scartato quello senza coordinate');
+  assertEqual(p.places[0].x, 812, 'arrotondato'); assertEqual(p.places[0].icon, 'chest', 'icona tenuta');
+  assertEqual(p.places[1].icon, 'flag', 'icona ignota → bandiera');
+  assert(p.places[0].id, 'id assegnato');
+  const kept = projects.normalizeProject({ name: 'B' }, p);
+  assertEqual(kept.places.length, 2, 'un aggiornamento senza places non li cancella');
+  assertEqual(projects.normalizeProject({}).places.length, 0, 'default vuoto');
+});
 
 (async () => {
   for (const item of tests) {

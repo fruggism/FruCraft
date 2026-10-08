@@ -101,3 +101,22 @@ export async function storageEstimate() {
     return null;
   }
 }
+
+/** Every [key, value] of a store whose key starts with a prefix. */
+export function idbEntriesPrefix(store, prefix) {
+  return openDb().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const os = tx.objectStore(store);
+    const range = IDBKeyRange.bound(prefix, `${prefix}￿`);
+    const out = [];
+    const req = os.openCursor(range);
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      out.push([cursor.key, cursor.value]);
+      cursor.continue();
+    };
+    tx.oncomplete = () => resolve(out);
+    tx.onerror = () => reject(tx.error);
+  }));
+}

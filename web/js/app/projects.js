@@ -269,6 +269,23 @@ export function normalizeView(raw, existing) {
   return (existing && existing.view) || null;
 }
 
+export const PLACE_ICONS = ['flag', 'compass', 'chest', 'grass', 'netherrack'];
+
+/** Saved places, cleaned: a name, a point, one of a few icons. */
+export function normalizePlaces(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((p) => {
+    if (!p || !isNum(Number(p.x)) || !isNum(Number(p.z))) return null;
+    return {
+      id: typeof p.id === 'string' && p.id ? p.id : newId('pl'),
+      name: String(p.name || 'Luogo').slice(0, 80),
+      x: Math.round(Number(p.x)),
+      z: Math.round(Number(p.z)),
+      icon: PLACE_ICONS.includes(p.icon) ? p.icon : 'flag',
+    };
+  }).filter(Boolean).slice(0, 200);
+}
+
 /**
  * Coerce arbitrary input (a PUT body, or an imported file) into a valid
  * project. Unknown fields are dropped rather than trusted.
@@ -296,6 +313,8 @@ export function normalizeProject(raw, existing) {
     view: normalizeView(raw, existing),
     settings: normalizeSettings(raw, existing),
     layers: layers.length ? layers : defaultLayers(),
+    // The scheda Mondo's bookmarks: spots on the map with a name.
+    places: normalizePlaces(raw && raw.places !== undefined ? raw.places : existing && existing.places),
     // Documents used to live here, but the Archivio is independent of any
     // atlas now (see app/documents.js) — a project no longer carries them.
     createdAt: (existing && existing.createdAt) || now,

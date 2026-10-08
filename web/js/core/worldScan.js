@@ -156,6 +156,10 @@ export async function readLevelDat(source) {
       levelName: d.LevelName || source.name,
       version: (d.Version && d.Version.Name) || null,
       dataVersion: d.DataVersion ? Number(d.DataVersion) : null,
+      // LastPlayed is a TAG_Long (a BigInt here): milliseconds since 1970,
+      // safely inside a double for the next few hundred thousand years.
+      lastPlayed: d.LastPlayed != null ? Number(d.LastPlayed) : null,
+      gameType: d.GameType != null ? Number(d.GameType) : null,
       spawn: {
         x: Number(d.SpawnX || 0),
         y: Number(d.SpawnY || 64),
