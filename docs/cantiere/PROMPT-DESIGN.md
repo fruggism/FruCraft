@@ -1,8 +1,7 @@
 # Prompt per Claude Design — Cube-Atlas **Cantiere**
 
-> Copia tutto quello che c'è sotto la riga in Claude Design. Se puoi, allega
-> 2–3 screenshot dell'attuale Cube-Atlas (Atlante 2D con una mappa aperta) e
-> qualche icona da `web/img/icons/` come riferimento di stile.
+> Copia tutto quello che c'è sotto la riga in Claude Design. Non allegare
+> niente dell'app attuale: il Cantiere ha un'identità visiva tutta sua.
 
 ---
 
@@ -143,13 +142,18 @@ Lingua dell'interfaccia: **italiano**.
   di sistema SF Pro, angoli e ombre leggere, vibrancy dove ha senso).
 - **Tema scuro di default** (la mappa colorata risalta su un'interfaccia
   neutra), più **tema chiaro**.
-- L'identità di Cube-Atlas viene da Minecraft: l'app attuale usa icone in
-  **pixel art 16×16** (blocco d'erba come logo, bussola, piccone, baule,
-  matita, ecc.) e cornici a rilievo in stile inventario.
-  - Nel Cantiere tieni le **icone pixel art** (renderizzate nitide, senza
-    sfocatura) e al massimo qualche dettaglio a rilievo, per esempio sul
-    pulsante Applica o sulle tessere dei blocchi.
-  - Il resto deve restare piatto e moderno.
+- **Identità visiva nuova.** Non ispirarti a nessuna interfaccia esistente
+  di Cube-Atlas: definisci tu il linguaggio visivo da zero.
+- **Le icone le disegni tu**, come set coerente e completo. Servono per:
+  ogni strumento della colonna sinistra e le sue varianti, i comandi delle
+  schede in alto, le tre dimensioni (Overworld, Nether, End), i pannelli
+  di destra, gli stati (in sospeso, protetto, errore, sicuro) e il logo/icona
+  dell'app per il Dock di macOS.
+  - Scegli tu lo stile (lineare, pieno, pixel art, …) e motivalo. Devono
+    restare leggibili a 16 e a 20 px, e funzionare in tema scuro e chiaro.
+  - Un tema Minecraft è ben accetto, ma è una scelta tua, non un vincolo.
+  - Consegnale come **SVG** (oppure come PNG 1×/2× se scegli la pixel art),
+    con un nome file per ciascuna.
 - Colori d'accento: un verde "erba" per le azioni primarie e lo stato
   "sicuro", un ambra per "in sospeso", un rosso per i blocchi. Le
   sovrapposizioni sulla mappa (selezione, fascia di fusione, protezione,
@@ -166,6 +170,7 @@ Lingua dell'interfaccia: **italiano**.
 
 ## Cosa consegnare
 1. **Design system**:
+   - il set di icone (vedi Stile) e l'icona dell'app;
    - token come variabili CSS (colori per tema scuro e chiaro, tipografia,
      spaziature, raggi, ombre, colori delle sovrapposizioni);
    - componenti: scheda, pulsante strumento, pulsante primario e secondario,
