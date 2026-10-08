@@ -1,15 +1,19 @@
 /*
- * Atlante 3D — la porzione di mondo che stai guardando sulla mappa, in tre
- * dimensioni.
+ * Modello 3D — la sesta scheda dell'editor.
+ *
+ * Si inquadra una zona sulla mappa stessa (un riquadro che si trascina e si
+ * ridimensiona, vedi selectionBox.js) e la si ricostruisce in tre dimensioni,
+ * al posto della mappa (3e). La mappa intanto resta lì sotto, intatta: «Torna
+ * alla mappa» la rimostra con il riquadro dove l'avevi lasciato.
  *
  * Non apre niente da sé: il mondo lo ha già aperto l'Editor, e questo modulo
  * riceve da main.js come raggiungerlo. Il worker però è un altro — quello
  * dell'Editor disegna tessere dall'alto, questo legge volumi e costruisce
- * triangoli — quindi il salvataggio va riaperto una volta sola sul suo, la
- * prima volta che si entra nella schermata.
+ * triangoli — quindi il salvataggio va riaperto una volta sola sul suo.
  *
- * Il resto (scelta della porzione, anteprima, caricamento, vista, export .glb)
- * viene da Cube-Atlas 3D, dove girava come applicazione a sé.
+ * Il viewer sta in un contenitore sostituibile (mountViewer): oggi è l'area
+ * della mappa, domani potrebbe essere una finestra flottante (3f) senza
+ * toccare il resto.
  */
 
 import { engine } from './engine3d.js';
@@ -17,51 +21,64 @@ import { Viewer } from './viewer3d.js';
 import {
   supportsFileHandles, pickPack, restoreLastPack, packFromFileList, forgetPack,
 } from './packPicker.js';
+import { toLatLng, fromLatLng } from './ui-core.js';
+import { createSelection } from './selectionBox.js';
+import {
+  boxAround, centerOf, moveBox, growBox, recommendedSide, PRESETS,
+} from './boxMath.js';
 
 const $ = (id) => document.getElementById(id);
 
 const el = {
   pickPack: $('btn-pick-pack'), reopenPack: $('btn-reopen-pack'), packInput: $('pack-input'),
-  packHint: $('pack-hint'),
-  packStatus: $('pack-status'), packToggleRow: $('pack-toggle-row'), packToggle: $('pack-toggle'),
+  packHint: $('pack-hint'), packStatus: $('pack-status'),
+  packToggleRow: $('pack-toggle-row'), packToggle: $('pack-toggle'),
   hiddenBlocks: $('a3d-block-custom'),
-  panelPortion: $('panel-portion'), centerX: $('center-x'), centerZ: $('center-z'),
-  spawn: $('btn-spawn'), player: $('btn-player'), radius: $('radius'), sizeLabel: $('size-label'),
+  worldNote: $('a3d-world-note'), badge: $('a3d-badge'),
+  setup: $('a3d-setup'), ready: $('a3d-ready'),
+  rec: $('a3d-rec'), size: $('a3d-size'), minus: $('a3d-minus'), plus: $('a3d-plus'),
+  presets: $('a3d-presets'), center: $('a3d-center'), height: $('a3d-height'),
   heightMode: $('height-mode'), heightManual: $('height-manual'),
   minY: $('min-y'), heightBlocks: $('height-blocks'), heightLabel: $('height-label'),
-  preview: $('preview'), previewHint: $('preview-hint'), estimate: $('estimate'),
-  nudgeN: $('nudge-n'), nudgeS: $('nudge-s'), nudgeW: $('nudge-w'), nudgeE: $('nudge-e'),
-  load: $('btn-load'), loadStatus: $('load-status'),
-  progress: $('progress'), progressBar: $('progress-bar'),
-  panelView: $('panel-view'),
+  estimate: $('estimate'), load: $('btn-load'), loadStatus: $('load-status'),
+  review: $('a3d-review'),
+  minimap: $('a3d-minimap'), miniCap: $('a3d-mini-cap'),
   cut: $('cut'), cutLabel: $('cut-label'), snapshot: $('btn-snapshot'),
-  exportGlb: $('btn-export'), viewStats: $('view-stats'),
-  stage: $('a3d-stage'), emptyState: $('a3d-empty'),
-  scene: $('scene'), crosshair: $('crosshair'), hud: $('hud'), hudPos: $('hud-pos'),
-  hudLook: $('hud-look'), hudRight: $('hud-right'),
-  worldNote: $('a3d-world-note'),
+  exportGlb: $('btn-export'), viewStats: $('view-stats'), changeZone: $('a3d-change-zone'),
+  stage: $('a3d-stage'), scene: $('scene'), crosshair: $('crosshair'),
+  hud: $('hud'), hudPos: $('hud-pos'), hudLook: $('hud-look'), hudRight: $('hud-right'),
+  backMap: $('a3d-back-map'),
+  progress: $('progress'), progressBar: $('progress-bar'), progressLbl: $('a3d-loading-lbl'),
 };
 
+const RECOMMENDED = recommendedSide();
+
 const state = {
-  scan: null,          // the world as this screen's own worker sees it
+  scan: null,          // the world as this module's own worker sees it
   init: null,          // how the Editor reached that world
   dimension: null,
-  center: { x: 0, z: 0 },
+  box: null,           // { minX, minZ, sizeX, sizeZ }, multiples of 16
   survey: null,
   surveying: false,
   loading: false,
-  loaded: null,
+  loaded: null,        // { box, result } of the model in memory
   pack: null,          // names of the archives the textures come from
+  packRemembered: false,
+  tabActive: false,
+  viewerShown: false,
 };
 
 let viewer = null;
 let host = null;       // the bridge back to main.js
 let opening = null;    // the in-flight openWorld, so two entries share one
+let selection = null;
+let container = null;  // where the viewer is mounted (mountViewer)
 
 // --------------------------------------------------------------- utilities ---
 
 const snapDown16 = (v) => Math.floor(v / 16) * 16;
 const snapUp16 = (v) => Math.ceil(v / 16) * 16;
+const fmt = (n) => Math.round(n).toLocaleString('it-IT');
 
 function setStatus(node, text, kind = '') {
   node.textContent = text;
@@ -76,12 +93,8 @@ function hiddenBlocks() {
     .map((s) => (s.includes(':') ? s : `minecraft:${s}`));
 }
 
-/** The box currently described by the controls, snapped to whole chunks. */
-function currentBox() {
-  const side = Number(el.radius.value) * 2 * 16;
-  const minX = snapDown16(state.center.x - side / 2);
-  const minZ = snapDown16(state.center.z - side / 2);
-
+/** The vertical range: what the user set, or the ground plus some sky. */
+function heightRange() {
   let minY, maxY;
   if (el.heightMode.value === 'manual') {
     minY = snapDown16(Number(el.minY.value));
@@ -94,15 +107,14 @@ function currentBox() {
   }
   if (maxY <= minY) maxY = minY + 16;
   // A world is at most 384 blocks tall; more than that is a mistake, not a view.
-  const sizeY = Math.min(384, maxY - minY);
-  return { minX, minY, minZ, sizeX: side, sizeY, sizeZ: side };
+  return { minY, sizeY: Math.min(384, maxY - minY) };
 }
 
-function describeBox(box) {
-  const blocks = box.sizeX * box.sizeY * box.sizeZ;
-  const mb = (blocks * 2) / (1024 * 1024);
-  return `${box.sizeX}×${box.sizeZ} blocchi, da Y ${box.minY} a Y ${box.minY + box.sizeY}`
-    + ` — ${(blocks / 1e6).toFixed(1)} milioni di blocchi, ~${mb.toFixed(0)} MB`;
+/** The box to read: the map selection plus the height range. */
+function currentBox() {
+  const b = state.box || boxAround(0, 0, RECOMMENDED);
+  const { minY, sizeY } = heightRange();
+  return { minX: b.minX, minZ: b.minZ, sizeX: b.sizeX, sizeZ: b.sizeZ, minY, sizeY };
 }
 
 // Above this the read is slow and the browser may run out of memory before
@@ -110,28 +122,53 @@ function describeBox(box) {
 const HUGE_BLOCKS = 120e6;
 const BIG_BLOCKS = 28e6;
 
-function refreshEstimate() {
+/*
+ * How fast this computer reads and meshes, in blocks per second. It starts
+ * from a cautious guess and is replaced by the real figure after the first
+ * model, so the "circa N s" next to the button becomes honest quickly.
+ */
+const RATE_KEY = 'cube-atlas-3d-rate';
+function readRate() {
+  try { return Number(localStorage.getItem(RATE_KEY)) || 450000; } catch { return 450000; }
+}
+function writeRate(rate) {
+  try { localStorage.setItem(RATE_KEY, String(Math.round(rate))); } catch { /* ignore */ }
+}
+
+function refreshUI() {
   const box = currentBox();
-  el.sizeLabel.textContent = String(box.sizeX);
+  const c = centerOf(box);
+  el.size.textContent = `${box.sizeX} × ${box.sizeZ}`;
+  el.center.textContent = `${Math.round(c.x)}, ${Math.round(c.z)}`;
+  el.height.textContent = `${el.heightMode.value === 'manual' ? 'Manuale' : 'Auto'} · Y ${box.minY} → ${box.minY + box.sizeY}`;
   el.heightLabel.textContent = String(box.sizeY);
+  el.presets.querySelectorAll('button').forEach((b) => {
+    const n = Number(b.dataset.side);
+    b.classList.toggle('active', box.sizeX === n && box.sizeZ === n);
+  });
+
   const blocks = box.sizeX * box.sizeY * box.sizeZ;
-  let note = '', kind = '';
+  const chunks = (box.sizeX * box.sizeZ) / 256;
+  const secs = Math.max(1, Math.round(blocks / readRate()));
+  let text = `≈ ${fmt(chunks)} chunk · ${(blocks / 1e6).toLocaleString('it-IT', { maximumFractionDigits: 1 })} M blocchi · circa ${secs} s`;
+  let kind = '';
   if (blocks > HUGE_BLOCKS) {
-    note = '. Enorme: può occupare tutta la memoria del browser e non arrivare in fondo.';
+    text += '. Enorme: può esaurire la memoria del browser.';
     kind = 'err';
   } else if (blocks > BIG_BLOCKS) {
-    note = '. È tanto: preparati ad aspettare.';
+    text += '. È tanto: preparati ad aspettare.';
     kind = 'warn';
   }
-  setStatus(el.estimate, describeBox(box) + note, kind);
+  setStatus(el.estimate, text, kind);
 }
+
 // ----------------------------------------------------------------- il mondo ---
 
 /**
  * Catch up with the world the Editor has open.
  *
  * The scan is cheap but not free, so it only happens when the folder or the
- * dimension actually changed — entering the screen a second time on the same
+ * dimension actually changed — entering the tab a second time on the same
  * world costs nothing.
  */
 async function syncWorld() {
@@ -139,41 +176,36 @@ async function syncWorld() {
   const init = host.getWorldInit();
   const dimension = host.getDimension();
   if (!init) {
-    el.panelPortion.classList.add('hidden');
-    el.worldNote.textContent = 'Apri prima un mondo nell\'Editor: l\'Atlante 3D legge quello.';
+    el.setup.classList.add('hidden');
+    el.worldNote.textContent = 'Apri prima un mondo: il modello si costruisce da quello.';
     el.worldNote.classList.remove('hidden');
     return false;
   }
-  el.worldNote.classList.add('hidden');
-
-  if (state.init === init && state.dimension === dimension && state.scan) return true;
+  if (state.init === init && state.dimension === dimension && state.scan) {
+    el.worldNote.classList.add('hidden');
+    if (!state.viewerShown) el.setup.classList.remove('hidden');
+    return true;
+  }
   if (opening) return opening;
 
-  el.panelPortion.classList.add('hidden');
-  el.previewHint.textContent = 'Sto aprendo il mondo…';
+  el.worldNote.textContent = 'Sto aprendo il mondo…';
+  el.worldNote.classList.remove('hidden');
   opening = (async () => {
     try {
       const scan = await engine.openWorld(init);
       if (!scan.ok) {
         el.worldNote.textContent = scan.error || 'Mondo non leggibile.';
-        el.worldNote.classList.remove('hidden');
         return false;
       }
-      const changedWorld = state.init !== init;
       state.scan = scan;
-      nameTheJar(scan.version);
       state.init = init;
       state.dimension = scan.dimensions.some((d) => d.id === dimension)
         ? dimension : scan.dimensions[0].id;
-      el.panelPortion.classList.remove('hidden');
-      // A world just opened has no centre worth keeping: start at spawn.
-      if (changedWorld) {
-        const spawn = scan.spawn || { x: 0, z: 0 };
-        setCenter(spawn.x, spawn.z);
-      } else {
-        state.survey = null;
-        runSurvey();
-      }
+      state.survey = null;
+      nameTheJar(scan.version);
+      el.worldNote.classList.add('hidden');
+      if (!state.viewerShown) el.setup.classList.remove('hidden');
+      scheduleSurvey();
       return true;
     } finally {
       opening = null;
@@ -191,7 +223,7 @@ async function syncWorld() {
  * the app can at least name the file instead of asking for "the .jar".
  */
 function nameTheJar(version) {
-  if (!version) return;
+  if (!version || state.pack) return;
   const clean = String(version).trim();
   if (!/^[\w.\- ]{1,32}$/.test(clean)) return;   // a version string, not a sentence
   el.pickPack.textContent = `Scegli ${clean}.jar…`;
@@ -205,13 +237,18 @@ function nameTheJar(version) {
 /** Textures are used when a pack is open and the box is ticked. */
 const useTextures = () => !!state.pack && el.packToggle.checked;
 
-async function openPack(files) {
+async function openPack(files, { remembered = false } = {}) {
   if (!files || !files.length) return;
   setStatus(el.packStatus, 'Sto aprendo l\'archivio…');
   try {
     const result = await engine.openPack(files);
     state.pack = result.names;
-    setStatus(el.packStatus, `Texture da ${result.names.join(' + ')}`, 'ok');
+    state.packRemembered = remembered;
+    el.packStatus.className = '';
+    el.packStatus.textContent = `Texture: ${result.names.join(' + ')} ✓`;
+    el.pickPack.textContent = remembered ? 'ricordato · cambia' : 'cambia';
+    el.reopenPack.classList.add('hidden');
+    el.packHint.classList.add('hidden');
     el.packToggleRow.classList.remove('hidden');
     el.packToggle.checked = true;
   } catch (err) {
@@ -219,184 +256,148 @@ async function openPack(files) {
   }
 }
 
-// ------------------------------------------------------------- l'anteprima ---
+// ------------------------------------------------- la zona (riquadro + rilievo) ---
 
 let surveyTimer = null;
 
 function scheduleSurvey() {
   clearTimeout(surveyTimer);
-  surveyTimer = setTimeout(runSurvey, 260);
+  surveyTimer = setTimeout(runSurvey, 350);
 }
 
 /**
- * A top-down look at the area, wider than the selection so the portion can be
- * moved around inside it without a new read every time.
+ * A top-down read of the zone, a little wider than the box. It gives the
+ * ground height the automatic range is derived from, and the picture for the
+ * mini-map shown next to a finished model.
  */
 async function runSurvey() {
-  if (!state.scan || state.surveying) return;
-  const box = currentBox();
-  // Wider than the selection where that is cheap, but never narrower than it:
-  // the preview has to contain the green frame it draws.
-  const span = Math.max(box.sizeX, Math.min(1024, Math.max(256, snapUp16(box.sizeX * 1.6))));
-  const minX = snapDown16(state.center.x - span / 2);
-  const minZ = snapDown16(state.center.z - span / 2);
-
+  if (!state.scan || !state.box) return;
+  if (state.surveying) { scheduleSurvey(); return; }
+  const box = state.box;
+  const side = Math.max(box.sizeX, box.sizeZ);
+  const span = Math.max(side, Math.min(1024, Math.max(256, snapUp16(side * 1.6))));
+  const c = centerOf(box);
   state.surveying = true;
-  el.previewHint.textContent = 'Sto guardando la zona dall\'alto…';
   try {
     state.survey = await engine.survey({
-      dimId: state.dimension, minX, minZ, width: span, depth: span,
+      dimId: state.dimension,
+      minX: snapDown16(c.x - span / 2), minZ: snapDown16(c.z - span / 2),
+      width: span, depth: span,
       hiddenBlocks: hiddenBlocks(),
       focus: { minX: box.minX, minZ: box.minZ, width: box.sizeX, depth: box.sizeZ },
     });
-    el.previewHint.textContent = state.survey.ground
-      ? `Terreno da Y ${state.survey.ground.lo} a Y ${state.survey.ground.hi}.`
-        + ' Clicca sull\'anteprima per spostare il centro.'
-      : 'Qui non c\'è nessun chunk salvato: spostati altrove.';
-  } catch (err) {
-    el.previewHint.textContent = err.message;
+  } catch {
+    state.survey = null;
   } finally {
     state.surveying = false;
-    drawPreview();
-    refreshEstimate();
+    refreshUI();
   }
 }
 
-function drawPreview() {
-  const canvas = el.preview;
+function drawMinimap(box) {
+  const canvas = el.minimap;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const survey = state.survey;
+  const c = centerOf(box);
+  el.miniCap.textContent = `${Math.round(c.x)}, ${Math.round(c.z)} · ${box.sizeX}×${box.sizeZ}`;
   if (!survey) return;
-
   const bitmap = document.createElement('canvas');
   bitmap.width = survey.width; bitmap.height = survey.depth;
-  bitmap.getContext('2d').putImageData(
-    new ImageData(survey.rgba, survey.width, survey.depth), 0, 0);
-
+  bitmap.getContext('2d').putImageData(new ImageData(survey.rgba, survey.width, survey.depth), 0, 0);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-
-  const box = currentBox();
   const k = canvas.width / survey.width;
-  const x = (box.minX - survey.minX) * k;
-  const z = (box.minZ - survey.minZ) * k;
-  const w = box.sizeX * k;
-
-  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  const x = (box.minX - survey.minX) * k, z = (box.minZ - survey.minZ) * k;
+  const w = box.sizeX * k, h = box.sizeZ * k;
+  ctx.fillStyle = 'rgba(0,0,0,.45)';
   ctx.fillRect(0, 0, canvas.width, z);
-  ctx.fillRect(0, z + w, canvas.width, canvas.height - z - w);
-  ctx.fillRect(0, z, x, w);
-  ctx.fillRect(x + w, z, canvas.width - x - w, w);
+  ctx.fillRect(0, z + h, canvas.width, canvas.height - z - h);
+  ctx.fillRect(0, z, x, h);
+  ctx.fillRect(x + w, z, canvas.width - x - w, h);
   ctx.strokeStyle = '#7fd44f';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x + 1, z + 1, w - 2, w - 2);
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x + 1.5, z + 1.5, w - 3, h - 3);
 }
 
-/**
- * Walk the selection one step sideways. A quarter of the side keeps some of
- * what you were looking at in view; Shift jumps a whole side, for covering
- * ground fast.
- */
-function nudge(dx, dz, whole) {
-  const side = Number(el.radius.value) * 2 * 16;
-  const step = whole ? side : Math.max(16, snapUp16(side / 4));
-  setCenter(state.center.x + dx * step, state.center.z + dz * step);
+function ensureSelection() {
+  if (selection) return selection;
+  const map = host && host.getMap();
+  if (!map) return null;
+  selection = createSelection(map, {
+    toLatLng, fromLatLng,
+    onChange: (box, { dragging }) => {
+      state.box = box;
+      refreshUI();
+      if (!dragging) scheduleSurvey();
+    },
+    onCreate: () => create(),
+  });
+  return selection;
 }
 
-function setCenter(x, z) {
-  state.center = { x: Math.round(x), z: Math.round(z) };
-  el.centerX.value = state.center.x;
-  el.centerZ.value = state.center.z;
-  refreshEstimate();
-  drawPreview();
+/** The box: from the map, the sidebar or a shortcut — always through here. */
+export function setBox(box) {
+  state.box = { minX: box.minX, minZ: box.minZ, sizeX: box.sizeX, sizeZ: box.sizeZ };
+  if (selection) selection.set(state.box);
+  refreshUI();
   scheduleSurvey();
 }
-// -------------------------------------------------------------- il caricamento ---
 
-async function loadPortion() {
-  if (state.loading) return;
-  const box = currentBox();
-  const blocks = box.sizeX * box.sizeY * box.sizeZ;
-  if (blocks > BIG_BLOCKS) {
-    const mb = Math.round((blocks * 2) / (1024 * 1024));
-    const ok = window.confirm(
-      `${box.sizeX}×${box.sizeZ} blocchi per ${box.sizeY} di altezza:`
-      + ` ${(blocks / 1e6).toFixed(0)} milioni di blocchi, circa ${mb} MB.\n\n`
-      + (blocks > HUGE_BLOCKS
-        ? 'A questa taglia il browser può esaurire la memoria e chiudere la pagina'
-          + ' prima di finire. Provo lo stesso?'
-        : 'Ci vorrà un po\' e la pagina resterà ferma mentre legge. Vado?'));
-    if (!ok) return;
-  }
-  state.loading = true;
-  el.load.disabled = true;
-  el.progress.classList.remove('hidden');
-  el.progressBar.style.width = '0%';
-  setStatus(el.loadStatus, 'Lettura del salvataggio…');
+export function getBox() {
+  return state.box ? { ...state.box } : null;
+}
 
+/** Put the box on a point, keeping its size (the map's «vedi in 3D»). */
+export function focusOn(x, z) {
+  const b = state.box;
+  setBox(boxAround(x, z, b ? b.sizeX : RECOMMENDED, b ? b.sizeZ : RECOMMENDED));
+  if (selection) selection.reveal();
+}
+
+// -------------------------------------------------------------- il viewer ---
+
+/**
+ * Put the viewer in a container. The default is the map area (3e); a
+ * floating window (3f) would only need to call this with its own element.
+ */
+export function mountViewer(node) {
+  container = node;
+  if (el.stage.parentElement !== node) node.appendChild(el.stage);
+}
+
+function showViewer() {
+  if (!container) mountViewer(el.stage.parentElement);
+  state.viewerShown = true;
+  container.classList.add('showing-3d');
+  el.stage.classList.remove('hidden');
+  if (selection) selection.hide();
+  el.setup.classList.add('hidden');
+  el.ready.classList.remove('hidden');
+  el.badge.classList.remove('hidden');
   ensureViewer();
-  viewer.reset(box);
-  if (!useTextures()) viewer.clearTextures();
-  el.emptyState.classList.add('hidden');
-  el.scene.classList.remove('hidden');
-  el.crosshair.classList.remove('hidden');
-  el.hud.classList.remove('hidden');
-  el.hudRight.classList.remove('hidden');
   viewer.resize();
   viewer.start();
-
-  try {
-    const phases = {
-      read: { from: 0, to: 35, label: 'Lettura dei chunk' },
-      textures: { from: 35, to: 55, label: 'Lettura delle texture' },
-      mesh: { from: 55, to: 100, label: 'Costruzione della geometria' },
-    };
-    const result = await engine.load(
-      {
-        dimId: state.dimension, box, hiddenBlocks: hiddenBlocks(),
-        textured: useTextures(),
-      },
-      {
-        onProgress: ({ phase, value }) => {
-          const step = phases[phase] || phases.mesh;
-          el.progressBar.style.width = `${(step.from + value * (step.to - step.from)).toFixed(0)}%`;
-          setStatus(el.loadStatus, `${step.label}… ${(value * 100) | 0}%`);
-        },
-        onStream: (data) => {
-          if (data.kind === 'textures') viewer.setTextures(data);
-          else if (data.kind === 'column') viewer.addColumn(data);
-        },
-      });
-
-    viewer.setVolume({
-      blocks: result.blocks, states: result.states, names: result.names, props: result.props,
-    });
-    state.loaded = { box, result };
-
-    const { chunks, missing, unparsed } = result.stats;
-    const notes = [`${chunks} chunk`, `${(result.quads / 1000).toFixed(0)}k facce`];
-    if (result.textured) notes.push(`${result.textureLayers} texture`);
-    if (missing) notes.push(`${missing} chunk mai generati`);
-    if (unparsed) notes.push(`${unparsed} illeggibili`);
-    setStatus(el.loadStatus, notes.join(' · '), unparsed ? 'warn' : 'ok');
-
-    el.panelView.classList.remove('hidden');
-    el.cut.min = String(box.minY);
-    el.cut.max = String(box.minY + box.sizeY);
-    el.cut.value = String(box.minY + box.sizeY);
-    el.cutLabel.textContent = '—';
-    setStatus(el.viewStats,
-      `${(viewer.triangles / 1000).toFixed(0)}k triangoli in ${viewer.meshes.length} mesh`);
-  } catch (err) {
-    setStatus(el.loadStatus, err.message, 'err');
-  } finally {
-    state.loading = false;
-    el.load.disabled = false;
-    el.progress.classList.add('hidden');
-  }
 }
-// ------------------------------------------------------------------ la vista ---
+
+/** Back to the map, with the box where it was. */
+export function backToMap() {
+  if (!state.viewerShown) return;
+  state.viewerShown = false;
+  document.dispatchEvent(new CustomEvent('a3d:viewer-hidden'));
+  el.stage.classList.add('hidden');
+  if (container) container.classList.remove('showing-3d');
+  if (viewer) viewer.stop();
+  el.ready.classList.add('hidden');
+  el.badge.classList.add('hidden');
+  el.setup.classList.remove('hidden');
+  el.review.classList.toggle('hidden', !state.loaded);
+  const map = host && host.getMap();
+  if (map) setTimeout(() => map.invalidateSize(), 30);
+  if (state.tabActive && selection && state.box) selection.show(state.box);
+}
+
+export const isViewerShown = () => state.viewerShown;
 
 function ensureViewer() {
   if (viewer) return;
@@ -415,6 +416,91 @@ function updateHud(hud) {
 }
 
 const short = (name) => String(name).replace(/^minecraft:/, '').replace(/_/g, ' ');
+
+// -------------------------------------------------------------- il caricamento ---
+
+/** «Crea modello 3D»: read the box and show it in place of the map. */
+export async function create() {
+  if (state.loading) return;
+  if (!(await syncWorld())) return;
+  const box = currentBox();
+  const blocks = box.sizeX * box.sizeY * box.sizeZ;
+  if (blocks > BIG_BLOCKS) {
+    const mb = Math.round((blocks * 2) / (1024 * 1024));
+    const ok = window.confirm(
+      `${box.sizeX}×${box.sizeZ} blocchi per ${box.sizeY} di altezza:`
+      + ` ${(blocks / 1e6).toFixed(0)} milioni di blocchi, circa ${mb} MB.\n\n`
+      + (blocks > HUGE_BLOCKS
+        ? 'A questa taglia il browser può esaurire la memoria e chiudere la pagina'
+          + ' prima di finire. Provo lo stesso?'
+        : 'Ci vorrà un po\' e la pagina resterà ferma mentre legge. Vado?'));
+    if (!ok) return;
+  }
+  state.loading = true;
+  el.load.disabled = true;
+  setStatus(el.loadStatus, '');
+  showViewer();
+  viewer.reset(box);
+  if (!useTextures()) viewer.clearTextures();
+  el.cut.disabled = true;
+  el.progress.classList.remove('hidden');
+  el.progressBar.style.width = '0%';
+  el.progressLbl.textContent = 'Lettura del salvataggio…';
+  drawMinimap(box);
+  const started = performance.now();
+
+  try {
+    const phases = {
+      read: { from: 0, to: 35, label: 'Lettura dei chunk' },
+      textures: { from: 35, to: 55, label: 'Lettura delle texture' },
+      mesh: { from: 55, to: 100, label: 'Costruzione della geometria' },
+    };
+    const result = await engine.load(
+      { dimId: state.dimension, box, hiddenBlocks: hiddenBlocks(), textured: useTextures() },
+      {
+        onProgress: ({ phase, value }) => {
+          const step = phases[phase] || phases.mesh;
+          el.progressBar.style.width = `${(step.from + value * (step.to - step.from)).toFixed(0)}%`;
+          el.progressLbl.textContent = `${step.label}… ${(value * 100) | 0}%`;
+        },
+        onStream: (data) => {
+          if (data.kind === 'textures') viewer.setTextures(data);
+          else if (data.kind === 'column') viewer.addColumn(data);
+        },
+      });
+
+    viewer.setVolume({
+      blocks: result.blocks, states: result.states, names: result.names, props: result.props,
+    });
+    state.loaded = { box, result };
+    writeRate(blocks / Math.max(0.5, (performance.now() - started) / 1000));
+
+    el.cut.min = String(box.minY);
+    el.cut.max = String(box.minY + box.sizeY);
+    el.cut.value = String(box.minY + box.sizeY);
+    el.cutLabel.textContent = '—';
+    const { chunks, missing, unparsed } = result.stats;
+    const tris = viewer.triangles;
+    const notes = [`${fmt(chunks)} chunk`, tris >= 1e6
+      ? `${(tris / 1e6).toLocaleString('it-IT', { maximumFractionDigits: 1 })} M triangoli`
+      : `${fmt(tris / 1000)}k triangoli`];
+    if (result.textured) notes.push(`${result.textureLayers} texture`);
+    if (missing) notes.push(`${missing} chunk mai generati`);
+    if (unparsed) notes.push(`${unparsed} illeggibili`);
+    setStatus(el.viewStats, notes.join(' · '), unparsed ? 'warn' : '');
+    drawMinimap(box);
+  } catch (err) {
+    setStatus(el.viewStats, err.message, 'err');
+    setStatus(el.loadStatus, err.message, 'err');
+  } finally {
+    state.loading = false;
+    el.load.disabled = false;
+    el.cut.disabled = false;
+    el.progress.classList.add('hidden');
+    refreshUI();
+  }
+}
+
 // -------------------------------------------------------------------- eventi ---
 
 el.pickPack.onclick = async () => {
@@ -443,25 +529,23 @@ el.reopenPack.onclick = async () => {
     await forgetPack();
     return;
   }
-  openPack(found.files);
+  openPack(found.files, { remembered: true });
 };
 
-el.centerX.onchange = () => setCenter(Number(el.centerX.value), state.center.z);
-el.centerZ.onchange = () => setCenter(state.center.x, Number(el.centerZ.value));
+const resize = (delta) => { if (state.box) setBox(growBox(state.box, delta)); };
+el.minus.onclick = () => resize(-16);
+el.plus.onclick = () => resize(16);
 
-el.spawn.onclick = () => {
-  const spawn = (state.scan && state.scan.spawn) || { x: 0, z: 0 };
-  setCenter(spawn.x, spawn.z);
-};
-
-el.player.onclick = async () => {
-  const pos = await engine.player();
-  if (!pos) { el.previewHint.textContent = 'Il salvataggio non registra dov\'eri.'; return; }
-  setCenter(pos.x, pos.z);
-};
-
-el.radius.oninput = () => { refreshEstimate(); drawPreview(); };
-el.radius.onchange = () => scheduleSurvey();
+el.presets.innerHTML = PRESETS.map((n) => (
+  `<button class="btn btn-sm${n >= 512 ? ' m3-warn' : ''}${n === RECOMMENDED ? ' m3-recommended' : ''}" data-side="${n}">${n}${n >= 512 ? ' ⚠' : ''}</button>`
+)).join('');
+el.presets.querySelectorAll('button').forEach((b) => {
+  b.onclick = () => {
+    const c = state.box ? centerOf(state.box) : { x: 0, z: 0 };
+    setBox(boxAround(c.x, c.z, Number(b.dataset.side)));
+  };
+});
+el.rec.textContent = `${RECOMMENDED} consigliato per questo computer`;
 
 el.heightMode.onchange = () => {
   el.heightManual.classList.toggle('hidden', el.heightMode.value !== 'manual');
@@ -470,28 +554,16 @@ el.heightMode.onchange = () => {
     el.minY.value = String(lo);
     el.heightBlocks.value = String(Math.max(16, snapUp16(state.survey.ground.hi + 12) - lo));
   }
-  refreshEstimate();
+  refreshUI();
 };
-el.minY.onchange = refreshEstimate;
-el.heightBlocks.onchange = refreshEstimate;
+el.minY.onchange = refreshUI;
+el.heightBlocks.onchange = refreshUI;
+el.hiddenBlocks.onchange = scheduleSurvey;
 
-el.nudgeN.onclick = (e) => nudge(0, -1, e.shiftKey);
-el.nudgeS.onclick = (e) => nudge(0, 1, e.shiftKey);
-el.nudgeW.onclick = (e) => nudge(-1, 0, e.shiftKey);
-el.nudgeE.onclick = (e) => nudge(1, 0, e.shiftKey);
-
-el.preview.onclick = (event) => {
-  if (!state.survey) return;
-  const rect = el.preview.getBoundingClientRect();
-  const fx = (event.clientX - rect.left) / rect.width;
-  const fz = (event.clientY - rect.top) / rect.height;
-  setCenter(
-    state.survey.minX + fx * state.survey.width,
-    state.survey.minZ + fz * state.survey.depth,
-  );
-};
-
-el.load.onclick = loadPortion;
+el.load.onclick = () => create();
+el.review.onclick = () => { if (state.loaded) showViewer(); };
+el.backMap.onclick = () => backToMap();
+el.changeZone.onclick = () => backToMap();
 
 el.cut.oninput = () => {
   if (!viewer || !state.loaded) return;
@@ -533,7 +605,7 @@ el.exportGlb.onclick = async () => {
 };
 
 el.snapshot.onclick = async () => {
-  if (!viewer) return;
+  if (!viewer || !state.viewerShown) return;
   const blob = await viewer.snapshot();
   if (!blob) return;
   save(blob, `${worldName()}_3D.png`);
@@ -542,34 +614,77 @@ el.snapshot.onclick = async () => {
 // ----------------------------------------------------------------- ingresso ---
 
 /**
- * Wire the screen up. `host` is how main.js hands over what it already knows:
- * which folder the world came from and which dimension is selected.
+ * Wire the tab up. `bridge` is how main.js hands over what it already knows:
+ * which folder the world came from, which dimension is selected, the map.
  */
 export function init(bridge) {
   host = bridge;
-  refreshEstimate();
+  mountViewer(el.stage.parentElement);
+  refreshUI();
   (async () => {
     const lastPack = await restoreLastPack();
     if (!lastPack) return;
     if (lastPack.needsPermission) {
       el.reopenPack.classList.remove('hidden');
-      el.reopenPack.textContent = `Riapri «${lastPack.names.join(' + ')}»`;
+      el.reopenPack.textContent = `riapri «${lastPack.names.join(' + ')}»`;
     } else {
-      openPack(lastPack.files);
+      openPack(lastPack.files, { remembered: true });
     }
   })();
 }
 
-/** Called every time the screen becomes visible. */
-export async function show() {
-  await syncWorld();
-  if (viewer) viewer.resize();
+/** The «Modello 3D» tab became active: show the box on the map. */
+export async function openTab() {
+  state.tabActive = true;
+  if (!(await syncWorld()) || !state.tabActive) return;
+  if (state.viewerShown) return;
+  const sel = ensureSelection();
+  if (!sel) return;
+  if (!state.box) {
+    const map = host.getMap();
+    const c = fromLatLng(map.getCenter());
+    state.box = boxAround(c.x, c.z, RECOMMENDED);
+  }
+  sel.show(state.box);
+  if (container) container.classList.add('sel-mode');
+  refreshUI();
+  scheduleSurvey();
 }
 
-/** Aim the portion somewhere — this is what "vedi in 3D" on the map calls. */
-export async function focusOn(x, z) {
-  if (!(await syncWorld())) return;
-  setCenter(x, z);
+/** Another tab was chosen: the map comes back, the box goes away. */
+export function closeTab() {
+  state.tabActive = false;
+  if (container) container.classList.remove('sel-mode');
+  if (state.viewerShown) backToMap();
+  if (selection) selection.hide();
+}
+
+/**
+ * Keys while the tab is active. Returns what happened so the caller can stop
+ * the event: 'handled', 'exit' (Esc: leave the tab) or null.
+ */
+export function handleKey(e) {
+  if (!state.tabActive) return null;
+  if (state.viewerShown) {
+    if (e.key === 'Escape') { backToMap(); return 'handled'; }
+    return null;
+  }
+  if (!state.box) return null;
+  const step = (side) => (e.shiftKey ? side : 16);
+  const moves = {
+    ArrowLeft: [-step(state.box.sizeX), 0], ArrowRight: [step(state.box.sizeX), 0],
+    ArrowUp: [0, -step(state.box.sizeZ)], ArrowDown: [0, step(state.box.sizeZ)],
+  };
+  if (moves[e.key]) {
+    setBox(moveBox(state.box, ...moves[e.key]));
+    if (selection) selection.reveal();
+    return 'handled';
+  }
+  if (e.key === '+' || e.key === '=') { resize(16); return 'handled'; }
+  if (e.key === '-' || e.key === '_') { resize(-16); return 'handled'; }
+  if (e.key === 'Enter') { create(); return 'handled'; }
+  if (e.key === 'Escape') return 'exit';
+  return null;
 }
 
 /** The Editor closed or swapped the world: forget what we knew about it. */
@@ -577,4 +692,7 @@ export function worldChanged() {
   state.scan = null;
   state.init = null;
   state.survey = null;
+  state.box = null;
+  if (state.viewerShown) backToMap();
+  if (selection) selection.hide();
 }

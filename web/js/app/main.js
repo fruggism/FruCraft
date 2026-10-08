@@ -14,10 +14,10 @@ import * as Atlas from './atlas.js';
 import * as Archive from './archive.js';
 import * as Reader from './reader.js';
 import * as Atlas3D from './atlas3d.js';
+import * as Entry from './entry.js';
+import * as WorldTab from './worldTab.js';
+import * as Tabs from './redesign.js';
 import { GlbViewer } from './glbReader.js';
-import {
-  supportsHandles, pickDirectory, restoreLastWorld, sourceFromFileList, forgetWorld,
-} from './worldPicker.js';
 import { getInterfaceMode, setInterfaceMode } from './interfaceMode.js';
 
 const LAYER_ICONS = { roads: '🛣️', pois: '📍', areas: '⬟', transit: '🚇', notes: '📝' };
@@ -64,15 +64,17 @@ let openWorldInit = null;
  * screen is visible.
  */
 const SECTIONS = {
-  atlas2d: { label: 'Atlante 2D', editor: 'atlas', reader: 'reader-atlas' },
-  atlas3d: { label: 'Atlante 3D', editor: 'atlas3d', reader: 'reader-atlas3d' },
+  // The 3D model is a tab of the Atlante editor now (atlas3d.js); a saved
+  // .glb is still read back in the Atlante's Lettura, next to the map.
+  atlas2d: { label: 'Atlante', editor: 'atlas', reader: () => (readerSub === 'glb' ? 'reader-atlas3d' : 'reader-atlas') },
   docs: { label: 'Documenti', editor: 'archive', reader: 'reader-archive' },
 };
 
-let glbViewer = null;
 let section = 'atlas2d';
+let readerSub = 'map';
 // Which mode each section was left in, so coming back lands where you were.
-const lastMode = { atlas2d: 'editor', atlas3d: 'editor', docs: 'editor' };
+const lastMode = { atlas2d: 'editor', docs: 'editor' };
+let glbViewer = null;
 
 /** Show one screen and let it know, for the ones that need to measure. */
 function showScreen(name) {
@@ -83,8 +85,10 @@ function showScreen(name) {
   // is zero while the screen is hidden: they have to measure once shown.
   if (name === 'atlas' && Atlas.getMap()) setTimeout(() => Atlas.getMap().invalidateSize(), 60);
   if (name === 'archive') Archive.renderList();
-  if (name === 'atlas3d') Atlas3D.show();
   if (name === 'reader-atlas3d' && glbViewer) glbViewer.resize();
+  document.querySelectorAll('.reader-switch button').forEach((b) => (
+    b.classList.toggle('active', b.dataset.reader === readerSub)
+  ));
 }
 
 /** Go to a section, in a mode — remembering the mode per section. */
@@ -101,7 +105,9 @@ function go(nextSection, mode) {
     t.classList.toggle('active', t.dataset.mode === chosen)
   ));
   el('mode-label').textContent = ` ${SECTIONS[section].label}`;
-  showScreen(SECTIONS[section][chosen]);
+  const target = SECTIONS[section][chosen];
+  showScreen(typeof target === 'function' ? target() : target);
+  Entry.sync();
 }
 
 // ------------------------------------------------------------------ world
@@ -163,6 +169,11 @@ function showCandidates(init, list) {
 
 /** Re-root a picked folder onto one of its sub-worlds. */
 async function narrowInit(init, subPath) {
+  if (!subPath) return init;
+  if (init.kind === 'http') {
+    const prefix = [init.prefix, subPath].filter(Boolean).join('/');
+    return { ...init, prefix, name: subPath.split('/').pop() };
+  }
   if (init.kind === 'files') {
     const files = new Map();
     const prefix = `${subPath}/`;
@@ -181,36 +192,6 @@ async function narrowInit(init, subPath) {
   }
 }
 
-async function pickWorld() {
-  if (supportsHandles) {
-    try {
-      const init = await pickDirectory();
-      await openWorldFromInit(init);
-      el('btn-reopen-world').classList.add('hidden');
-      return;
-    } catch (err) {
-      if (err && err.name === 'AbortError') return; // user closed the picker
-      // Fall through to the input-based picker if the API refused.
-      setStatus('world-status', `Selezione non riuscita (${err.message}); provo il metodo alternativo.`, 'busy');
-    }
-  }
-  el('world-input').click();
-}
-
-async function reopenLastWorld() {
-  const restored = await restoreLastWorld({ prompt: true });
-  if (!restored) {
-    el('btn-reopen-world').classList.add('hidden');
-    return;
-  }
-  if (restored.needsPermission) {
-    setStatus('world-status', 'Permesso negato: scegli di nuovo la cartella.', 'err');
-    return;
-  }
-  await openWorldFromInit(restored);
-  el('btn-reopen-world').classList.add('hidden');
-}
-
 // ---------------------------------------------------------------- project
 async function refreshProjectList(selectId) {
   try {
@@ -224,16 +205,16 @@ async function refreshProjectList(selectId) {
   }
 }
 
-async function createProject() {
-  if (!state.world) { toast('Scegli prima un mondo', 'err'); return; }
+async function createProject({ name: givenName } = {}) {
+  if (!state.world) { toast('Scegli prima un mondo', 'err'); return null; }
   const dimension = el('world-dimension').value;
-  const name = await promptDialog({
+  const name = givenName != null ? givenName : await promptDialog({
     title: 'Nuovo atlante',
     message: 'Come vuoi chiamarlo?',
     value: state.world.levelName || 'Il mio atlante',
     confirmLabel: 'Crea',
   });
-  if (name === null) return;
+  if (name === null) return null;
   try {
     const project = await projects.createProject({
       name: name.trim() || 'Il mio atlante',
@@ -250,9 +231,49 @@ async function createProject() {
     await openProject(project);
     await refreshProjectList(project.id);
     toast('Atlante creato', 'ok');
+    return project;
   } catch (err) {
     setStatus('save-status', err.message, 'err');
+    toast(err.message, 'err');
+    return null;
   }
+}
+
+/**
+ * «Apri» in the world list: the atlas of this world and dimension if there
+ * already is one, a new one otherwise. An atlas belongs to one dimension —
+ * its roads and stations are in that dimension's coordinates — so the Nether
+ * of a world gets an atlas of its own rather than sharing the Overworld's.
+ */
+async function openAtlas() {
+  if (!state.world) return false;
+  const dimension = el('world-dimension').value;
+  const list = await projects.listProjects();
+  const existing = list.find((p) => p.world && p.world.id === state.world.worldKey
+    && p.world.dimension === dimension);
+  if (existing) {
+    await openProjectById(existing.id);
+    return !!state.project;
+  }
+  const dim = state.world.dimensions.find((d) => d.id === dimension);
+  const base = state.world.levelName || 'Il mio atlante';
+  const name = dim && dim.id !== 'overworld' ? `${base} · ${dim.label}` : base;
+  return !!(await createProject({ name }));
+}
+
+/** Leave the open atlas (before choosing another world). */
+function closeProject() {
+  if (!state.project) return;
+  state.project = null;
+  state.selectedFeature = null;
+  el('project-name').value = '';
+  el('project-name').disabled = true;
+  el('topbar-info').textContent = 'Nessun progetto aperto';
+  el('map-overlay').classList.remove('hidden');
+  Atlas.renderAllLayers();
+  renderLayerList();
+  Archive.onProjectLoaded();
+  WorldTab.render();
 }
 
 async function openProjectById(id) {
@@ -276,18 +297,24 @@ async function openProject(project) {
       `<h3>Scegli di nuovo il mondo</h3>
        <p>L'atlante <b>${escapeHtml(project.name)}</b> è salvato, ma il browser non può
        rileggere la cartella del salvataggio senza il tuo permesso.</p>
-       <p>Usa <b>Scegli la cartella del mondo…</b> nel pannello a sinistra.</p>`;
+       <p>Usa <b>cambia mondo</b> nella scheda Mondo.</p>`;
     el('topbar-info').innerHTML = `<span>${escapeHtml(project.name)}</span> · mondo non aperto`;
     renderLayerList();
     Archive.onProjectLoaded();
+    WorldTab.render();
+    Entry.sync();
     return;
   }
 
   const dim = state.world.dimensions.find((d) => d.id === project.world.dimension)
     || state.world.dimensions[0];
   project.world.dimension = dim.id;
-  el('topbar-info').innerHTML =
-    `<span>${escapeHtml(project.name)}</span> · ${escapeHtml(state.world.levelName || '')} · ${escapeHtml(dim.label)}`;
+  // "Mondo · Dimensione", with the atlas name first only when it says
+  // something more (atlases are named after the world by default).
+  const level = state.world.levelName || '';
+  const auto = [level, `${level} · ${dim.label}`];
+  el('topbar-info').innerHTML = (auto.includes(project.name) ? '' : `<span>${escapeHtml(project.name)}</span> · `)
+    + `${escapeHtml(level)} · <span>${escapeHtml(dim.label)}</span>`;
 
   renderBlockFilter();
   // The worker has to know the filter before the first tile is asked for.
@@ -303,6 +330,9 @@ async function openProject(project) {
   const spawn = state.world.spawn || { x: 0, z: 0 };
   el('goto-x').value = Math.round(spawn.x);
   el('goto-z').value = Math.round(spawn.z);
+  el('world-dimension').value = dim.id;
+  WorldTab.render();
+  Entry.sync();
   maybeAutoGenerate();
 }
 
@@ -552,16 +582,27 @@ async function deleteLayer(layerId) {
 /* Presets for the blocks people most often want to look through: all of them
  * are invisible or near-invisible in game, so leaving them in draws walls and
  * blobs that exist nowhere on screen. */
+const COLORS = ['white', 'orange', 'magenta', 'light_blue', 'yellow', 'lime', 'pink', 'gray',
+  'light_gray', 'cyan', 'purple', 'blue', 'brown', 'green', 'red', 'black'];
+const WOODS = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry',
+  'azalea', 'flowering_azalea', 'pale_oak'];
+const mc = (n) => `minecraft:${n}`;
+
+// A preset can stand for a whole family: "vetro" is the plain block, the
+// panes and the sixteen stained ones; "foglie" every kind of leaves.
 const BLOCK_PRESETS = [
-  { name: 'minecraft:barrier', label: 'Barriere' },
-  { name: 'minecraft:light', label: 'Blocchi luce' },
-  { name: 'minecraft:structure_void', label: 'Vuoti struttura' },
-  { name: 'minecraft:structure_block', label: 'Blocchi struttura' },
-  { name: 'minecraft:jigsaw', label: 'Blocchi jigsaw' },
+  { names: [mc('barrier')], label: 'Barriere', icon: 'barrier' },
+  { names: [mc('glass'), mc('glass_pane'), mc('tinted_glass'),
+    ...COLORS.flatMap((c) => [mc(`${c}_stained_glass`), mc(`${c}_stained_glass_pane`)])],
+  label: 'Vetro', icon: 'glass' },
+  { names: WOODS.map((w) => mc(`${w}_leaves`)), label: 'Foglie', icon: 'leaves' },
+  { names: [mc('light')], label: 'Blocchi luce', icon: 'bottle' },
+  { names: [mc('structure_void'), mc('structure_block'), mc('jigsaw')], label: 'Blocchi tecnici', icon: 'crafting' },
 ];
 
 function currentHiddenBlocks() {
-  const chosen = [...document.querySelectorAll('#block-presets input:checked')].map((i) => i.value);
+  const chosen = [...document.querySelectorAll('#block-presets input:checked')]
+    .flatMap((i) => i.value.split(','));
   const custom = String(el('block-custom').value || '').split(/[\n,]/);
   return projects.normalizeBlockList([...chosen, ...custom]);
 }
@@ -572,10 +613,10 @@ function renderBlockFilter() {
   const hidden = state.project ? state.project.settings.hiddenBlocks : projects.DEFAULT_HIDDEN_BLOCKS;
   el('block-presets').innerHTML = BLOCK_PRESETS.map((p) => `
     <label class="check-row">
-      <input type="checkbox" value="${p.name}" ${hidden.includes(p.name) ? 'checked' : ''}>
-      ${escapeHtml(p.label)} <code>${escapeHtml(p.name)}</code>
+      <input type="checkbox" value="${p.names.join(',')}" ${p.names.every((n) => hidden.includes(n)) ? 'checked' : ''}>
+      <img src="img/icons/${p.icon}.png" alt=""> ${escapeHtml(p.label)}
     </label>`).join('');
-  const extras = hidden.filter((h) => !BLOCK_PRESETS.some((p) => p.name === h));
+  const extras = hidden.filter((h) => !BLOCK_PRESETS.some((p) => p.names.includes(h)));
   el('block-custom').value = extras.join('\n');
 }
 
@@ -672,17 +713,19 @@ async function init() {
   // asking for the folder again; the worker behind it is its own.
   Atlas3D.init({
     getWorldInit: () => openWorldInit,
-    getDimension: () => (el('world-dimension') ? el('world-dimension').value : null),
+    getDimension: () => (state.project ? state.project.world.dimension : el('world-dimension').value),
+    getMap: () => Atlas.getMap(),
   });
+  // «Vedi in 3D»: the Modello 3D tab, with the box on what the map shows.
   el('btn-see-3d').addEventListener('click', () => {
-    if (!openWorldInit) { toast('Apri prima un mondo', 'err'); return; }
-    // Without an atlas open there is no map, so there is no "here" to carry
-    // over — say so rather than quietly landing the portion on 0, 0.
-    const map = Atlas.getMap();
-    if (!map) { toast('Apri prima un atlante: il 3D parte da dove guardi sulla mappa', 'err'); return; }
-    const c = Atlas.fromLatLng(map.getCenter());
-    go('atlas3d', 'editor');
+    if (!state.project || !openWorldInit) { toast('Apri prima un atlante', 'err'); return; }
+    const c = Atlas.fromLatLng(Atlas.getMap().getCenter());
+    Tabs.setTab('model3d');
     Atlas3D.focusOn(Math.round(c.x), Math.round(c.z));
+  });
+
+  document.querySelectorAll('.reader-switch button').forEach((b) => {
+    b.addEventListener('click', () => { readerSub = b.dataset.reader; go('atlas2d', 'reader'); });
   });
 
   // Atlante 3D · Lettura: a model opened from disk, no world needed.
@@ -748,15 +791,42 @@ async function initRest() {
   Archive.init();
   Reader.init();
 
-  el('btn-pick-world').addEventListener('click', pickWorld);
-  el('btn-reopen-world').addEventListener('click', reopenLastWorld);
-  el('world-input').addEventListener('change', async (e) => {
-    if (!e.target.files || !e.target.files.length) return;
-    await openWorldFromInit(sourceFromFileList(e.target.files));
-    e.target.value = '';
+  Entry.init({
+    getNav: () => ({ section, mode: lastMode[section] }),
+    go,
+    narrowInit,
+    openWorld: (init) => openWorldFromInit(init),
+    openAtlas,
+    openProjectById,
+    onAtlasOpened: () => { go('atlas2d', 'editor'); Tabs.setTab('layers'); },
+    blockPresets: BLOCK_PRESETS,
+  });
+  WorldTab.init({
+    getMap: () => Atlas.getMap(),
+    goTo: (x, z, zoom) => Atlas.goTo(x, z, zoom),
+    fitWorld: () => Atlas.fitWorld(),
+    changeWorld: () => { closeProject(); Entry.changeWorld(); },
+  });
+  // The title screen's background: the last view of the map, kept small.
+  Atlas.getMap().on('moveend', debounce(() => Entry.captureBackdrop(Atlas.getMap()), 2500));
+
+  // An atlas belongs to one dimension: choosing another one opens (or
+  // creates) that dimension's atlas for the same world.
+  el('world-dimension').addEventListener('change', async () => {
+    if (!state.project) return;
+    const next = el('world-dimension').value;
+    if (next === state.project.world.dimension) return;
+    const dim = state.world && state.world.dimensions.find((d) => d.id === next);
+    const ok = await confirmDialog({
+      title: `Passare a ${dim ? dim.label : next}?`,
+      message: 'Ogni atlante è di una dimensione sola: le sue strade e stazioni hanno le coordinate di quella. Apro l\'atlante di questa dimensione, o lo creo se non c\'è ancora.',
+      confirmLabel: 'Apri',
+    });
+    if (!ok) { el('world-dimension').value = state.project.world.dimension; return; }
+    await openAtlas();
   });
 
-  el('btn-new-project').addEventListener('click', createProject);
+  el('btn-new-project').addEventListener('click', () => createProject());
   el('btn-open-project').addEventListener('click', () => openProjectById(el('project-list').value));
   el('btn-delete-project').addEventListener('click', deleteProject);
   el('btn-export-project').addEventListener('click', exportProject);
@@ -772,29 +842,14 @@ async function initRest() {
 
   el('btn-apply-filter').addEventListener('click', applyBlockFilter);
 
-  el('btn-goto').addEventListener('click', () => {
-    Atlas.goTo(Number(el('goto-x').value) || 0, Number(el('goto-z').value) || 0,
-      Math.max(Atlas.getMap().getZoom(), -2));
-  });
-  for (const id of ['goto-x', 'goto-z']) {
-    el(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') el('btn-goto').click(); });
-  }
-  el('btn-goto-spawn').addEventListener('click', () => {
-    const spawn = (state.world && state.world.spawn) || { x: 0, z: 0 };
-    el('goto-x').value = Math.round(spawn.x);
-    el('goto-z').value = Math.round(spawn.z);
-    Atlas.goTo(spawn.x, spawn.z, 0);
-  });
-  el('btn-goto-fit').addEventListener('click', () => Atlas.fitWorld());
-
+  // The compass used to open a popover; «Vai a» lives in the Mondo tab now.
   el('btn-compass').addEventListener('click', (e) => {
     e.stopPropagation();
-    const opening = el('map-utility-panel').classList.contains('hidden');
     closeMapPopovers();
-    el('map-utility-panel').classList.toggle('hidden', !opening);
-    el('btn-compass').classList.toggle('active', opening);
+    Tabs.setTab('world');
+    el('goto-x').focus();
+    el('goto-x').select();
   });
-  el('map-utility-panel').addEventListener('click', (e) => e.stopPropagation());
 
   el('btn-map-search').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -849,7 +904,8 @@ async function initRest() {
   el('btn-export-png').addEventListener('click', () => Atlas.exportPNG());
 
   document.addEventListener('keydown', (e) => {
-    if (e.target.matches('input, textarea, select')) return;
+    // The target is not always an element (an event sent to document).
+    if (e.target instanceof Element && e.target.matches('input, textarea, select')) return;
     if (e.key === 'Escape') Atlas.setTool('select');
     if (e.key === 'Delete' && state.selectedFeature) {
       Atlas.deleteFeature(state.selectedFeature.layerId, state.selectedFeature.featureId);
@@ -858,21 +914,10 @@ async function initRest() {
 
   await refreshProjectList();
 
-  // Development shortcut: open the world tools/serve.js exposes, so the whole
-  // chain can be driven without the folder picker. Never reached in normal use.
-  if (new URLSearchParams(location.search).has('dev')) {
-    await openWorldFromInit({ kind: 'http', base: '/__world', name: 'testworld' });
-    return;
-  }
-
-  // Offer to reopen the world we mapped last time, if the browser kept it.
-  const restored = await restoreLastWorld();
-  if (restored && restored.kind === 'handle') {
-    await openWorldFromInit(restored, { silent: true });
-  } else if (restored && restored.needsPermission) {
-    el('btn-reopen-world').classList.remove('hidden');
-    el('btn-reopen-world').textContent = `Riapri "${restored.name}"`;
-  }
+  // No more silent reopening of the last world: the title screen offers
+  // «Riprendi» and the saves folder, which ask for permission themselves.
+  // (In development, ?dev points the saves folder at tools/serve.js.)
+  Entry.sync();
 }
 
 // Expose the pieces the other modules call back into.

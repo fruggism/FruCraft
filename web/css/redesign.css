@@ -36,7 +36,8 @@
 #atlas-sidebar[data-active="project"] > .panel[data-panel="project"],
 #atlas-sidebar[data-active="layers"]  > .panel[data-panel="layers"],
 #atlas-sidebar[data-active="props"]   > .panel[data-panel="props"],
-#atlas-sidebar[data-active="export"]  > .panel[data-panel="export"] { display: block; }
+#atlas-sidebar[data-active="export"]  > .panel[data-panel="export"],
+#atlas-sidebar[data-active="model3d"] > .panel[data-panel="model3d"] { display: block; }
 /* La scheda Layer ospita due pannelli: layer e opzioni strumento. */
 #atlas-sidebar[data-active="layers"] > .panel[data-panel="layers"] { flex: none; }
 #atlas-sidebar[data-active="layers"] > .panel[data-panel="layers"]:first-of-type { flex: 1 1 auto; }
@@ -44,7 +45,6 @@
 #atlas-sidebar > .side-tabs + .panel,
 #atlas-sidebar[data-active] > .panel { box-shadow: inset -2px -2px 0 rgba(0,0,0,.55), inset 2px 2px 0 rgba(255,255,255,.08), 0 0 0 2px #000; }
 .panel > h2 .num { display: none; }
-.panel > h2 .welcome-title { display: none; }
 
 /* --------------------------------------------------------------- hotbar */
 .map-wrap { position: relative; }
@@ -86,86 +86,5 @@
 .map-icon-btn { display: inline-flex; align-items: center; justify-content: center; }
 .map-icon-btn img { width: 18px; height: 18px; }
 
-/* ------------------------------------------- 1b · Seleziona il mondo */
-#app.welcome #screen-atlas { position: relative; }
-#app.welcome #map-overlay { display: none; }
-#app.welcome #atlas-sidebar {
-  position: absolute; inset: 0; z-index: 1200;
-  width: auto; border: 0;
-  background: linear-gradient(rgba(0,0,0,.62), rgba(0,0,0,.62)), url(../img/tex/dirt.png) 0 0 / 64px 64px;
-  image-rendering: pixelated;
-  overflow-y: auto;
-  align-items: center; padding: 34px 20px 40px;
-}
-#app.welcome .side-tabs { display: none; }
-#app.welcome #atlas-sidebar > .panel[data-panel="project"] {
-  display: block; flex: none; width: min(880px, 100%); margin: 14px 0 0; padding: 14px 28px;
-  background: rgba(0, 0, 0, .45); box-shadow: inset 0 2px 0 #000, inset 0 -2px 0 #000;
-}
-#app.welcome .panel[data-panel="project"] > h2::after { content: " · riapri un atlante"; color: var(--ink-dim); text-transform: none; }
-#app.welcome #atlas-sidebar > .panel[data-panel="world"] {
-  display: flex; flex-direction: column; gap: 12px;
-  width: min(880px, 100%); flex: none; margin: 0;
-  padding: 22px 28px 26px;
-  background: rgba(0, 0, 0, .45);
-  box-shadow: inset 0 2px 0 #000, inset 0 -2px 0 #000;
-  font-size: 14px;
-}
-#app.welcome .panel[data-panel="world"] > h2 {
-  display: block; text-align: center; font-size: 22px; text-transform: none; letter-spacing: 0;
-  color: #fff; text-shadow: 2px 2px 0 #000; margin-bottom: 8px;
-}
-#app.welcome .panel > h2 .welcome-title { display: inline; }
-#app.welcome .panel > h2 .std-title { display: none; }
-#app.welcome #btn-pick-world, #app.welcome #btn-new-project {
-  height: 50px; font-size: 16px; max-width: 520px; width: 100%; align-self: center;
-}
-#app.welcome #btn-reopen-world { align-self: center; max-width: 520px; width: 100%; height: 42px; font-size: 14px; }
-#app.welcome #world-picks { display: flex; flex-direction: column; gap: 6px; }
-#app.welcome #world-picks:not(.hidden) > * { font-size: 14px; }
-#app.welcome #world-details:not(.hidden) {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 24px; align-items: start;
-}
-#app.welcome #world-details > label { grid-column: 1; }
-#app.welcome #world-details > #block-filter { grid-column: 2; grid-row: 1 / span 2; }
-#app.welcome #world-details > #btn-new-project { grid-column: 1 / -1; }
-#app.welcome #world-details select { height: 40px; font-size: 15px; }
-#app.welcome .panel[data-panel="world"] .status { text-align: center; }
-
-/* ---------------------------------------------- 3D · 1h (pannello a destra) */
-#screen-atlas3d { position: relative; }
-#screen-atlas3d #a3d-sidebar {
-  order: 2; width: 420px;
-  border-right: 0; border-left: 3px solid var(--border);
-}
-#screen-atlas3d #a3d-stage { order: 1; }
-#screen-atlas3d .preview-wrap { padding: 20px; }
-
-.a3d-full-btn {
-  position: absolute; right: 12px; bottom: 12px; z-index: 5;
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; font: inherit; font-size: 13px; color: #fff; cursor: pointer; border: 0;
-  background: #6e6e6e; text-shadow: 2px 2px 0 rgba(0,0,0,.55);
-  box-shadow: inset -2px -2px 0 #3b3b3b, inset 2px 2px 0 #a5a5a5, 0 0 0 2px #101010;
-}
-.a3d-full-btn:hover { background: #8a8a8a; }
-#scene.hidden ~ .a3d-full-btn { display: none; }
-.a3d-hotbar { display: none; }
-
-/* ------------------------------------------- 3D · 1g (HUD a tutto schermo) */
-#app.a3d-full #topbar { display: none; }
-#app.a3d-full .a3d-full-btn span { display: none; }
-#app.a3d-full .a3d-full-btn { top: 12px; bottom: auto; right: 12px; }
-#app.a3d-full .a3d-hotbar { display: flex; }
-#app.a3d-full #hud { left: 12px; top: 12px; bottom: auto; background: rgba(80,80,80,.55); border: 0; font-size: 13px; }
-#app.a3d-full #hud-right { top: 60px; }
-
-#app.a3d-full #a3d-sidebar {
-  position: absolute; z-index: 6; right: 16px; top: 50%; transform: translateY(-50%);
-  width: 300px; max-height: calc(100% - 200px);
-  background: none; border: 0; overflow: visible;
-}
-#app.a3d-full #a3d-sidebar > *:not(#panel-view) { display: none !important; }
-#app.a3d-full #panel-view { margin: 0; background: rgba(10,10,10,.72); }
-#app.a3d-full #panel-view > :not(h2):not(label):not(#view-stats) { display: none; }
-#app.a3d-full #panel-view > label:first-of-type .lbl { font-size: 14px; }
+/* La schermata di benvenuto (1b) e il 3D come sezione a sé (1h/1g) sono
+   stati sostituiti dal flusso della v2: vedi css/flow.css. */

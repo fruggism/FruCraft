@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/atlas3d.css">
 <link rel="stylesheet" href="css/redesign.css">
+<link rel="stylesheet" href="css/flow.css">
 </head>
 <body>
 
@@ -21,12 +22,11 @@
 
   <header id="topbar">
     <button id="sidebar-toggle" class="hidden" title="Mostra/nascondi il pannello">☰</button>
-    <div class="logo"><span class="cube"></span><span>CUBE<b>-ATLAS</b></span><small id="mode-label"> Atlante 2D</small></div>
+    <div class="logo"><span class="cube"></span><span>CUBE<b>-ATLAS</b></span><small id="mode-label"> Atlante</small></div>
     <!-- Cosa stai guardando, e con quale delle due modalità: le sezioni sono
          l'asse principale, la modalità il secondo. -->
     <nav class="tabs" id="section-tabs">
-      <button class="tab active" data-section="atlas2d" title="La mappa del mondo, vista dall'alto"><img src="img/icons/map.png" alt=""> Atlante 2D</button>
-      <button class="tab" data-section="atlas3d" title="Una porzione del mondo in tre dimensioni"><img src="img/icons/grass.png" alt=""> Atlante 3D</button>
+      <button class="tab active" data-section="atlas2d" title="La mappa del mondo, e i suoi modelli 3D"><img src="img/icons/map.png" alt=""> Atlante</button>
       <button class="tab" data-section="docs" title="Libri e documenti del mondo"><img src="img/icons/book.png" alt=""> Documenti</button>
     </nav>
     <nav class="tabs sub-tabs" id="mode-tabs">
@@ -34,15 +34,68 @@
       <button class="tab" data-mode="reader" title="Apri quello che hai già esportato">📖 Lettura</button>
     </nav>
     <div class="topbar-spacer"></div>
-    <label class="interface-picker" title="Passa tra l'interfaccia da scrivania e quella pensata per tablet/penna">
+    <div class="topbar-info" id="topbar-info">Nessun progetto aperto</div>
+  </header>
+
+
+  <!-- ============================ SCHERMATA TITOLO (3a) ================ -->
+  <div id="title-screen" class="hidden">
+    <div class="ts-backdrop" id="ts-backdrop"></div>
+    <div class="ts-center">
+      <div class="ts-logo">
+        <span class="ts-cube"></span>
+        <span class="ts-word">CUBE<b>-ATLAS</b></span>
+        <span class="ts-splash">Nulla lascia il tuo computer!</span>
+      </div>
+      <div class="ts-sub">Mappe, modelli 3D e archivio per mondi Java Edition</div>
+      <button class="btn btn-primary ts-btn" id="btn-title-saves"><img src="img/icons/chest.png" alt=""> <span>Scegli la cartella dei mondi…</span></button>
+      <div class="ts-hint" id="ts-saves-hint">di solito <b>.minecraft/saves</b>: la scegli una volta, poi viene ricordata</div>
+      <button class="btn ts-btn hidden" id="btn-title-resume"><img src="img/icons/grass.png" alt=""> <span class="ts-resume-name" id="ts-resume-name">Riprendi</span><span class="ts-date" id="ts-resume-date"></span></button>
+      <div class="ts-row">
+        <button class="btn" id="btn-title-reader"><img src="img/icons/map.png" alt=""> Lettore</button>
+        <button class="btn" id="btn-title-docs"><img src="img/icons/book.png" alt=""> Documenti</button>
+      </div>
+    </div>
+    <div class="ts-corner ts-left">Java Edition 1.13+ · Chrome o Edge consigliati</div>
+    <div class="ts-corner ts-right">
+      <label class="interface-picker" title="Passa tra l'interfaccia da scrivania e quella pensata per tablet/penna">
       <span class="lbl">Interfaccia</span>
       <select id="interface-mode-select">
         <option value="desktop">🖥️ Desktop</option>
         <option value="ipad">✏️ iPad</option>
       </select>
-    </label>
-    <div class="topbar-info" id="topbar-info">Nessun progetto aperto</div>
-  </header>
+      </label>
+    </div>
+  </div>
+
+  <!-- ========================== SELEZIONA IL MONDO (3b) ================ -->
+  <div id="world-select-screen" class="hidden">
+    <div class="ws-head">
+      <h2>Seleziona il mondo</h2>
+      <div class="ws-path"><img src="img/icons/chest.png" alt=""> <span id="ws-folder">—</span> · <b id="ws-count"></b></div>
+      <input type="search" id="ws-search" placeholder="Cerca…" autocomplete="off">
+    </div>
+    <div class="ws-body">
+      <div class="ws-list-wrap"><ul class="ws-list" id="ws-list"></ul></div>
+      <aside class="ws-side">
+        <div class="ws-label">Dimensione</div>
+        <div class="ws-dims" id="ws-dims"></div>
+        <div class="ws-dim-info" id="ws-dim-info">Scegli un mondo dall'elenco.</div>
+        <div class="ws-label">Blocchi da trattare come aria</div>
+        <div class="ws-blocks" id="ws-blocks"></div>
+        <textarea id="ws-block-custom" class="hidden" rows="3" spellcheck="false" placeholder="tinted_glass&#10;modpack:blocco"></textarea>
+        <div class="ws-note">La mappa mostra ciò che c'è sotto questi blocchi. Si cambia anche dopo, dalla scheda Mondo.</div>
+        <div id="world-status" class="status"></div>
+      </aside>
+    </div>
+    <div class="ws-foot">
+      <button class="btn btn-primary" id="btn-ws-open" disabled>Apri</button>
+      <button class="btn" id="btn-ws-add">Aggiungi un mondo…</button>
+      <button class="btn" id="btn-ws-change">Cambia cartella</button>
+      <button class="btn" id="btn-ws-back">Indietro</button>
+    </div>
+    <input type="file" id="world-add-input" webkitdirectory directory multiple class="hidden">
+  </div>
 
   <!-- ============================== ATLANTE ========================== -->
   <div class="screen active" id="screen-atlas">
@@ -54,22 +107,39 @@
         <button class="side-tab" data-panel="layers" title="Layer (E)"><img src="img/icons/map.png" alt=""></button>
         <button class="side-tab" data-panel="props" title="Proprietà"><img src="img/icons/note.png" alt=""></button>
         <button class="side-tab" data-panel="export" title="Esporta"><img src="img/icons/crafting.png" alt=""></button>
+        <button class="side-tab" data-panel="model3d" title="Modello 3D (M)"><img src="img/icons/stone.png" alt=""></button>
       </nav>
 
+
       <section class="panel" data-panel="world">
-        <h2><span class="num">1</span> <span class="welcome-title">Seleziona il mondo</span><span class="std-title">Mondo</span></h2>
-        <button class="btn btn-primary" id="btn-pick-world">Scegli la cartella del mondo…</button>
-        <button class="btn btn-sm hidden" id="btn-reopen-world">Riapri l'ultimo mondo</button>
-        <input type="file" id="world-input" webkitdirectory directory multiple class="hidden">
-        <div id="world-status" class="status"></div>
-        <div id="world-picks" class="world-picks hidden"></div>
+        <div class="wt-head">
+          <img class="wt-icon" id="wt-icon" src="img/icons/grass.png" alt="">
+          <div class="wt-id">
+            <div class="wt-name" id="wt-name">Nessun mondo</div>
+            <div class="wt-meta"><span id="wt-meta"></span> · <a href="#" id="wt-change">cambia mondo</a></div>
+          </div>
+        </div>
 
-        <div id="world-details" class="hidden">
-          <label>
-            <span class="lbl">Dimensione</span>
-            <select id="world-dimension"></select>
-          </label>
+        <div class="wt-label">Vai a</div>
+        <div class="wt-goto">
+          <label><span>X</span><input type="text" inputmode="text" id="goto-x" placeholder="0" autocomplete="off"></label>
+          <label><span>Z</span><input type="text" inputmode="numeric" id="goto-z" placeholder="0" autocomplete="off"></label>
+          <button class="btn btn-primary" id="btn-goto">Vai</button>
+        </div>
+        <div class="hint">Incolla anche dal gioco: «/tp 812 72 −344» o le coordinate di F3</div>
 
+        <div class="wt-slots">
+          <button class="wt-slot" id="btn-goto-spawn"><img src="img/icons/compass.png" alt=""><span>Spawn</span></button>
+          <button class="wt-slot" id="btn-goto-player"><img src="img/icons/flag.png" alt=""><span>Dov'ero io</span></button>
+          <button class="wt-slot" id="btn-goto-fit"><img src="img/icons/map.png" alt=""><span>Tutto il mondo</span></button>
+        </div>
+
+        <div class="wt-label wt-label-row">Luoghi salvati <button class="linklike" id="btn-place-add">+ salva la vista</button></div>
+        <ul class="wt-places" id="wt-places"></ul>
+        <div class="hint" id="view-info"></div>
+
+        <div class="wt-box">
+          <label class="wt-row"><span>Dimensione</span><select id="world-dimension"></select></label>
           <details id="block-filter" class="sub">
             <summary>Filtro blocchi</summary>
             <div class="hint">Blocchi da ignorare come se fossero aria: sulla mappa
@@ -85,8 +155,18 @@
             <button class="btn btn-sm" id="btn-apply-filter">Applica il filtro</button>
             <div id="filter-status" class="status"></div>
           </details>
+        </div>
 
-          <button class="btn btn-primary" id="btn-new-project">Crea atlante da questo mondo</button>
+        <!-- Vecchio ingresso, ora fatto dalla schermata titolo e dall'elenco
+             dei mondi. Gli elementi restano (nascosti) per i gestori che li
+             usano ancora: l'input file è il ripiego di Safari e Firefox. -->
+        <div class="hidden" aria-hidden="true">
+          <button id="btn-pick-world"></button>
+          <button id="btn-reopen-world"></button>
+          <input type="file" id="world-input" webkitdirectory directory multiple>
+          <div id="world-picks"></div>
+          <div id="world-details"></div>
+          <button id="btn-new-project"></button>
         </div>
       </section>
 
@@ -175,6 +255,84 @@
         <button class="btn" id="btn-export-png">Immagine PNG (tutto appiattito)</button>
         <div id="export-status" class="status"></div>
       </section>
+
+      <section class="panel" data-panel="model3d">
+        <h2>Modello 3D <span class="m3-badge hidden" id="a3d-badge">pronto</span></h2>
+        <div class="status warn hidden" id="a3d-world-note"></div>
+
+        <div id="a3d-setup">
+          <div class="m3-label">Lato <span class="m3-rec" id="a3d-rec"></span></div>
+          <div class="m3-side">
+            <button class="btn" id="a3d-minus" title="Più piccolo (−)">−</button>
+            <div class="m3-val" id="a3d-size">—</div>
+            <button class="btn" id="a3d-plus" title="Più grande (+)">+</button>
+          </div>
+          <div class="m3-presets" id="a3d-presets"></div>
+          <div class="hint">Passi da 16 blocchi (un chunk). Trascina gli angoli del riquadro per una forma rettangolare.</div>
+
+          <div class="m3-ro">
+            <div><span>Centro</span><b id="a3d-center">—</b></div>
+            <div><span>Altezza</span><b id="a3d-height">—</b></div>
+          </div>
+
+          <div class="m3-tex">
+            <img src="img/icons/bottle.png" alt="">
+            <div class="m3-tex-text">
+              <div id="pack-status">Senza texture: ogni blocco è una tinta piatta.</div>
+              <div class="m3-tex-sub">
+                <button class="linklike" id="btn-pick-pack">Scegli il .jar di Minecraft…</button>
+                <button class="linklike hidden" id="btn-reopen-pack">Riapri l'ultimo</button>
+              </div>
+            </div>
+          </div>
+          <div class="hint hidden" id="pack-hint"></div>
+          <input type="file" id="pack-input" accept=".jar,.zip" multiple class="hidden">
+
+          <details class="sub">
+            <summary>Altre opzioni (altezza manuale, blocchi da ignorare)</summary>
+            <label>
+              <span class="lbl">Altezza</span>
+              <select id="height-mode">
+                <option value="auto">Automatica (segue il terreno)</option>
+                <option value="manual">La scelgo io</option>
+              </select>
+            </label>
+            <div class="row hidden" id="height-manual">
+              <label class="grow"><span class="lbl">da Y</span>
+                <input type="number" id="min-y" step="16" value="48"></label>
+              <label class="grow"><span class="lbl">per <b id="height-label">96</b> blocchi</span>
+                <input type="number" id="height-blocks" step="16" min="16" value="96"></label>
+            </div>
+            <label>
+              <span class="lbl">Blocchi da ignorare (uno per riga)</span>
+              <textarea id="a3d-block-custom" rows="3" spellcheck="false" placeholder="glass&#10;oak_leaves"></textarea>
+            </label>
+            <label class="check hidden" id="pack-toggle-row">
+              <input type="checkbox" id="pack-toggle" checked>
+              <span>Usa le texture</span>
+            </label>
+          </details>
+
+          <button class="btn btn-primary m3-create" id="btn-load"><img src="img/icons/stone.png" alt=""> Crea modello 3D</button>
+          <div id="estimate" class="status"></div>
+          <div id="load-status" class="status"></div>
+          <button class="btn btn-sm hidden" id="a3d-review">Rivedi l'ultimo modello</button>
+        </div>
+
+        <div id="a3d-ready" class="hidden">
+          <div class="m3-mini"><canvas id="a3d-minimap" width="240" height="240"></canvas><span class="m3-mini-cap" id="a3d-mini-cap"></span></div>
+          <label class="m3-cut">
+            <span class="lbl">Taglia sopra Y <b id="cut-label">—</b></span>
+            <input type="range" id="cut" min="0" max="1" step="1" value="1">
+          </label>
+          <div class="row m3-two">
+            <button class="btn" id="btn-snapshot"><img src="img/icons/camera.png" alt=""> Foto PNG</button>
+            <button class="btn" id="btn-export"><img src="img/icons/chest.png" alt=""> Esporta .glb</button>
+          </div>
+          <div id="view-stats" class="status"></div>
+          <button class="btn m3-change" id="a3d-change-zone">Cambia zona</button>
+        </div>
+      </section>
     </aside>
 
     <main class="map-wrap">
@@ -199,31 +357,44 @@
         <div class="coord-readout" id="coord-readout">X <b>—</b>  Z <b>—</b></div>
         <button class="map-icon-btn" id="btn-compass" title="Vai alle coordinate (7)"><img src="img/icons/compass.png" alt=""></button>
         <button class="map-icon-btn" id="btn-map-search" title="Cerca una stazione o un edificio per nome (6)"><img src="img/icons/search.png" alt=""></button>
-        <button class="map-icon-btn" id="btn-see-3d" title="Guarda in 3D la zona al centro della mappa (8)"><img src="img/icons/grass.png" alt=""></button>
+        <button class="map-icon-btn" id="btn-see-3d" title="Modello 3D di questa zona (8)"><img src="img/icons/stone.png" alt=""></button>
       </div>
-      <div class="map-utility-panel map-popover hidden" id="map-utility-panel">
-        <h3>Vai alle coordinate</h3>
-        <div class="row-3">
-          <label><span class="lbl">X</span><input type="number" id="goto-x" placeholder="0"></label>
-          <label><span class="lbl">Z</span><input type="number" id="goto-z" placeholder="0"></label>
-          <label><span class="lbl">&nbsp;</span><button class="btn btn-sm" id="btn-goto" style="margin-top:0">Vai</button></label>
-        </div>
-        <div class="row">
-          <button class="btn btn-sm" id="btn-goto-spawn">Punto di spawn</button>
-          <button class="btn btn-sm" id="btn-goto-fit">Tutto il mondo</button>
-        </div>
-        <div class="hint" id="view-info"></div>
-      </div>
+      <div class="map-utility-panel map-popover hidden" id="map-utility-panel"></div>
       <div class="map-search-panel map-popover hidden" id="map-search-panel">
         <h3>Cerca sulla mappa</h3>
         <input type="text" id="map-search-input" placeholder="Nome di una stazione, un punto, una strada…" autocomplete="off">
         <ul class="search-results" id="map-search-results"></ul>
       </div>
+
+      <!-- Il modello 3D si apre qui, al posto della mappa (3e). Il contenitore
+           si può spostare altrove: vedi mountViewer() in atlas3d.js. -->
+      <div id="a3d-stage" class="hidden">
+        <canvas id="scene"></canvas>
+        <div id="crosshair"></div>
+        <div id="hud">
+          <div class="hud-line"><span id="hud-pos">—</span></div>
+          <div class="hud-line dim"><span id="hud-look">—</span></div>
+        </div>
+        <div id="hud-right"></div>
+        <div class="a3d-topright">
+          <button class="a3d-full-btn" id="a3d-full-btn" title="Schermo intero (F)">⛶ <span>Schermo intero</span></button>
+          <button class="a3d-full-btn" id="a3d-back-map" title="Torna alla mappa (Esc)"><img src="img/icons/map.png" alt=""> <span>Torna alla mappa</span></button>
+        </div>
+        <div class="a3d-loading hidden" id="progress"><div class="a3d-loading-lbl" id="a3d-loading-lbl">Lettura del salvataggio…</div><div class="a3d-loading-bar"><div id="progress-bar"></div></div></div>
+        <div class="a3d-help">Trascina: ruota · Rotella: zoom · Tasto destro: sposta</div>
+        <div class="a3d-hotbar hotbar" id="a3d-hotbar">
+          <button class="tool-btn" data-click="btn-snapshot" title="Foto PNG (1)"><span class="key">1</span><img src="img/icons/camera.png" alt=""><span class="lbl-tool">Foto</span></button>
+          <button class="tool-btn" data-click="btn-export" title="Esporta .glb (2)"><span class="key">2</span><img src="img/icons/chest.png" alt=""><span class="lbl-tool">Esporta .glb</span></button>
+          <button class="tool-btn" data-click="a3d-change-zone" title="Cambia zona (3)"><span class="key">3</span><img src="img/icons/stone.png" alt=""><span class="lbl-tool">Cambia zona</span></button>
+          <button class="tool-btn" id="a3d-exit-full" title="Esci (Esc)"><span class="key">Esc</span><img src="img/icons/map.png" alt=""><span class="lbl-tool">Torna</span></button>
+        </div>
+      </div>
+      <div class="sel-hint" id="sel-hint">Frecce: sposta di un chunk · Shift: di un lato · <kbd>+</kbd> <kbd>−</kbd> misura · Invio crea · Esc esce</div>
       <div class="draw-hint hidden" id="draw-hint"></div>
       <div class="map-overlay" id="map-overlay">
         <div class="inner">
           <h3>Benvenuto in Cube-Atlas</h3>
-          <p>Scegli la cartella del tuo mondo Minecraft nel pannello a sinistra e crea un atlante.</p>
+          <p>Scegli la cartella dei mondi dalla schermata iniziale e apri un mondo.</p>
           <p>La mappa viene disegnata leggendo i file di salvataggio direttamente nel browser: nulla lascia il tuo computer.</p>
         </div>
       </div>
@@ -302,6 +473,11 @@
   <!-- ============================== LETTORE: ATLANTE ================= -->
   <div class="screen" id="screen-reader-atlas">
     <aside class="sidebar">
+      <div class="reader-switch">
+        <button class="btn btn-sm active" data-reader="map"><img src="img/icons/map.png" alt=""> Mappa</button>
+        <button class="btn btn-sm" data-reader="glb"><img src="img/icons/stone.png" alt=""> Modello 3D</button>
+      </div>
+
       <section class="panel">
         <h2>Apri un atlante</h2>
         <div class="hint">Apri un file "<i>nome-mondo</i>_ATLAS" esportato dall'Editor con
@@ -369,6 +545,11 @@
   <!-- ATLANTE 3D · LETTURA -------------------------------------------------- -->
   <div class="screen" id="screen-reader-atlas3d">
     <aside class="sidebar">
+      <div class="reader-switch">
+        <button class="btn btn-sm" data-reader="map"><img src="img/icons/map.png" alt=""> Mappa</button>
+        <button class="btn btn-sm active" data-reader="glb"><img src="img/icons/stone.png" alt=""> Modello 3D</button>
+      </div>
+
       <section class="panel">
         <h2><span class="num">1</span> Modello</h2>
         <div class="hint">Apri un <code>.glb</code> esportato dall'Atlante 3D — o
@@ -400,141 +581,6 @@
     </main>
   </div>
 
-  <!-- ATLANTE 3D · EDITOR ---------------------------------------------------- -->
-  <div class="screen" id="screen-atlas3d">
-    <aside class="sidebar" id="a3d-sidebar">
-
-      <section class="panel">
-        <h2><span class="num">1</span> Texture</h2>
-        <div class="hint">Le texture non sono qui dentro: stanno nel gioco che hai
-          già installato. Indica il file <code>.jar</code> della tua versione —
-          su macOS è in <code>~/Library/Application&nbsp;Support/minecraft/versions/</code><i>versione</i>/ —
-          e vengono lette da lì, in locale. Puoi indicare anche un resource pack
-          <code>.zip</code> insieme al gioco: quello scelto per ultimo vince.</div>
-        <div class="hint hidden" id="pack-hint"></div>
-        <button class="btn" id="btn-pick-pack">Scegli il .jar di Minecraft…</button>
-        <button class="btn btn-sm hidden" id="btn-reopen-pack">Riapri l'ultimo</button>
-        <input type="file" id="pack-input" accept=".jar,.zip" multiple class="hidden">
-        <div id="pack-status" class="status">Senza texture ogni blocco è una tinta piatta.</div>
-        <label class="check hidden" id="pack-toggle-row">
-          <input type="checkbox" id="pack-toggle" checked>
-          <span>Usa le texture</span>
-        </label>
-      </section>
-
-      <div class="status warn hidden" id="a3d-world-note"></div>
-
-      <section class="panel hidden" id="panel-portion">
-        <h2><span class="num">2</span> Porzione</h2>
-
-        <div class="row">
-          <label class="grow"><span class="lbl">Centro X</span>
-            <input type="number" id="center-x" step="16"></label>
-          <label class="grow"><span class="lbl">Centro Z</span>
-            <input type="number" id="center-z" step="16"></label>
-        </div>
-        <div class="row">
-          <button class="btn btn-sm grow" id="btn-spawn">Punto di spawn</button>
-          <button class="btn btn-sm grow" id="btn-player">Dov'ero io</button>
-        </div>
-
-        <label>
-          <span class="lbl">Lato <b id="size-label">192</b> blocchi</span>
-          <input type="range" id="radius" min="2" max="32" step="1" value="6">
-        </label>
-
-        <label>
-          <span class="lbl">Altezza</span>
-          <select id="height-mode">
-            <option value="auto">Automatica (segue il terreno)</option>
-            <option value="manual">La scelgo io</option>
-          </select>
-        </label>
-        <div class="row hidden" id="height-manual">
-          <label class="grow"><span class="lbl">da Y</span>
-            <input type="number" id="min-y" step="16" value="48"></label>
-          <label class="grow"><span class="lbl">per <b id="height-label">96</b> blocchi</span>
-            <input type="number" id="height-blocks" step="16" min="16" value="96"></label>
-        </div>
-
-        <div class="preview-wrap">
-          <canvas id="preview" width="256" height="256" title="Clicca per spostare il centro"></canvas>
-          <button class="nudge up"    id="nudge-n" type="button" title="Sposta verso nord (Z−). Con Shift, di un lato intero.">▲</button>
-          <button class="nudge down"  id="nudge-s" type="button" title="Sposta verso sud (Z+). Con Shift, di un lato intero.">▼</button>
-          <button class="nudge left"  id="nudge-w" type="button" title="Sposta verso ovest (X−). Con Shift, di un lato intero.">◀</button>
-          <button class="nudge right" id="nudge-e" type="button" title="Sposta verso est (X+). Con Shift, di un lato intero.">▶</button>
-        </div>
-        <div class="hint" id="preview-hint">Clicca sull'anteprima per spostare il centro, oppure
-          usa le frecce ai lati: un passo è un quarto del lato, con <kbd>Shift</kbd> un lato intero.</div>
-
-        <details class="sub">
-          <summary>Blocchi da ignorare</summary>
-          <div class="hint">Letti come se fossero aria. Le barriere sono già escluse
-            sempre: qui servono i blocchi che vuoi togliere di mezzo tu, per esempio
-            il vetro di una serra per vedere cosa c'è dentro.</div>
-          <textarea id="a3d-block-custom" rows="3" spellcheck="false"
-            placeholder="glass&#10;oak_leaves"></textarea>
-        </details>
-
-        <div id="estimate" class="status"></div>
-        <button class="btn btn-primary" id="btn-load">Carica in 3D</button>
-        <div id="load-status" class="status"></div>
-        <div class="progress hidden" id="progress"><div id="progress-bar"></div></div>
-      </section>
-
-      <section class="panel hidden" id="panel-view">
-        <h2><span class="num">3</span> Vista</h2>
-        <label>
-          <span class="lbl">Taglia sopra Y <b id="cut-label">—</b></span>
-          <input type="range" id="cut" min="0" max="1" step="1" value="1">
-        </label>
-        <div class="hint">Serve per guardare dentro una costruzione. Il terreno
-          pieno, invece, si apre: le facce fra due blocchi pieni non esistono —
-          non sono disegnate perché non si vedrebbero — quindi sotto il taglio
-          non c'è niente da mostrare.</div>
-        <button class="btn btn-sm" id="btn-snapshot">📷 Salva immagine</button>
-        <button class="btn btn-sm" id="btn-export">🧊 Esporta il modello (.glb)</button>
-        <div class="hint">Il <code>.glb</code> contiene la geometria e le texture
-          della porzione: si apre in Blender, in Anteprima su macOS e in
-          qualunque visualizzatore 3D. Esce quello che vedi — se hai tagliato in
-          altezza, il taglio vale anche qui.</div>
-        <div id="view-stats" class="status"></div>
-        <details class="sub" open>
-          <summary>Comandi</summary>
-          <div class="keys">
-            <div>Trascina per girare intorno alla porzione, rotellina per
-              avvicinarti, tasto destro (o trascina con due dita) per spostare
-              il punto attorno a cui giri.</div>
-          </div>
-        </details>
-      </section>
-    </aside>
-
-    <main id="a3d-stage">
-      <div id="a3d-empty">
-        <div class="empty-cube"></div>
-        <h3>Scegli una porzione, guardala in 3D</h3>
-        <p>La porzione viene letta dal salvataggio che hai già aperto nell'Editor
-          e ricostruita blocco per blocco: poi ci si gira dentro.</p>
-      </div>
-      <canvas id="scene" class="hidden"></canvas>
-      <div id="crosshair" class="hidden"></div>
-      <div id="hud" class="hidden">
-        <div class="hud-line"><span id="hud-pos">—</span></div>
-        <div class="hud-line dim"><span id="hud-look">—</span></div>
-      </div>
-      <div id="hud-right" class="hidden"></div>
-      <!-- Redesign: 1h (anteprima + pannello) ⇄ 1g (HUD a tutto schermo) -->
-      <button class="a3d-full-btn" id="a3d-full-btn" title="Schermo intero (F)">⛶ <span>Schermo intero</span></button>
-      <div class="a3d-hotbar hotbar" id="a3d-hotbar">
-        <button class="tool-btn" data-click="btn-snapshot" title="Foto PNG (1)"><span class="key">1</span><img src="img/icons/camera.png" alt=""><span class="lbl-tool">Foto</span></button>
-        <button class="tool-btn" data-click="btn-export" title="Esporta .glb (2)"><span class="key">2</span><img src="img/icons/chest.png" alt=""><span class="lbl-tool">Esporta .glb</span></button>
-        <button class="tool-btn" data-click="btn-load" title="Ricarica (3)"><span class="key">3</span><img src="img/icons/stone.png" alt=""><span class="lbl-tool">Ricarica</span></button>
-        <button class="tool-btn" id="a3d-exit-full" title="Esci (Esc)"><span class="key">Esc</span><img src="img/icons/map.png" alt=""><span class="lbl-tool">Torna</span></button>
-      </div>
-    </main>
-  </div>
-
 </div>
 
 <div id="toast-host"></div>
@@ -543,7 +589,6 @@
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/leaflet.draw.js"></script>
 <script type="module" src="js/app/main.js"></script>
-<script type="module" src="js/app/redesign.js"></script>
 <noscript>
   <p style="padding:20px">Cube-Atlas ha bisogno di JavaScript: tutta l'elaborazione avviene nel browser.</p>
 </noscript>
