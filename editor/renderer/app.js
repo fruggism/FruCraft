@@ -621,6 +621,7 @@ function propsHtml(t) {
     <div class="sec"><div class="caps sh">Vista</div>
       <div class="row"><span>Griglia dei chunk</span>${sw('pv-grid', state.grid, 'Griglia dei chunk')}</div>
       <div class="row"><span>Vista biomi</span>${sw('pv-biomes', t.view === 'biomes', 'Vista biomi')}</div>
+      ${t.view === 'biomes' ? '<p class="hint" style="margin:2px 0 6px">Ogni colore è un bioma (pianura, foresta, oceano…). Passa il mouse sulla mappa: il nome compare in basso. Lo strumento Bioma (B) li dipinge.</p>' : ''}
       <div class="row"><span title="Barriere, blocchi luce e vuoti struttura: in gioco non si vedono, sulla mappa si guarda attraverso">Nascondi blocchi invisibili</span>${sw('pv-invisible', hideInvisible(), 'Nascondi blocchi invisibili')}</div>
     </div>
     <div class="sec"><div class="caps sh">Mondo</div>
@@ -840,6 +841,8 @@ function renderStatus() {
     if (fa) parts.push(`<span>Tempo qui: ${timeText(fa.seconds)}${fa.state === 1 ? ' · <b style="color:var(--rd)">si elimina</b>' : ''}</span>`);
   }
   if (map && t) parts.push(`<span>Zoom ${fmt(Math.round(Math.pow(2, map.getZoom()) * 100))}%</span>`);
+  // Far zooms are built in the background: say so, instead of a silent black map.
+  if (t && state.building) parts.push(`<span class="building" title="Le zone viste da lontano si disegnano in background, partendo da quella che hai davanti. La prima volta può volerci qualche minuto; poi restano pronte finché il mondo è aperto.">Preparo la mappa… ${fmt(state.building)}</span>`);
   let cut = '';
   if (t) {
     const info = dimensionInfo(t.dim);
@@ -1295,7 +1298,11 @@ document.addEventListener('keyup', (e) => {
   }
 });
 
-api.onTilesReady((id, box) => { if (id === state.active && layer) layer.refreshIn([box]); });
+api.onTilesReady((id, box) => {
+  if (id !== state.active) return;
+  if (box.bounds && layer) layer.refreshIn([box]);
+  if (state.building !== box.pending) { state.building = box.pending; renderStatus(); }
+});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 
 (async function start() {

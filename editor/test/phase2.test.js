@@ -312,7 +312,7 @@ export function register({ test, section, assert, assertEqual }) {
     await getTile(s.ctxFor('overworld', null), -3, 0, 0, true);
     const before = await s.tile('overworld', -3, 0, 0);
     assert(before, 'riquadro lontano');
-    const ready = new Promise((resolve) => { s.onTilesReady = resolve; });
+    const ready = new Promise((resolve) => { s.onTilesReady = (b) => { if (b.bounds) resolve(b); }; });
     s.push({ type: 'fillBox', dim: 'overworld', x1: 0, y1: 39, z1: 0, x2: 31, y2: 39, z2: 31, state: 'gold_block' });
     const during = await s.tile('overworld', -3, 0, 0);
     assert(during === before, 'mostra il vecchio, non un buco');

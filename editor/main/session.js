@@ -134,7 +134,10 @@ export class WorldSession {
     this.dirty = [];
     this.stale = new Map();          // cache key -> Map of outdated zoomed-out tiles
     this.rebuildQueued = new Set();
-    this.rebuildChain = Promise.resolve();
+    this.buildQueue = [];            // far-zoom tiles waiting to be built, newest first
+    this.building = false;
+    this.current = null;             // the job being built right now
+    this.lastAsked = null;           // cache key of the view the window asked for last
     this.onTilesReady = null;        // set by the main process: (box) => notify the window
     this.journal.onChange((_j, op) => { this.invalidate(op); this.persist(); });
     if (this.hidden === undefined) this.hidden = new Set(INVISIBLE_BLOCKS);
@@ -198,20 +201,46 @@ export class WorldSession {
    * the window its area changed. Only down to z = -3 (64 base tiles); further
    * out, tiles are composed from those once they exist.
    */
+  /**
+   * Build a far-zoom tile in the background. The newest request goes first (it
+   * is what the window shows now), and work for a view or dimension the window
+   * has left is dropped: it will be asked for again if it comes back. The
+   * window hears about every finished tile, and how many are still to come.
+   */
   scheduleRebuild(dimId, maxY, view, z, x, y) {
-    const id = `${this.cacheKey(dimId, maxY, view)}|${z}/${x}/${y}`;
+    const key = this.cacheKey(dimId, maxY, view);
+    const id = `${key}|${z}/${x}/${y}`;
     if (this.rebuildQueued.has(id)) return;
     this.rebuildQueued.add(id);
-    this.rebuildChain = this.rebuildChain.then(async () => {
+    this.buildQueue.unshift({ id, key, dimId, maxY, view, z, x, y });
+    this.notifyBuild(dimId, null);
+    this.pumpBuilds();
+  }
+
+  notifyBuild(dimId, bounds) {
+    if (this.onTilesReady) this.onTilesReady({ dim: dimId, bounds, pending: this.buildQueue.length + (this.current ? 1 : 0) });
+  }
+
+  async pumpBuilds() {
+    if (this.building) return;
+    this.building = true;
+    while (this.buildQueue.length) {
+      const job = this.buildQueue.shift();
+      if (this.lastAsked && job.key !== this.lastAsked) { this.rebuildQueued.delete(job.id); continue; }
+      let bounds = null;
+      this.current = job;
       try {
-        const ctx = this.ctxFor(dimId, maxY, view);
-        const r = await getTile(ctx, z, x, y, true);
-        if (!r.partial) this.staleOf(this.cacheKey(dimId, maxY, view)).delete(`${z}/${x}/${y}`);
-        const span = blocksPerTile(z);
-        if (this.onTilesReady) this.onTilesReady({ dim: dimId, bounds: { minX: x * span, minZ: y * span, maxX: (x + 1) * span - 1, maxZ: (y + 1) * span - 1 } });
+        const r = await getTile(this.ctxFor(job.dimId, job.maxY, job.view), job.z, job.x, job.y, true);
+        if (!r.partial) this.staleOf(job.key).delete(`${job.z}/${job.x}/${job.y}`);
+        const span = blocksPerTile(job.z);
+        bounds = { minX: job.x * span, minZ: job.y * span, maxX: (job.x + 1) * span - 1, maxZ: (job.y + 1) * span - 1 };
       } catch { /* the window will ask again */ }
-      this.rebuildQueued.delete(id);
-    });
+      this.rebuildQueued.delete(job.id);
+      this.current = null;
+      if (bounds) this.notifyBuild(job.dimId, bounds);
+    }
+    this.building = false;
+    this.notifyBuild(null, null);
   }
 
   /** Boxes changed since the last call: what the window must redraw. */
@@ -311,6 +340,7 @@ export class WorldSession {
 
   /** RGBA bytes of a 256x256 tile, or null when there is nothing there. view: 'blocks' | 'biomes'. */
   async tile(dimId, z, x, y, maxY = null, view = 'blocks') {
+    this.lastAsked = this.cacheKey(dimId, maxY, view);
     const r = await serveTile(this.ctxFor(dimId, maxY, view), z, x, y);
     if (r.partial && z <= -2) {
       // Far zooms are only composed from tiles already built: build this one in

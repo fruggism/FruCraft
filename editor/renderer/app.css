@@ -328,3 +328,9 @@ body.panel-collapsed #panel-body { display: none; }
 /* Libera spazio: legend of the heat layer */
 .legend-row { display: flex; align-items: center; gap: 8px; min-height: 24px; color: var(--tx2); }
 .legend-row .tile { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+
+/* Far zooms being built in the background */
+#status .building { color: var(--am, #e0a43a); display: inline-flex; align-items: center; gap: 6px; }
+#status .building::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: building-pulse 1.2s ease-in-out infinite; }
+@keyframes building-pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { #status .building::before { animation: none; } }
