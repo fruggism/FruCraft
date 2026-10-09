@@ -79,7 +79,9 @@ const blockIndex = (lx, ly, lz) => ((ly & 15) << 8) | ((lz & 15) << 4) | (lx & 1
 // Section-local biome cell index (4x4x4 cells): y*16 + z*4 + x
 const biomeIndex = (lx, ly, lz) => (((ly & 15) >> 2) << 4) | (((lz & 15) >> 2) << 2) | ((lx & 15) >> 2);
 
-const paletteNames = (tags) => tags.map((p) => (typeof p === 'string' ? p : (p && p.Name) || 'minecraft:air'));
+// A palette entry is { Name, Properties } up to 26.2; from 26.3 a bare name,
+// or { id, properties } when the state has properties.
+const paletteNames = (tags) => tags.map((p) => (typeof p === 'string' ? p : (p && (p.Name || p.id)) || 'minecraft:air'));
 
 export function normalizeChunk(root) {
   const padded = Number(root.DataVersion || 0) >= DV_PADDED_PACKING;

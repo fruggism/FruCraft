@@ -11,7 +11,7 @@ import zlib from 'node:zlib';
 
 import { parseRaw, TAG, TList, TByte } from '../../web/js/core/nbt.js';
 import { writeNbt } from '../../web/js/core/nbtWrite.js';
-import { readSpanningPacked, readPaddedPacked, clearRegionCache } from '../../web/js/core/anvil.js';
+import { readSpanningPacked, readPaddedPacked, clearRegionCache, analyzeChunk } from '../../web/js/core/anvil.js';
 import { renderBaseTile } from '../../web/js/core/tiler.js';
 import { RegionData, readRegionFile, writeRegionFile } from '../core/region.js';
 import {
@@ -170,6 +170,38 @@ export function register({ test, section, assert, assertEqual }) {
     assertEqual(stateKey(re.getState(5, 39, 3)), 'minecraft:grass_block', 'vicino');
     assertEqual(value.mod_data.listOfLists.items.length, 2, 'chiavi sconosciute');
     assertEqual(value.InhabitedTime, 12345n, 'InhabitedTime');
+  });
+
+  test('NBT: una lista mista (26.3) si rilegge spacchettata e si riscrive come il gioco', () => {
+    const tree = { l: ['minecraft:air', { id: 'minecraft:water', properties: { level: '2' } }], w: [{ '': 'x' }, { a: 1 }] };
+    const back = parseRaw(writeNbt(tree), { typed: true }).value;
+    assertEqual(back.l.itemType, TAG.Compound, 'lista di compound');
+    assertEqual(back.l.items[0], 'minecraft:air', 'stringa spacchettata');
+    assertEqual(back.l.items[1].id, 'minecraft:water', 'compound intatto');
+    assertEqual(back.w.items[0][''], 'x', 'un compound con la sola chiave "" sopravvive');
+    assertEqual(writeNbt(back).length, writeNbt(tree).length, 'riscrittura stabile');
+  });
+
+  test('chunk 26.3 (palette con nomi nudi e { id, properties }): si legge, si modifica e resta nel suo formato', () => {
+    const chunk = makeChunk(0, 0);
+    for (const sec of chunk.sections.items) {
+      sec.block_states.palette = new TList(TAG.String, sec.block_states.palette.items.map((p) => p.Name));
+    }
+    const { value } = parseRaw(writeNbt(chunk), { typed: true });
+    const cols = analyzeChunk(parseRaw(writeNbt(chunk)).value);
+    assertEqual(cols.surfaceName[0], 'minecraft:grass_block', 'la mappa vede l\'erba, non la pietra sotto');
+    const ed = new ChunkEditor(value);
+    assertEqual(stateKey(ed.getState(3, 39, 3)), 'minecraft:grass_block', 'prima');
+    ed.setState(3, 39, 3, parseState('oak_stairs[facing=east,half=top]'));
+    ed.commit();
+    const raw = parseRaw(writeNbt(value)).value;
+    const pal = raw.sections.find((x) => x.Y === 2).block_states.palette;
+    assert(pal.includes('minecraft:stone'), 'nomi nudi');
+    assert(pal.some((p) => p && p.id === 'minecraft:oak_stairs' && p.properties.half === 'top'), '{ id, properties }');
+    assert(!pal.some((p) => p && p.Name), 'niente Name nel formato nuovo');
+    const re = new ChunkEditor(parseRaw(writeNbt(value), { typed: true }).value);
+    assertEqual(stateKey(re.getState(3, 39, 3)), 'minecraft:oak_stairs[facing=east,half=top]', 'scala');
+    assertEqual(stateKey(re.getState(5, 39, 3)), 'minecraft:grass_block', 'vicino');
   });
 
   test('setState: luce tolta, isLightOn a 0, block entity rimossa, sezioni non toccate intatte', () => {

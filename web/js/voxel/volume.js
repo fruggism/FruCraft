@@ -33,8 +33,8 @@ export const MAX_BLOCKS = 64 * 1024 * 1024;
  */
 export function stateKeyOf(entry) {
   if (typeof entry === 'string') return entry;
-  const name = (entry && entry.Name) || 'minecraft:air';
-  const props = entry && entry.Properties;
+  const name = (entry && (entry.Name || entry.id)) || 'minecraft:air';
+  const props = entry && (entry.Properties || entry.properties);
   if (!props) return name;
   let key = name;
   for (const p of SHAPE_PROPS) {
@@ -58,8 +58,9 @@ class StatePalette {
     id = this.keys.length;
     this.ids.set(key, id);
     this.keys.push(key);
-    this.names.push(typeof entry === 'string' ? entry : (entry.Name || 'minecraft:air'));
-    this.props.push(typeof entry === 'string' ? null : (entry.Properties || null));
+    // { Name, Properties } up to 26.2, { id, properties } from 26.3.
+    this.names.push(typeof entry === 'string' ? entry : (entry.Name || entry.id || 'minecraft:air'));
+    this.props.push(typeof entry === 'string' ? null : (entry.Properties || entry.properties || null));
     return id;
   }
 }
@@ -146,7 +147,7 @@ export async function readVolume(source, regionDir, boxSpec, options = {}) {
 
         for (let i = 0; i < paletteTag.length; i++) {
           const entry = paletteTag[i];
-          const name = typeof entry === 'string' ? entry : (entry && entry.Name) || 'minecraft:air';
+          const name = typeof entry === 'string' ? entry : (entry && (entry.Name || entry.id)) || 'minecraft:air';
           remap[i] = hidden && hidden.has(name) ? AIR_STATE : palette.idFor(entry);
         }
 

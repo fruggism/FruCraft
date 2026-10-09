@@ -15,7 +15,7 @@
  */
 
 import {
-  TAG, TLong, TFloat, TDouble, TByte, TShort, TIntArray, TLongArray, TList,
+  TAG, TLong, TFloat, TDouble, TByte, TShort, TIntArray, TLongArray, TList, isListWrapper,
 } from './nbt.js';
 
 export {
@@ -108,6 +108,13 @@ function writePayload(w, type, val) {
       let items;
       if (val instanceof TList) { itemType = val.itemType; items = val.items; }
       else { items = val; itemType = items.length ? typeOf(items[0]) : TAG.End; }
+      // Mixed element types (or a compound that looks like a wrapper) become a
+      // list of compounds with the odd ones wrapped as { "": x }, as the game does.
+      const plain = (it) => typeOf(it) === TAG.Compound && !isListWrapper(it);
+      if (items.length && (items.some((it) => typeOf(it) !== typeOf(items[0])) || (itemType === TAG.Compound && !items.every(plain)))) {
+        itemType = TAG.Compound;
+        items = items.map((it) => (plain(it) ? it : { '': it }));
+      }
       w.ubyte(itemType);
       w.int(items.length);
       for (const item of items) writePayload(w, itemType, item);

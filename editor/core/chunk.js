@@ -56,18 +56,37 @@ export function parseState(text) {
 const items = (list) => (list instanceof TList ? list.items : Array.isArray(list) ? list : []);
 const asList = (type, arr) => new TList(arr.length ? type : TAG.End, arr);
 
-/** A palette entry as plain strings, whatever the tree's tag types. */
+/*
+ * Palette entries come in two layouts. Up to 26.2: { Name, Properties }.
+ * From 26.3: a bare name when the state has no properties, otherwise
+ * { id, properties } (the list then mixes both, see nbt.js). Inside the editor a
+ * state is always { Name, Properties }; the chunk's own layout is kept on write.
+ */
+
+/** A palette entry as plain strings, whatever the tree's tag types and layout. */
 function stateFromTag(tag) {
   if (typeof tag === 'string') return { Name: tag };
-  const out = { Name: tag.Name };
-  if (tag.Properties && Object.keys(tag.Properties).length) out.Properties = { ...tag.Properties };
+  const out = { Name: tag.Name ?? tag.id };
+  const props = tag.Properties ?? tag.properties;
+  if (props && Object.keys(props).length) out.Properties = { ...props };
   return out;
 }
 
-function stateToTag(state) {
-  const tag = { Name: state.Name };
-  if (state.Properties && Object.keys(state.Properties).length) tag.Properties = { ...state.Properties };
-  return tag;
+function stateToTag(state, compact) {
+  const props = state.Properties && Object.keys(state.Properties).length ? { ...state.Properties } : null;
+  if (compact) return props ? { id: state.Name, properties: props } : state.Name;
+  return props ? { Name: state.Name, Properties: props } : { Name: state.Name };
+}
+
+/** Does this chunk use the 26.3 palette layout? Judged from its own palettes. */
+function usesCompactStates(root) {
+  for (const sec of items(root.sections)) {
+    for (const p of items(sec.block_states && sec.block_states.palette)) {
+      if (typeof p === 'string' || (p && typeof p === 'object' && 'id' in p)) return true;
+      if (p && typeof p === 'object' && 'Name' in p) return false;
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +170,7 @@ export class ChunkEditor {
       throw new Error('Formato del chunk non supportato (servono i chunk 1.18+)');
     }
     this.padded = this.dataVersion >= DV_PADDED_PACKING;
+    this.compactStates = usesCompactStates(root);
     this.minY = minY;
     this.height = height;
     this.minSectionY = Math.floor(minY / 16);
@@ -260,7 +280,8 @@ export class ChunkEditor {
       }
       if (sec.blocksDirty) {
         const { palette, blocks } = compact(sec.palette, sec.blocks);
-        const block_states = { palette: asList(TAG.Compound, palette.map(stateToTag)) };
+        const tags = palette.map((st) => stateToTag(st, this.compactStates));
+        const block_states = { palette: asList(tags.every((x) => typeof x === 'string') ? TAG.String : TAG.Compound, tags) };
         if (palette.length > 1) {
           block_states.data = packIndices(blocks, blockBits(palette.length), this.padded);
         }

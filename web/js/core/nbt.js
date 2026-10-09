@@ -101,6 +101,10 @@ class Reader {
   }
 }
 
+/** { "": x } — how a heterogeneous list wraps an element (see the List case). */
+export const isListWrapper = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+  && !ArrayBuffer.isView(v) && Object.keys(v).length === 1 && Object.prototype.hasOwnProperty.call(v, '');
+
 function readPayload(r, type, typed) {
   switch (type) {
     case TAG.Byte: return typed ? new TByte(r.byte()) : r.byte();
@@ -121,6 +125,11 @@ function readPayload(r, type, typed) {
       const len = r.int();
       const out = new Array(len);
       for (let i = 0; i < len; i++) out[i] = readPayload(r, itemType, typed);
+      // 1.21.5+ heterogeneous lists: stored as compounds, each element that is
+      // not itself a plain compound wrapped as { "": element }.
+      if (itemType === TAG.Compound) {
+        for (let i = 0; i < len; i++) if (isListWrapper(out[i])) out[i] = out[i][''];
+      }
       return typed ? new TList(itemType, out) : out;
     }
     case TAG.Compound: {
