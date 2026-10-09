@@ -105,6 +105,9 @@ export function mainArea(regions) {
   return { mainBounds: b, home: hasOrigin ? { x: 0, z: 0 } : { x: (b.minX + b.maxX) >> 1, z: (b.minZ + b.maxZ) >> 1 } };
 }
 
+/** The Nether is seen from under its bedrock roof, unless a cut height is chosen. */
+const lookUnderRoof = (dimId, maxY) => dimId === 'the_nether' && (maxY === null || maxY === undefined);
+
 export class WorldSession {
   static async open(worldDir, { dataDir }) {
     const s = new WorldSession(path.resolve(worldDir), dataDir);
@@ -298,6 +301,7 @@ export class WorldSession {
         ...(maxY === null || maxY === undefined ? {} : { maxY }),
         ...(view === 'biomes' ? { biomeColor } : {}),
         ...(this.hidden ? { hiddenBlocks: this.hidden } : {}),
+        ...(lookUnderRoof(dimId, maxY) ? { underCeiling: true } : {}),
       },
     };
   }
@@ -322,7 +326,7 @@ export class WorldSession {
   /** What is under the cursor: surface block, its height and biome. */
   async probe(dimId, x, z, maxY = null) {
     const dim = this.scan.dimensions.find((d) => d.id === dimId);
-    const g = await readSurface(this.overlay, dim.regionDir, x, z, 1, 1, { ...(maxY === null ? {} : { maxY }), ...(this.hidden ? { hiddenBlocks: this.hidden } : {}) });
+    const g = await readSurface(this.overlay, dim.regionDir, x, z, 1, 1, { ...(maxY === null ? {} : { maxY }), ...(this.hidden ? { hiddenBlocks: this.hidden } : {}), ...(lookUnderRoof(dimId, maxY) ? { underCeiling: true } : {}) });
     if (g.surfaceY[0] === NO_DATA) return null;
     return { y: g.surfaceY[0], block: g.surfaceName[0], biome: g.biome[0] };
   }

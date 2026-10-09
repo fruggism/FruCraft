@@ -137,6 +137,11 @@ export function normalizeChunk(root) {
  * they were air — barriers and other invisible blocks otherwise draw solid
  * walls across the map.
  *
+ * options.underCeiling looks under a roof, the way the Nether has to be seen:
+ * coming down from the sky, the first solid layer met (the bedrock ceiling and
+ * what hangs from it) is passed through, and the surface is the first block
+ * below the next air. A column that is solid all the way down shows its top.
+ *
  * options.maxY cuts the world horizontally: nothing above that level exists
  * for the analysis, so the map shows the surface *below* the plane (caves,
  * interiors, the Nether under its bedrock roof). Default: no limit.
@@ -148,6 +153,7 @@ export function analyzeChunk(root, options = {}) {
   const hidden = options.hiddenBlocks;
   const maxY = options.maxY === undefined || options.maxY === null ? Infinity : options.maxY;
   const detectRails = !!options.detectRails;
+  const underCeiling = !!options.underCeiling;
   const isSkippable = hidden && hidden.size
     ? (name) => AIR_NAMES.has(name) || hidden.has(name)
     : (name) => AIR_NAMES.has(name);
@@ -163,11 +169,20 @@ export function analyzeChunk(root, options = {}) {
       const col = lz * 16 + lx;
       let top = null;
       let floor = null;
+      // 0: sky above the roof, 1: inside the roof, 2: under it (only with underCeiling)
+      let phase = underCeiling ? 0 : 2;
+      let roof = null;
       scan: for (const sec of sections) {
         if (sec.yBase > maxY) continue;
         for (let ly = 15; ly >= 0; ly--) {
           if (sec.yBase + ly > maxY) continue;
           const name = sec.getBlock(lx, ly, lz);
+          if (phase < 2) {
+            const solid = !isSkippable(name) && !WATER_NAMES.has(name);
+            if (phase === 0 && solid) { phase = 1; if (!roof) roof = { y: sec.yBase + ly, name, sec, ly }; }
+            else if (phase === 1 && !solid) phase = 2;
+            continue;
+          }
           if (isSkippable(name)) continue;
           const y = sec.yBase + ly;
           if (top === null) {
@@ -178,6 +193,7 @@ export function analyzeChunk(root, options = {}) {
           if (!WATER_NAMES.has(name)) { floor = { y, name }; break scan; }
         }
       }
+      if (!top) top = roof;
       if (!top) continue;
       surfaceY[col] = top.y;
       surfaceName[col] = top.name;

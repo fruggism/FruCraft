@@ -515,6 +515,17 @@ export function register({ test, section, assert, assertEqual }) {
     assertEqual(mainArea([{ x: 10, z: 10 }]).home.x, 5375, 'altrimenti il centro del gruppo');
   });
 
+  test('Nether: con underCeiling la mappa passa sotto il tetto e mostra il pavimento', () => {
+    const chunk = makeChunk(0, 0);
+    // section 3 (y 48..63) becomes a solid roof; under it, section 2 has air above the grass at y 39
+    chunk.sections.items[3].block_states.palette = new TList(TAG.Compound, [{ Name: 'minecraft:bedrock' }]);
+    const raw = parseRaw(writeNbt(chunk)).value;
+    assertEqual(analyzeChunk(raw).surfaceName[0], 'minecraft:bedrock', 'senza: il tetto');
+    const under = analyzeChunk(raw, { underCeiling: true });
+    assertEqual(under.surfaceName[0], 'minecraft:grass_block', 'con: il pavimento');
+    assertEqual(under.surfaceY[0], 39, 'quota del pavimento');
+  });
+
   test('il giornale non applicato sopravvive alla chiusura dell\'app', async () => {
     const saves = freshSaves();
     const world = makeWorld(saves);
