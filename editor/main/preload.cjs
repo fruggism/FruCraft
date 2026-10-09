@@ -17,16 +17,29 @@ contextBridge.exposeInMainWorld('cantiere', {
     info: call('world:info'),
     tile: call('world:tile'),
     probe: call('world:probe'),
+    search: call('world:search'),
+    countReplace: call('world:countReplace'),
   },
-  journal: { push: call('journal:push'), undo: call('journal:undo'), redo: call('journal:redo'), ops: call('journal:ops') },
+  journal: { push: call('journal:push'), undo: call('journal:undo'), redo: call('journal:redo'), remove: call('journal:remove'), ops: call('journal:ops') },
   apply: {
     check: call('apply:check'),
     run: call('apply:run'),
+  },
+  task: {
+    cancel: call('task:cancel'),
     onProgress: (fn) => {
-      const handler = (_e, id, p) => fn(id, p);
-      ipcRenderer.on('apply:progress', handler);
-      return () => ipcRenderer.removeListener('apply:progress', handler);
+      const handler = (_e, taskId, p) => fn(taskId, p);
+      ipcRenderer.on('task:progress', handler);
+      return () => ipcRenderer.removeListener('task:progress', handler);
     },
   },
+  onTilesReady: (fn) => {
+    const handler = (_e, id, box) => fn(id, box);
+    ipcRenderer.on('tiles:ready', handler);
+    return () => ipcRenderer.removeListener('tiles:ready', handler);
+  },
+  platform: process.platform,
   reveal: call('shell:reveal'),
+  openPath: call('shell:open'),
+  saveText: call('file:saveText'),
 });

@@ -249,6 +249,14 @@ export class Journal {
   get canRedo() { return this.undone.length > 0; }
   undo() { if (!this.canUndo) return null; const op = this.done.pop(); this.undone.push(op); this.emit(op); return op; }
   redo() { if (!this.canRedo) return null; const op = this.undone.pop(); this.done.push(op); this.emit(op); return op; }
+  /** Drop one pending operation, wherever it is in the list. */
+  removeAt(index) {
+    if (index < 0 || index >= this.done.length) return null;
+    const [op] = this.done.splice(index, 1);
+    this.emit(op);
+    return op;
+  }
+
   clear() { this.done.length = 0; this.undone.length = 0; this.emit(); }
 
   get size() { return this.done.length; }
@@ -313,6 +321,7 @@ export function applyChunkOps(root, ops, cx, cz, dim) {
   const info = dimensionInfo(dim);
   const ed = new ChunkEditor(root, { minY: info.minY, height: info.height });
   for (const op of ops) CHUNK_OPS[op.type].apply(op, ed, cx, cz);
-  ed.commit();
+  // A test switch of the Development menu: let the game rebuild the heightmaps.
+  ed.commit({ heightmaps: ops.some((o) => o.heightmaps === 'drop') ? 'drop' : 'recompute' });
   return ed;
 }

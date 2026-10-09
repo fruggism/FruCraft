@@ -260,6 +260,50 @@ export function register({ test, section, assert, assertEqual }) {
     assertEqual(changed.dirty[0].dim, 'overworld');
   });
 
+  section('Cantiere — lavori in un worker');
+
+  test('Applica in un worker: avanzamento, copia scritta, giornale svuotato', async () => {
+    const saves = freshSaves();
+    const s = await WorldSession.open(makeWorld(saves), { dataDir: path.join(scratch, 'd2') });
+    s.push({ type: 'paintBiome', dim: 'overworld', biome: 'minecraft:desert', region: sel(add(rect(0, 0, 15, 15))) });
+    const phases = new Set();
+    const t = s.applyInWorker({ skipLockCheck: true, onProgress: (p) => phases.add(p.phase) });
+    const res = await t.promise;
+    assert(fs.existsSync(path.join(res.targetDir, 'level.dat')), 'copia');
+    assert(phases.has('copia') && phases.has('fine'), [...phases].join());
+    assertEqual(s.journal.size, 0, 'giornale svuotato');
+  });
+
+  test('ricerca in un worker e annullamento', async () => {
+    const s = await WorldSession.open(makeWorld(freshSaves()), { dataDir: path.join(scratch, 'd3') });
+    const r = await s.search('overworld', null, { kind: 'block', block: 'chest' }).promise;
+    assertEqual(r.total, 4, 'bauli');
+    const t = s.search('overworld', null, { kind: 'block', block: 'stone' });
+    await t.cancel();
+    let err = null;
+    try { await t.promise; } catch (e) { err = e; }
+    assert(err && err.cancelled, 'annullata');
+    const c = await s.countReplace({ type: 'replaceBlocks', dim: 'overworld', region: sel(add(rect(0, 0, 15, 15))), rules: [{ from: 'chest', to: 'barrel' }] }).promise;
+    assertEqual(c.changed, 1, 'un baule da cambiare');
+  });
+
+  test('sessione: da lontano la mappa tiene il riquadro vecchio finché quello nuovo non è pronto', async () => {
+    const s = await WorldSession.open(makeWorld(freshSaves()), { dataDir: path.join(scratch, 'd4') });
+    // Build the pyramid down to -3 as the background builder would.
+    const { getTile } = await import('../../web/js/core/tiler.js');
+    await getTile(s.ctxFor('overworld', null), -3, 0, 0, true);
+    const before = await s.tile('overworld', -3, 0, 0);
+    assert(before, 'riquadro lontano');
+    const ready = new Promise((resolve) => { s.onTilesReady = resolve; });
+    s.push({ type: 'fillBox', dim: 'overworld', x1: 0, y1: 39, z1: 0, x2: 31, y2: 39, z2: 31, state: 'gold_block' });
+    const during = await s.tile('overworld', -3, 0, 0);
+    assert(during === before, 'mostra il vecchio, non un buco');
+    const box = await ready;
+    assertEqual(box.dim, 'overworld');
+    const after = await s.tile('overworld', -3, 0, 0);
+    assert(after && after !== before, 'ricostruito');
+  });
+
   test('pulizia delle cartelle temporanee (fase 2)', () => {
     fs.rmSync(scratch, { recursive: true, force: true });
   });

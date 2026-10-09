@@ -417,4 +417,9 @@ checklist "prova in gioco" sono in [`editor/PROGRESS.md`](editor/PROGRESS.md).
 - Avvio: `npm install`, poi `npm run cantiere`.
 - Creare la `.app` (dmg e zip, Apple Silicon e Intel): `npm run cantiere:build`.
   L'app non è firmata: la prima volta si apre con tasto destro → Apri.
-- Solo mondi 1.18.2 o successivi (gli altri si aprono in sola lettura).
+- Solo mondi 1.18 o successivi (gli altri si aprono in sola lettura).
+- Oggi fa: spawn, ora, meteo e regole di gioco; selezioni (rettangolo, poligono,
+  lazo, pennello, con intervallo Y); pennello dei biomi; sostituzione in blocco
+  con tag, pattern e mix percentuali; ricerca di blocchi, contenuti ed entità;
+  vista biomi e quota di taglio. L'aspetto segue il design approvato in
+  `editor/design/`.

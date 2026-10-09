@@ -14,31 +14,47 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { scanWorld } from '../../web/js/core/worldScan.js';
-import { serveTile, regionSetOf, tileRangeFor, TILE_SIZE, MIN_ZOOM, NATIVE_ZOOM } from '../../web/js/core/tiler.js';
+import { serveTile, getTile, regionSetOf, tileRangeFor, blocksPerTile, TILE_SIZE, MIN_ZOOM, NATIVE_ZOOM } from '../../web/js/core/tiler.js';
 import { readSurface, forgetRegions, NO_DATA } from '../../web/js/core/anvil.js';
 import { NodeSource } from '../core/nodeSource.js';
 import { OverlaySource } from '../core/overlay.js';
 import { Journal, chunkBoundsOf } from '../core/journal.js';
 import { biomeColor } from '../core/biomes.js';
-import { applyJournal, preflight, readLevel, dataVersionOf, isCantiereCopy, uniqueCopyName } from '../core/apply.js';
+import { applyJournal, preflight, readLevel, dataVersionOf, isCantiereCopy, uniqueCopyName, INCOMPLETE_MARK } from '../core/apply.js';
+import { runTask } from './tasks.js';
 import { MIN_DATA_VERSION } from '../core/chunk.js';
 
 export const defaultSavesDir = () => (process.platform === 'darwin'
   ? path.join(os.homedir(), 'Library', 'Application Support', 'minecraft', 'saves')
   : path.join(os.homedir(), '.minecraft', 'saves'));
 
-/** Worlds found in a saves folder, newest first. */
-export function listWorlds(savesDir) {
+/**
+ * Worlds found in a saves folder, newest first, with what the start screen
+ * shows: version, dimensions, the game's own screenshot (icon.png).
+ */
+export async function listWorlds(savesDir) {
   let entries;
   try { entries = fs.readdirSync(savesDir, { withFileTypes: true }); } catch { return []; }
   const out = [];
   for (const e of entries) {
     if (!e.isDirectory()) continue;
     const dir = path.join(savesDir, e.name);
+    let st;
+    try { st = fs.statSync(path.join(dir, 'level.dat')); } catch { continue; }
+    const w = { name: e.name, path: dir, modified: st.mtimeMs, cantiere: isCantiereCopy(dir), version: null, dataVersion: null, icon: null };
     try {
-      const st = fs.statSync(path.join(dir, 'level.dat'));
-      out.push({ name: e.name, path: dir, modified: st.mtimeMs, cantiere: isCantiereCopy(dir) });
-    } catch { /* not a world */ }
+      const d = (await readLevel(dir)).value.Data;
+      w.name = String(d.LevelName || e.name);
+      w.version = d.Version && d.Version.Name ? String(d.Version.Name) : null;
+      w.dataVersion = d.DataVersion !== undefined ? Number(d.DataVersion) : null;
+    } catch { /* unreadable level.dat: list it anyway */ }
+    w.folder = e.name;
+    w.readOnly = w.dataVersion !== null && w.dataVersion < MIN_DATA_VERSION;
+    w.dimensions = ['Overworld',
+      ...(fs.existsSync(path.join(dir, 'DIM-1', 'region')) ? ['Nether'] : []),
+      ...(fs.existsSync(path.join(dir, 'DIM1', 'region')) ? ['End'] : [])];
+    try { w.icon = `data:image/png;base64,${fs.readFileSync(path.join(dir, 'icon.png')).toString('base64')}`; } catch { /* no screenshot */ }
+    out.push(w);
   }
   return out.sort((a, b) => b.modified - a.modified);
 }
@@ -71,6 +87,10 @@ export class WorldSession {
     this.journal = this.restoreJournal();
     this.overlay = new OverlaySource(this.base, this.journal);
     this.dirty = [];
+    this.stale = new Map();          // cache key -> Map of outdated zoomed-out tiles
+    this.rebuildQueued = new Set();
+    this.rebuildChain = Promise.resolve();
+    this.onTilesReady = null;        // set by the main process: (box) => notify the window
     this.journal.onChange((_j, op) => { this.invalidate(op); this.persist(); });
     this.regionSets = new Map(this.scan.dimensions.map((d) => [d.id, regionSetOf(d.regions)]));
   }
@@ -79,10 +99,18 @@ export class WorldSession {
    * Forget what an operation changed: the region files under it and the
    * tiles over it, at every zoom. Level operations change no tile. The
    * boxes are remembered in this.dirty for the window to redraw.
+   *
+   * Zoomed-out tiles (z <= -2) are never rendered while serving — they are
+   * composed from finer cached tiles — so dropping them would leave holes in
+   * a zoomed-out map after every edit. They are kept as "stale" instead, shown
+   * until a background rebuild replaces them (see tile()).
    */
   invalidate(op) {
     const b = chunkBoundsOf(op);
     if (!op) {
+      for (const [key, tiles] of this.caches) {
+        for (const [tk, rgba] of tiles) if (Number(tk.split('/')[0]) <= -2) this.staleOf(key).set(tk, rgba);
+      }
       this.caches.clear();
       forgetRegions(this.overlay);
       this.dirty.push({ dim: null, bounds: null });
@@ -95,11 +123,41 @@ export class WorldSession {
       for (let z = MIN_ZOOM; z <= NATIVE_ZOOM; z++) {
         const r = tileRangeFor(b, z);
         for (let ty = r.minTY; ty <= r.maxTY; ty++) {
-          for (let tx = r.minTX; tx <= r.maxTX; tx++) tiles.delete(`${z}/${tx}/${ty}`);
+          for (let tx = r.minTX; tx <= r.maxTX; tx++) {
+            const tk = `${z}/${tx}/${ty}`;
+            if (z <= -2 && tiles.has(tk)) this.staleOf(key).set(tk, tiles.get(tk));
+            tiles.delete(tk);
+          }
         }
       }
     }
     this.dirty.push({ dim: op.dim, bounds: b });
+  }
+
+  staleOf(key) {
+    if (!this.stale.has(key)) this.stale.set(key, new Map());
+    return this.stale.get(key);
+  }
+
+  /**
+   * Re-render a zoomed-out tile in the background (one at a time), then tell
+   * the window its area changed. Only down to z = -3 (64 base tiles); further
+   * out, tiles are composed from those once they exist.
+   */
+  scheduleRebuild(dimId, maxY, view, z, x, y) {
+    const id = `${dimId}|${maxY ?? ''}|${view}|${z}/${x}/${y}`;
+    if (this.rebuildQueued.has(id)) return;
+    this.rebuildQueued.add(id);
+    this.rebuildChain = this.rebuildChain.then(async () => {
+      try {
+        const ctx = this.ctxFor(dimId, maxY, view);
+        const r = await getTile(ctx, z, x, y, true);
+        if (!r.partial) this.staleOf(`${dimId}|${maxY ?? ''}|${view}`).delete(`${z}/${x}/${y}`);
+        const span = blocksPerTile(z);
+        if (this.onTilesReady) this.onTilesReady({ dim: dimId, bounds: { minX: x * span, minZ: y * span, maxX: (x + 1) * span - 1, maxZ: (y + 1) * span - 1 } });
+      } catch { /* the window will ask again */ }
+      this.rebuildQueued.delete(id);
+    });
   }
 
   /** Boxes changed since the last call: what the window must redraw. */
@@ -185,6 +243,13 @@ export class WorldSession {
   /** RGBA bytes of a 256x256 tile, or null when there is nothing there. view: 'blocks' | 'biomes'. */
   async tile(dimId, z, x, y, maxY = null, view = 'blocks') {
     const r = await serveTile(this.ctxFor(dimId, maxY, view), z, x, y);
+    if (r.partial && z <= -2) {
+      const old = this.stale.get(`${dimId}|${maxY ?? ''}|${view}`)?.get(`${z}/${x}/${y}`);
+      if (old) {
+        if (z >= -3) this.scheduleRebuild(dimId, maxY, view, z, x, y);
+        return old;
+      }
+    }
     return r.empty ? null : r.rgba;
   }
 
@@ -199,6 +264,7 @@ export class WorldSession {
   push(op) { this.assertWritable(); this.journal.push(op); return { ...this.journalState(), dirty: this.takeDirty() }; }
   undo() { this.journal.undo(); return { ...this.journalState(), dirty: this.takeDirty() }; }
   redo() { this.journal.redo(); return { ...this.journalState(), dirty: this.takeDirty() }; }
+  removeAt(i) { this.journal.removeAt(i); return { ...this.journalState(), dirty: this.takeDirty() }; }
 
   assertWritable() {
     if (this.readOnly) throw new Error('Questo mondo è anteriore alla 1.18: il Cantiere lo apre solo in lettura.');
@@ -217,6 +283,53 @@ export class WorldSession {
     const pre = await preflight({ worldDir: this.worldDir, targetDir: null, journal: this.journal, lockCheck });
     if (this.levelChangedOnDisk()) pre.warnings.push('Il file level.dat dell\'originale è cambiato mentre il mondo era aperto nel Cantiere.');
     return { ...pre, copyName: this.suggestedCopyName() };
+  }
+
+  regionsOf(dimId) {
+    const dim = this.scan.dimensions.find((d) => d.id === dimId);
+    if (!dim) throw new Error(`Dimensione sconosciuta: ${dimId}`);
+    return dim.regions.map((r) => ({ x: r.x, z: r.z }));
+  }
+
+  /** Search the dimension (or the selection) in a worker. Returns { promise, cancel }. */
+  search(dimId, selection, query, onProgress) {
+    return runTask('search', {
+      worldDir: this.worldDir, journal: this.journal.toJSON(), dim: dimId,
+      regions: this.regionsOf(dimId), selection, query,
+    }, onProgress);
+  }
+
+  /** How many blocks a replaceBlocks operation would change, in a worker. */
+  countReplace(op, onProgress) {
+    return runTask('countReplace', {
+      worldDir: this.worldDir, journal: this.journal.toJSON(), dim: op.dim, regions: this.regionsOf(op.dim), op,
+    }, onProgress);
+  }
+
+  /**
+   * Apply in a worker. Returns { promise, cancel }. A cancelled Apply removes
+   * its unfinished copy (marked incomplete — never the original); a failed one
+   * keeps it, marked, for a look.
+   */
+  applyInWorker({ copyName, overwrite = false, onProgress = () => {}, skipLockCheck = false } = {}) {
+    this.assertWritable();
+    const name = copyName || this.suggestedCopyName();
+    const targetDir = path.join(path.dirname(this.worldDir), name);
+    const task = runTask('apply', {
+      worldDir: this.worldDir, journal: this.journal.toJSON(), copyName: name, overwrite, skipLockCheck,
+    }, onProgress);
+    const promise = task.promise.then((res) => {
+      this.journal.clear();
+      this.takeDirty();
+      return res;
+    }, (err) => {
+      if (err.cancelled && path.resolve(targetDir) !== path.resolve(this.worldDir)
+        && fs.existsSync(path.join(targetDir, INCOMPLETE_MARK))) {
+        fs.rmSync(targetDir, { recursive: true, force: true });
+      }
+      throw err;
+    });
+    return { promise, cancel: task.cancel, targetDir };
   }
 
   async apply(opts) {

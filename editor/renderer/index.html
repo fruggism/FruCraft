@@ -1,36 +1,78 @@
 <!doctype html>
-<html lang="it">
+<html lang="it" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cube-Atlas Cantiere</title>
   <link rel="stylesheet" href="../../web/vendor/leaflet.css">
+  <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <nav id="menu" aria-label="Menu"></nav>
-  <div id="ribbon"></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="d-end" viewBox="0 0 16 16"><path fill="#d9d68a" d="M2 3h12v11H2z"/><path fill="#ece9a8" d="M3 4h4v2H3zM9 8h4v3H9z"/><path fill="#bdb86a" d="M8 4h3v2H8zM3 9h3v3H3z"/></symbol>
+<symbol id="d-nether" viewBox="0 0 16 16"><path fill="#8c3a3a" d="M2 3h12v11H2z"/><path fill="#a64848" d="M3 4h3v2H3zM9 7h4v2H9zM4 10h3v2H4z"/><path fill="#6e2b2b" d="M8 4h2v2H8zM3 8h2v1H3zM10 11h3v2h-3z"/></symbol>
+<symbol id="d-over" viewBox="0 0 16 16"><path fill="#8a5a32" d="M2 6h12v8H2z"/><path fill="#62b84c" d="M2 3h12v4H2z"/><path fill="#62b84c" d="M3 7h2v2H3zM8 7h1v1H8zM11 7h2v2h-2z"/><path fill="#76ca5e" d="M4 4h2v1H4zM9 5h3v1H9z"/></symbol>
+<symbol id="i-check" viewBox="0 0 16 16"><path fill="#62b84c" d="M3 8h2v2H3zM5 10h2v2H5zM7 8h2v2H7zM9 6h2v2H9zM11 4h2v2h-2z"/></symbol>
+<symbol id="i-copy" viewBox="0 0 16 16"><path fill="currentColor" d="M2 2h7v1H2zM2 3h1v7H2zM2 10h4v1H2zM6 6h8v1H6zM6 7h1v7H6zM13 7h1v7h-1zM6 14h8v1H6z"/></symbol>
+<symbol id="i-cut" viewBox="0 0 16 16"><path fill="currentColor" d="M5 2h1v1H5zM10 2h1v1h-1zM6 3h1v2H6zM9 3h1v2H9zM7 5h2v2H7zM6 7h1v1H6zM9 7h1v1H9z"/><path fill="#ee6a62" d="M4 9h3v3H4zM9 9h3v3H9z"/></symbol>
+<symbol id="i-eye" viewBox="0 0 16 16"><path fill="currentColor" d="M4 6h8v1H4zM2 7h2v2H2zM12 7h2v2h-2zM4 9h8v1H4zM7 7h2v2H7z"/></symbol>
+<symbol id="i-flip" viewBox="0 0 16 16"><path fill="currentColor" d="M7 2h1v12H7zM5 4h2v8H5zM3 6h2v4H3z"/><path fill="#62a8f0" d="M9 4h1v8H9zM10 6h1v4h-1zM11 7h1v2h-1z"/></symbol>
+<symbol id="i-gear" viewBox="0 0 16 16"><path fill="currentColor" fill-rule="evenodd" d="M7 1h2v2H7zM7 13h2v2H7zM1 7h2v2H1zM13 7h2v2h-2zM4 4h8v8H4zM6 6h4v4H6z"/></symbol>
+<symbol id="i-grid" viewBox="0 0 16 16"><path fill="currentColor" d="M2 2h12v1H2zM2 7h12v1H2zM2 13h12v1H2zM2 2h1v12H2zM7 2h1v12H7zM13 2h1v12h-1z"/></symbol>
+<symbol id="i-open" viewBox="0 0 16 16"><path fill="#f2b13b" d="M2 4h5v2H2zM2 6h12v7H2z"/><path fill="#c98a1c" d="M2 8h12v1H2z"/></symbol>
+<symbol id="i-paste" viewBox="0 0 16 16"><path fill="currentColor" d="M3 3h10v1H3zM3 4h1v10H3zM12 4h1v10h-1zM3 14h10v1H3zM6 7h4v1H6zM6 9h4v1H6zM6 11h3v1H6z"/><path fill="#f2b13b" d="M6 1h4v3H6z"/></symbol>
+<symbol id="i-plus" viewBox="0 0 16 16"><path fill="currentColor" d="M7 2h2v12H7zM2 7h12v2H2z"/></symbol>
+<symbol id="i-redo" viewBox="0 0 16 16"><path fill="currentColor" d="M11 3h1v1h-1zM11 4h2v1h-2zM11 5h3v1h-3zM11 6h2v1h-2zM11 7h1v1h-1zM6 5h5v1H6zM4 5h2v1H4zM3 6h1v3H3zM4 9h1v1H4zM5 10h5v1H5z"/></symbol>
+<symbol id="i-rot" viewBox="0 0 16 16"><path fill="currentColor" d="M5 3h5v1H5zM3 4h2v1H3zM10 4h2v1h-2zM2 5h1v5H2zM12 5h1v3h-1zM3 10h2v1H3zM5 11h4v1H5z"/><path fill="#f2b13b" d="M10 8h4v1h-4zM11 9h2v1h-2zM12 10h1v1h-1z"/></symbol>
+<symbol id="i-undo" viewBox="0 0 16 16"><path fill="currentColor" d="M4 3h1v1H4zM3 4h2v1H3zM2 5h3v1H2zM3 6h2v1H3zM4 7h1v1H4zM5 5h5v1H5zM10 5h2v1h-2zM12 6h1v3h-1zM11 9h1v1h-1zM6 10h5v1H6z"/></symbol>
+<symbol id="t-biome" viewBox="0 0 16 16"><path fill="#62b84c" d="M9 2h4v1H9zM6 3h7v1H6zM5 4h8v2H5zM4 6h8v2H4zM4 8h6v2H4zM5 10h4v1H5z"/><path fill="currentColor" d="M3 11h1v1H3zM2 12h1v2H2zM6 7h1v1H6zM7 6h1v1H7z"/></symbol>
+<symbol id="t-border" viewBox="0 0 16 16"><path fill="currentColor" d="M2 2h12v1H2zM2 13h12v1H2zM2 3h1v10H2zM13 3h1v10h-1z"/><path fill="#ee6a62" d="M6 6h4v4H6z"/></symbol>
+<symbol id="t-lasso" viewBox="0 0 16 16"><path fill="currentColor" d="M5 3h6v1H5zM3 4h2v1H3zM11 4h2v1h-2zM2 5h1v3H2zM13 5h1v3h-1zM3 8h2v1H3zM11 8h2v1h-2zM5 9h2v1H5zM9 9h2v1H9zM7 10h1v2H7z"/><path fill="#b07840" d="M6 12h1v2H6zM7 14h2v1H7z"/></symbol>
+<symbol id="t-move" viewBox="0 0 16 16"><path fill="currentColor" d="M7 1h2v1H7zM6 2h4v1H6zM7 3h2v10H7zM6 13h4v1H6zM7 14h2v1H7zM1 7h1v2H1zM2 6h1v4H2zM3 7h4v2H3zM9 7h4v2H9zM13 6h1v4h-1zM14 7h1v2h-1z"/></symbol>
+<symbol id="t-players" viewBox="0 0 16 16"><path fill="#5a3d28" d="M3 2h10v3H3z"/><path fill="#d9a066" d="M3 5h10v7H3z"/><path fill="#fff" d="M4 8h2v1H4zM10 8h2v1h-2z"/><path fill="#3b4a9c" d="M6 8h1v1H6zM9 8h1v1H9z"/><path fill="#7a4a2a" d="M6 11h4v1H6z"/></symbol>
+<symbol id="t-poly" viewBox="0 0 16 16"><path fill="currentColor" d="M8 2h1v1H8zM6 3h2v1H6zM9 3h2v1H9zM4 4h2v1H4zM11 4h1v1h-1zM3 5h1v3H3zM12 5h1v3h-1zM4 9h1v3H4zM11 9h1v3h-1zM5 12h2v1H5zM9 12h2v1H9z"/><path fill="#62a8f0" d="M7 7h2v2H7z"/></symbol>
+<symbol id="t-prune" viewBox="0 0 16 16"><path fill="currentColor" d="M3 2h2v1H3zM4 3h2v1H4zM5 4h2v1H5zM6 5h2v1H6zM11 2h2v1h-2zM10 3h2v1h-2zM9 4h2v1H9zM8 5h2v1H8zM7 6h2v1H7zM6 7h2v1H6zM8 7h2v1H8zM5 8h2v1H5zM9 8h2v1H9z"/><path fill="#ee6a62" d="M2 10h3v3H2zM11 10h3v3h-3z"/></symbol>
+<symbol id="t-rect" viewBox="0 0 16 16"><path fill="currentColor" d="M2 3h3v1H2zM7 3h2v1H7zM11 3h3v1h-3zM2 4h1v3H2zM2 9h1v3H2zM13 4h1v3h-1zM13 9h1v3h-1zM2 12h3v1H2zM7 12h2v1H7zM11 12h3v1h-3z"/><path fill="#62a8f0" d="M7 7h2v2H7z"/></symbol>
+<symbol id="t-replace" viewBox="0 0 16 16"><path fill="#f2b13b" d="M2 4h8v2H2zM10 2h1v6h-1zM11 3h1v4h-1zM12 4h1v2h-1z"/><path fill="#62a8f0" d="M6 10h8v2H6zM5 8h1v6H5zM4 9h1v4H4zM3 10h1v2H3z"/></symbol>
+<symbol id="t-river" viewBox="0 0 16 16"><path fill="#62a8f0" d="M1 4h2v1H1zM3 3h3v1H3zM6 4h2v1H6zM8 3h3v1H8zM11 4h4v1h-4zM1 8h2v1H1zM3 7h3v1H3zM6 8h2v1H6zM8 7h3v1H8zM11 8h4v1h-4zM1 12h2v1H1zM3 11h3v1H3zM6 12h2v1H6zM8 11h3v1H8zM11 12h4v1h-4z"/></symbol>
+<symbol id="t-sbrush" viewBox="0 0 16 16"><path fill="currentColor" d="M11 2h2v1h-2zM10 3h2v1h-2zM9 4h2v1H9zM8 5h2v1H8zM7 6h2v1H7z"/><path fill="#62a8f0" d="M5 7h3v1H5zM4 8h4v1H4zM3 9h4v2H3zM3 11h3v1H3z"/></symbol>
+<symbol id="t-search" viewBox="0 0 16 16"><path fill="currentColor" d="M5 2h4v1H5zM4 3h1v1H4zM9 3h1v1H9zM3 4h1v4H3zM10 4h1v4h-1zM4 8h1v1H4zM9 8h1v1H9zM5 9h4v1H5z"/><path fill="#b07840" d="M10 10h2v1h-2zM11 11h2v1h-2zM12 12h2v2h-2z"/></symbol>
+<symbol id="t-spawn" viewBox="0 0 16 16"><path fill="currentColor" d="M3 2h1v12H3zM2 14h3v1H2z"/><path fill="#ee6a62" d="M4 2h9v1H4zM4 3h8v1H4zM4 4h9v1H4zM4 5h8v1H4zM4 6h7v1H4z"/></symbol>
+<symbol id="t-terrain" viewBox="0 0 16 16"><path fill="#b07840" d="M2 9h12v4H2z"/><path fill="#62b84c" d="M2 8h4v1H2zM5 6h5v2H5zM10 7h4v2h-4z"/><path fill="#8a5a32" d="M4 11h2v1H4zM9 10h2v1H9z"/></symbol>
+<symbol id="t-veg" viewBox="0 0 16 16"><path fill="#62b84c" d="M6 1h4v1H6zM4 2h8v3H4zM3 5h10v3H3zM5 8h6v1H5z"/><path fill="#b07840" d="M7 9h2v5H7z"/><path fill="#3f8a34" d="M5 4h2v1H5zM9 6h2v1H9z"/></symbol>
+<symbol id="i-down" viewBox="0 0 16 16"><path fill="currentColor" d="M7 2h2v7H7zM4 7h2v2H4zM10 7h2v2h-2zM5 9h2v1H5zM9 9h2v1H9zM6 10h4v1H6zM7 11h2v1H7zM2 13h12v1H2z"/></symbol>
+<symbol id="i-trash" viewBox="0 0 16 16"><path fill="currentColor" d="M6 2h4v1H6zM2 3h12v2H2zM3 5h1v9H3zM12 5h1v9h-1zM4 13h8v1H4zM6 6h1v6H6zM9 6h1v6H9z"/></symbol>
+<symbol id="i-target" viewBox="0 0 16 16"><path fill="currentColor" d="M7 1h2v3H7zM7 12h2v3H7zM1 7h3v2H1zM12 7h3v2h-3zM5 4h6v1H5zM4 5h1v6H4zM11 5h1v6h-1zM5 11h6v1H5z"/><path fill="#ee6a62" d="M7 7h2v2H7z"/></symbol>
+<symbol id="i-fill" viewBox="0 0 16 16"><path fill="currentColor" d="M3 3h8v1H3zM2 4h1v8H2zM11 4h1v3h-1zM3 12h8v1H3z"/><path fill="#62a8f0" d="M3 7h8v5H3z"/><path fill="#62a8f0" d="M13 8h1v3h-1zM12 11h3v2h-3z"/></symbol>
+<symbol id="logo" viewBox="0 0 16 16"><path fill="#8a5a32" d="M1 5h14v10H1z"/><path fill="#62b84c" d="M1 2h14v4H1z"/><path fill="#62b84c" d="M2 6h2v2H2zM7 6h2v1H7zM11 6h3v2h-3z"/><path fill="#76ca5e" d="M3 3h3v1H3zM9 4h4v1H9z"/><path fill="#6e4524" d="M3 10h2v2H3zM9 9h3v2H9zM6 13h3v1H6z"/></symbol>
+<symbol id="m-flag" viewBox="0 0 16 16"><path fill="#000" d="M2 1h2v14H2zM4 1h10v7H4z"/><path fill="#fff" d="M3 2h1v12H3z"/><path fill="#ee6a62" d="M4 2h9v1H4zM4 3h8v1H4zM4 4h9v1H4zM4 5h8v1H4zM4 6h7v1H4z"/></symbol>
+<symbol id="i-shield" viewBox="0 0 16 16"><path fill="#62b84c" d="M3 2h10v1H3zM3 3h10v6H3zM4 9h8v2H4zM5 11h6v1H5zM6 12h4v1H6zM7 13h2v1H7z"/><path fill="#14161a" d="M5 7h2v2H5zM7 9h2v1H7zM9 6h2v3H9z"/></symbol>
+<symbol id="i-collapse" viewBox="0 0 16 16"><path fill="currentColor" d="M9 3h1v1H9zM8 4h1v1H8zM7 5h1v1H7zM6 6h1v4H6zM7 10h1v1H7zM8 11h1v1H8zM9 12h1v1H9z"/></symbol>
+</defs></svg>
+  <header id="bar-menu">
+    <nav id="menu" aria-label="Menu"></nav>
+    <div class="safe-pill"><i></i>Originale intatto · Applica scrive in una copia</div>
+  </header>
+  <div id="ribbon" role="toolbar" aria-label="Comandi"></div>
   <div id="tabs" role="tablist" aria-label="Mondi aperti"></div>
+  <div id="options"></div>
   <aside id="tools" aria-label="Strumenti"></aside>
   <main id="main">
-    <div id="options"></div>
     <div id="map"></div>
-    <div id="empty">
-      <h1>Cube-Atlas Cantiere</h1>
-      <p class="hint">Apri un mondo per vederne la mappa e modificarlo. Il Cantiere non scrive mai sull'originale:
-        quando premi <b>Applica</b> crea una copia accanto, con le modifiche.</p>
-      <button class="primary" id="empty-open">Apri un mondo… (⌘O)</button>
-      <div id="world-list"></div>
-      <div class="hint" id="saves-dir"></div>
-    </div>
+    <canvas id="overlay"></canvas>
+    <div id="map-chips"></div>
+    <section id="start" aria-label="Avvio"></section>
   </main>
-  <aside id="panel">
-    <div id="panel-tabs"></div>
+  <aside id="panel" aria-label="Pannello">
+    <div id="panel-tabs" role="tablist"></div>
     <div id="panel-body"></div>
   </aside>
   <footer id="status"></footer>
   <div id="modal-host"></div>
+  <div id="popover-host"></div>
+  <div id="toast-host" aria-live="polite"></div>
   <script src="../../web/vendor/leaflet.js"></script>
   <script type="module" src="app.js"></script>
 </body>

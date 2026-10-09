@@ -404,8 +404,9 @@ export function register({ test, section, assert, assertEqual }) {
     const res = await s.apply({ lockCheck: unlocked });
     assertEqual(res.name, 'Prova (Cantiere)');
     assertEqual(s.journal.size, 0, 'giornale svuotato');
-    assertEqual(listWorlds(saves).length, 2, 'due mondi nella cartella saves');
-    assert(listWorlds(saves).some((w) => w.cantiere), 'la copia è riconoscibile');
+    const worlds = await listWorlds(saves);
+    assertEqual(worlds.length, 2, 'due mondi nella cartella saves');
+    assert(worlds.some((w) => w.cantiere && w.version === '1.20.1' && !w.readOnly), 'la copia è riconoscibile');
   });
 
   test('maxY in analyzeChunk non cambia nulla se non è impostato', async () => {

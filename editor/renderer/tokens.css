@@ -1,35 +1,76 @@
 /*
- * Every color, size and font of the Cantiere lives here, and only here.
- * The design that arrives later (editor/design/) replaces this file; the rest
- * of the CSS never names a literal value.
+ * Cantiere design tokens, transcribed from the approved design
+ * (project/DesignSystem.dc.html). Dark is the default; light applies with
+ * [data-theme="light"] on <html>. Map overlays look the same in both themes.
  */
 :root {
-  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
-  --bg-app: #1b1d1f;
-  --bg-bar: #25282b;
-  --bg-ribbon: #2d3135;
-  --bg-panel: #212427;
-  --bg-field: #16181a;
-  --bg-hover: #353a3f;
-  --bg-active: #3a4a3a;
-  --bg-map: #101214;
+  --bg0: #14161a;   /* window */
+  --bg1: #1b1e23;   /* panels */
+  --bg2: #23272d;   /* dialogs */
+  --bg3: #2c3138;   /* controls */
+  --line: #333940;
+  --line2: #454c55; /* control outlines */
+  --tx: #e8eaed;
+  --tx2: #a3abb5;
+  --tx3: #8a939e;   /* caps labels */
+  --gr: #62b84c;    /* primary action, "safe" */
+  --grInk: #0d1a09;
+  --grDim: #24421d;
+  --am: #f2b13b;    /* pending */
+  --amDim: #43340f;
+  --rd: #ee6a62;    /* blocking */
+  --rdDim: #4a1f1c;
+  --bl: #62a8f0;    /* focus ring */
+  --hov: rgba(255, 255, 255, .07);
 
-  --fg: #e6e8ea;
-  --fg-dim: #9aa1a8;
-  --fg-disabled: #5d646b;
+  /* type: title 18/600 · body 13 · controls 12.5 · caps label 10.5 (.08em) · mono 11.5 */
+  --fs-title: 18px;
+  --fs-body: 13px;
+  --fs-ctl: 12.5px;
+  --fs-label: 10.5px;
+  --fs-mono: 11.5px;
 
-  --line: #3a3f44;
-  --accent: #6fbf5a;
-  --accent-fg: #0f1a0c;
-  --warn: #e8b547;
-  --danger: #e5645a;
-  --pending: #e8b547;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --r-1: 4px; --r-2: 6px; --r-3: 8px; --r-4: 12px;
 
-  --radius: 6px;
-  --row-h: 34px;
-  --tool-w: 132px;
-  --panel-w: 300px;
-  --status-h: 36px;
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, .4);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, .5), 0 0 0 1px var(--line2);
+  --shadow-3: 0 24px 70px rgba(0, 0, 0, .65), 0 0 0 1px var(--line2);
+  /* the only relief in the app: the primary button */
+  --relief: inset 0 -2px 0 rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .3), 0 0 0 1px rgba(0, 0, 0, .35);
+
+  /* layout (px) */
+  --h-menu: 38px; --h-ribbon: 44px; --h-tabs: 34px; --h-options: 36px; --h-status: 30px;
+  --w-tools: 150px; --w-tools-collapsed: 44px; --w-panel: 320px; --w-panel-tab: 28px;
+  --narrow: 1180px; /* below this: icon-only tools, panel becomes a tab */
+
+  /* map overlays: double light/dark outline, readable on snow, ocean, desert, Nether */
+  --ov-sel: #22d3ee;   /* selection: 2px dashed #fff + 2px #000 halo, fill rgba(34,211,238,.16) */
+  --ov-fuse: #c79bff;  /* edge-blend band: dashed, glow rgba(181,123,255,.5) */
+  --ov-prot: #ff9f1a;  /* protected build: dashed + 45° hatching */
+  --ov-find: #ff3d8b;  /* search hit: ring 3px, #fff then #000 halo */
+}
+
+:root[data-theme="light"] {
+  --bg0: #e6e9ed;
+  --bg1: #f5f6f8;
+  --bg2: #ffffff;
+  --bg3: #e3e6ea;
+  --line: #d2d7dd;
+  --line2: #b4bbc4;
+  --tx: #171a1f;
+  --tx2: #454d57;
+  --tx3: #5f6872;
+  --gr: #2b7a1c;
+  --grInk: #ffffff;
+  --grDim: #d9eed3;
+  --am: #c77d00;
+  --amDim: #fbebc9;
+  --rd: #c4352d;
+  --rdDim: #fbdad7;
+  --bl: #1d6fc2;
+  --hov: rgba(0, 0, 0, .06);
 }

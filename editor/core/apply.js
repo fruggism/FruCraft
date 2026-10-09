@@ -69,6 +69,8 @@ function dirSize(dir) {
   return total;
 }
 
+const gb = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1).replace('.', ',')} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`);
+
 /** Folder name for the copy: "<Name> (Cantiere)", then "(Cantiere 2)", ... */
 export function uniqueCopyName(savesDir, baseName) {
   const base = baseName.replace(/\s*\(Cantiere(?: \d+)?\)$/, '');
@@ -86,17 +88,24 @@ export const isCantiereCopy = (dir) => fs.existsSync(path.join(dir, COPY_MARK));
 export async function preflight({ worldDir, targetDir, journal, lockCheck = defaultLockCheck }) {
   const errors = [];
   const warnings = [];
+  // The same facts as a list of ✓ / ✕ lines, for the confirmation dialog.
+  const checks = [];
   const level = await readLevel(worldDir);
   const dv = dataVersionOf(level);
   if (dv < MIN_DATA_VERSION) {
     errors.push(`Il mondo è di una versione troppo vecchia (DataVersion ${dv}): il Cantiere scrive solo mondi 1.18 o successivi.`);
   }
+  checks.push({ ok: dv >= MIN_DATA_VERSION, label: 'Versione del mondo supportata', detail: level.value?.Data?.Version?.Name ? String(level.value.Data.Version.Name) : `DataVersion ${dv}` });
+  let lock = false;
   for (const [label, dir] of [['originale', worldDir], ['copia', targetDir]]) {
     if (!dir || !fs.existsSync(dir)) continue;
     const held = lockCheck(path.join(dir, 'session.lock'));
-    if (held === true) errors.push(`Minecraft sembra aperto sul mondo (${label}): chiudilo e riprova.`);
-    else if (held === null) warnings.push('Non riesco a controllare se Minecraft è aperto: assicurati che sia chiuso.');
+    if (held === true) { lock = true; errors.push(`Minecraft sembra aperto sul mondo (${label}): chiudilo e riprova.`); }
+    else if (held === null) { if (lock === false) lock = null; warnings.push('Non riesco a controllare se Minecraft è aperto: assicurati che sia chiuso.'); }
   }
+  checks.push(lock === true
+    ? { ok: false, label: 'Minecraft sembra aperto', detail: 'chiudilo e riprova' }
+    : { ok: true, label: 'Minecraft è chiuso', detail: lock === null ? 'non verificabile: controlla tu' : 'nessun lock sul mondo' });
   const plan = journal.chunkPlan();
   const regions = regionsOfPlan(plan, (dim) => dimensionInfo(dim).dir);
   let chunks = 0;
@@ -111,8 +120,10 @@ export async function preflight({ worldDir, targetDir, journal, lockCheck = defa
     // Worst case the clone shares nothing; with a CoW clone this is far less.
     if (free < worldSize + need) warnings.push('Spazio su disco scarso per una copia completa del mondo.');
     if (free < need * 2) errors.push('Spazio su disco insufficiente.');
+    checks.push({ ok: free >= need * 2, label: free >= need * 2 ? 'Spazio su disco sufficiente' : 'Spazio su disco insufficiente', detail: `${gb(free)} liberi · servono ~${gb(Math.max(need * 2, 1))}` });
   } catch { /* statfs unavailable: skip */ }
-  return { ok: errors.length === 0, errors, warnings, stats: { regions: regions.length, chunks, worldSize, level: journal.levelOps().length } };
+  checks.push({ ok: true, label: 'Il mondo originale resta com\'è', detail: 'sola lettura' });
+  return { ok: errors.length === 0, errors, warnings, checks, stats: { regions: regions.length, chunks, worldSize, level: journal.levelOps().length } };
 }
 
 // ---------------------------------------------------------------------------
