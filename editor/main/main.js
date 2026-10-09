@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import { WorldSession, listWorlds, defaultSavesDir } from './session.js';
+import { claudeStatus } from './claude.js';
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -53,7 +54,7 @@ const session = (id) => {
 function registerIpc() {
   const publicSettings = () => {
     const s = readSettings();
-    return { savesDir: savesDir(), defaultSavesDir: defaultSavesDir(), theme: s.theme || 'dark', dev: !!s.dev, hideInvisible: s.hideInvisible !== false };
+    return { savesDir: savesDir(), defaultSavesDir: defaultSavesDir(), theme: s.theme || 'dark', dev: !!s.dev, hideInvisible: s.hideInvisible !== false, claudeModel: s.claudeModel || 'opus' };
   };
   ipcMain.handle('settings:get', () => publicSettings());
   ipcMain.handle('settings:set', (_e, patch) => {
@@ -62,6 +63,7 @@ function registerIpc() {
     if (typeof p.savesDir === 'string') out.savesDir = p.savesDir;
     if (['dark', 'light', 'system'].includes(p.theme)) out.theme = p.theme;
     if (typeof p.dev === 'boolean') out.dev = p.dev;
+    if (['opus', 'sonnet'].includes(p.claudeModel)) out.claudeModel = p.claudeModel;
     if (typeof p.hideInvisible === 'boolean') {
       out.hideInvisible = p.hideInvisible;
       for (const s of sessions.values()) s.setHideInvisible(p.hideInvisible);
@@ -147,6 +149,12 @@ function registerIpc() {
   });
   ipcMain.handle('world:search', (_e, id, dim, selection, query, taskId) => track(taskId, session(id).search(dim, selection, query, progressTo(taskId))));
   ipcMain.handle('world:countReplace', (_e, id, op, taskId) => track(taskId, session(id).countReplace(op, progressTo(taskId))));
+  ipcMain.handle('claude:status', () => claudeStatus(readSettings().claudePath || null));
+  ipcMain.handle('claude:ask', (_e, id, req, taskId) => track(taskId, session(id).askClaude({
+    dim: req.dim, selection: req.selection, request: req.request,
+    model: ['opus', 'sonnet'].includes(req.model) ? req.model : 'opus',
+    claudePath: readSettings().claudePath || null,
+  }, progressTo(taskId))));
   ipcMain.handle('task:cancel', async (_e, taskId) => { const c = tasks.get(taskId); if (c) await c(); });
   ipcMain.handle('shell:reveal', (_e, p) => { shell.showItemInFolder(p); });
   ipcMain.handle('shell:open', (_e, p) => { shell.openPath(p); });

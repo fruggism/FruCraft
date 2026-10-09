@@ -15,6 +15,7 @@ import { colorFor, COLORS } from '../../web/js/core/blockColors.js';
 export const OP_LABELS = {
   setIcon: 'Icona del mondo', setSpawn: 'Spawn', setGameRule: 'Regole di gioco', setLevelValue: 'Ora e meteo', setDayTime: 'Ora e meteo', setWeather: 'Ora e meteo',
   fillBox: 'Riempimenti', replaceBlocks: 'Sostituzioni', paintBiome: 'Biomi dipinti',
+  group: 'Modifiche di Claude', setTerrain: 'Terreno', placeFeatures: 'Alberi e piante',
 };
 
 const newTaskId = () => `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -342,4 +343,157 @@ export function devFillDialog(ctx) {
     closeModal();
     await ctx.pushOp(op);
   };
+}
+
+// ---------------------------------------------------------------------------
+// Ask Claude
+// ---------------------------------------------------------------------------
+
+const CLAUDE_EXAMPLES = [
+  'Trasforma in una collina boscosa di querce e betulle',
+  'Spiana tutto alla quota media, prato con qualche fiore',
+  'Scava un laghetto al centro con la riva di sabbia',
+  'Fai una valle con un fiume da ovest a est',
+];
+const CLAUDE_STEPS = { avvio: 'avvia Claude Code…', pensa: 'pensa…', scrive: 'scrive la ricetta…', fatto: 'ha risposto' };
+
+/** Last request per world, so "ask again" and reopening keep the text. */
+const lastRequest = new Map();
+
+/**
+ * "Chiedi a Claude…": the selected area is described to Claude (through the
+ * user's Claude Code, on their subscription) and its answer comes back as one
+ * group of operations, shown here before it goes into the journal.
+ */
+export async function claudeDialog(ctx) {
+  const t = ctx.tab();
+  if (!t) return;
+  const sel = ctx.selection();
+  if (isEmptySelection(sel)) { toast('Prima seleziona un\'area: Rettangolo (M), Poligono (P), Lazo (L) o Pennello (S).', 'warn'); return; }
+  const b = selectionBounds(sel);
+  const w = b.maxX - b.minX + 1, d = b.maxZ - b.minZ + 1;
+  const tooBig = w > 256 || d > 256;
+  let model = ctx.settings()?.claudeModel || 'opus';
+  let taskId = null;
+
+  const m = modal(`
+    <div class="dh"><div style="flex:1"><h2>Chiedi a Claude</h2><p>Descrivi cosa vuoi nell'area selezionata. Claude riceve un riassunto del terreno (altezze, blocchi in superficie, acqua, biomi) e propone le modifiche; tu le vedi qui e sulla mappa prima di tenerle. Usa il tuo abbonamento Claude tramite Claude Code: nessun costo a consumo.</p></div><button class="x" id="cl-x" aria-label="Chiudi">✕</button></div>
+    <div class="scroll">
+      <div class="dsec" id="cl-ask">
+        <label class="lbl" for="cl-req">Richiesta</label>
+        <textarea id="cl-req" class="fld text cl-req" rows="4" placeholder="es. trasforma in una collina boscosa" spellcheck="true">${esc(lastRequest.get(t.info.path) || '')}</textarea>
+        <div class="cl-ex">${CLAUDE_EXAMPLES.map((x) => `<button class="bchip" data-ex="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+        <div class="cl-row"><span class="hint">Modello</span><div class="seg" id="cl-model" style="width:340px"><button class="sg${model === 'opus' ? ' on' : ''}" data-model="opus">Opus · più accurato</button><button class="sg${model === 'sonnet' ? ' on' : ''}" data-model="sonnet">Sonnet · più veloce</button></div></div>
+        <div class="chk" id="cl-status"><span class="ok">…</span>Controllo Claude Code…</div>
+        ${tooBig ? `<p class="warnline" style="color:var(--rd)">L'area è ${fmt(w)} × ${fmt(d)}: il lato massimo è 256 blocchi. Seleziona un'area più piccola.</p>` : ''}
+      </div>
+      <div class="dsec hidden" id="cl-run"><div class="caps" id="cl-phase">Lettura dell'area…</div><div class="pb"><i></i></div><p class="hint" id="cl-detail" style="margin:6px 0 0"></p></div>
+      <div class="dsec hidden" id="cl-result"></div>
+    </div>
+    <div class="df"><span class="hint" id="cl-foot">${fmt(w)} × ${fmt(d)} blocchi · ${esc(t.info.dimensions.find((x) => x.id === t.dim).label)}</span>
+      <span class="end" id="cl-buttons"><button class="btn big" id="cl-cancel">Annulla</button><button class="btn big pri" id="cl-go" ${tooBig ? 'disabled' : ''}>Chiedi a Claude</button></span></div>`, { wide: true, label: 'Chiedi a Claude' });
+
+  const $m = (sel2) => m.querySelector(sel2);
+  setTimeout(() => $m('#cl-req').focus(), 0);
+  ctx.api.claude.status().then((st) => {
+    if (!m.isConnected) return;
+    $m('#cl-status').innerHTML = st.ok
+      ? `<span class="ok">✓</span>Claude Code collegato al tuo account<small>${esc(st.exe || '')}</small>`
+      : `<span class="ko">✕</span>${esc(st.error)}`;
+    if (!st.ok) $m('#cl-go').disabled = true;
+  }).catch(() => {});
+
+  const cancelRun = async () => { if (taskId) { const id = taskId; taskId = null; await ctx.api.task.cancel(id); } };
+  // Esc while Claude works: stop it, don't just hide the dialog.
+  m.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); cancelRun(); closeModal(); }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !taskId && !$m('#cl-go').disabled && !$m('#cl-ask').classList.contains('hidden')) ask();
+  });
+
+  const showAsk = () => {
+    $m('#cl-ask').classList.remove('hidden');
+    $m('#cl-run').classList.add('hidden');
+    $m('#cl-result').classList.add('hidden');
+    $m('#cl-buttons').innerHTML = `<button class="btn big" id="cl-cancel">Annulla</button><button class="btn big pri" id="cl-go">Chiedi a Claude</button>`;
+  };
+
+  const showResult = (res) => {
+    $m('#cl-run').classList.add('hidden');
+    const r = $m('#cl-result');
+    r.classList.remove('hidden');
+    const s = res.stats;
+    const rows = [
+      ['Colonne di terreno rifatte', s.columns], ['…alzate', s.raised], ['…abbassate', s.lowered],
+      ['Alberi', s.trees], ['Piante', s.plants], ['Altre modifiche', s.edits],
+    ].filter(([, v]) => v > 0);
+    r.innerHTML = `<div class="caps">Proposta di Claude · ${res.seconds} s · ${esc(res.model)}</div>
+      <p class="cl-expl">${esc(res.explanation || '(nessuna spiegazione)')}</p>
+      ${rows.length ? `<div class="sum">${rows.map(([k, v]) => `<div><span>${esc(k)}</span><b>${fmt(v)}</b></div>`).join('')}</div>` : '<p class="warnline">Claude non propone modifiche per questa richiesta.</p>'}
+      ${res.warnings.map((x) => `<p class="warnline">${esc(x)}</p>`).join('')}
+      <p class="hint" style="margin:10px 0 0">“Metti in sospeso” la aggiunge alle modifiche come una voce sola (⌘Z la toglie tutta) e la mappa si aggiorna. Il mondo si scrive solo con Applica, su una copia.</p>`;
+    $m('#cl-buttons').innerHTML = `<button class="btn big" id="cl-again">Cambia la richiesta</button><button class="btn big" id="cl-cancel">Scarta</button><button class="btn big pri" id="cl-keep" ${res.op ? '' : 'disabled'}>Metti in sospeso</button>`;
+    $m('#cl-keep').onclick = async () => {
+      closeModal();
+      await ctx.pushOp(res.op);
+      toast('Modifiche di Claude in sospeso: guardale sulla mappa.', 'ok', { label: 'Annulla', run: () => ctx.undo() });
+    };
+  };
+
+  const ask = async () => {
+    const request = $m('#cl-req').value.trim();
+    if (!request) { toast('Scrivi cosa vuoi che Claude faccia.', 'warn'); $m('#cl-req').focus(); return; }
+    lastRequest.set(t.info.path, request);
+    $m('#cl-ask').classList.add('hidden');
+    $m('#cl-run').classList.remove('hidden');
+    $m('#cl-buttons').innerHTML = '<button class="btn big" id="cl-cancel">Annulla</button>';
+    taskId = newTaskId();
+    const myTask = taskId;
+    const bar = $m('.pb i');
+    const off = ctx.api.task.onProgress((id, p) => {
+      if (id !== myTask || !m.isConnected) return;
+      if (p.phase === 'controllo') { $m('#cl-phase').textContent = 'Controllo Claude Code…'; bar.style.width = '2%'; }
+      else if (p.phase === 'lettura') {
+        $m('#cl-phase').textContent = 'Lettura dell\'area…';
+        bar.style.width = `${Math.round(5 + (p.done / Math.max(1, p.total)) * 15)}%`;
+      } else if (p.phase === 'claude') {
+        $m('#cl-phase').textContent = `Claude ${CLAUDE_STEPS[p.step] || 'lavora…'}`;
+        // No real percentage from Claude: the bar creeps towards 95% over a few minutes.
+        bar.style.width = `${Math.round(20 + 75 * (1 - Math.exp(-p.seconds / 90)))}%`;
+        $m('#cl-detail').textContent = `${p.seconds} s${p.chars ? ` · ${fmt(p.chars)} caratteri di risposta` : ''} · di solito 30 s – 3 min`;
+      } else if (p.phase === 'compila') { $m('#cl-phase').textContent = 'Controllo la ricetta…'; bar.style.width = '98%'; }
+    });
+    try {
+      const res = await ctx.api.claude.ask(t.id, { dim: t.dim, selection: sel, request, model }, myTask);
+      off();
+      if (taskId !== myTask || !m.isConnected) return;
+      taskId = null;
+      showResult(res);
+    } catch (err) {
+      off();
+      if (taskId !== myTask) return; // cancelled from here
+      taskId = null;
+      if (!m.isConnected) return;
+      showAsk();
+      $m('#cl-status').innerHTML = `<span class="ko">✕</span>${esc(cleanError(err))}`;
+    }
+  };
+
+  m.addEventListener('click', async (e) => {
+    const ex = e.target.closest('[data-ex]');
+    if (ex) { $m('#cl-req').value = ex.dataset.ex; $m('#cl-req').focus(); return; }
+    const mb = e.target.closest('[data-model]');
+    if (mb) {
+      model = mb.dataset.model;
+      m.querySelectorAll('[data-model]').forEach((x) => x.classList.toggle('on', x === mb));
+      ctx.api.settings.set({ claudeModel: model }).catch(() => {});
+      return;
+    }
+    const id = e.target.id;
+    if (id === 'cl-go') ask();
+    else if (id === 'cl-again') showAsk();
+    else if (id === 'cl-cancel' || id === 'cl-x') {
+      if (taskId) { await cancelRun(); showAsk(); toast('Richiesta a Claude annullata.', 'warn'); return; }
+      closeModal();
+    }
+  });
 }

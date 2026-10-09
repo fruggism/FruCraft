@@ -10,7 +10,7 @@
 
 import { $, esc, icon, fmt, signed, rgb, toast, guard, modalOpen, closeModal, pickFrom, ago, whenText, cleanError } from './ui.js';
 import { MapOverlay, scaleBar } from './mapdraw.js';
-import { applyDialog, replaceDialog, gotoDialog, saveSelectionDialog, devFillDialog, iconDialog, OP_LABELS } from './dialogs.js';
+import { applyDialog, replaceDialog, gotoDialog, saveSelectionDialog, devFillDialog, iconDialog, claudeDialog, OP_LABELS } from './dialogs.js';
 import {
   emptySelection, isEmptySelection, combine, invert, selectionBounds, measure, simplifyPoints, yRange,
 } from '../core/selection.js';
@@ -287,7 +287,7 @@ function setSelection(t, sel) {
   t.selKey = `s${++selSerial}`;
   t.measure = null;
   overlay.draw();
-  renderOptions(); renderPanel();
+  renderOptions(); renderPanel(); renderMenu();
   // Exact counts can take a moment on a selection thousands of blocks wide.
   const key = t.selKey;
   setTimeout(() => {
@@ -442,12 +442,13 @@ function ribbonItems() {
       b('apply', 'i-check', 'Applica…', '⌘↩', has && j.size > 0 && !ro), b('reveal', 'i-eye', 'Mostra nel Finder', '', has)];
     case 'Modifica': return [b('undo', 'i-undo', 'Annulla', '⌘Z', has && j.canUndo), b('redo', 'i-redo', 'Ripeti', '⇧⌘Z', has && j.canRedo), '|',
       soon('i-cut', 'Taglia', 3), soon('i-copy', 'Copia', 3), soon('i-paste', 'Incolla', 3), '|', soon('i-rot', 'Ruota', 3), soon('i-flip', 'Specchia', 3), '|',
-      b('replace', 't-replace', 'Sostituisci…', '', has && !ro), b('clearbarriers', 'i-trash', 'Togli barriere', '', has && hasSelection() && !ro)];
+      b('replace', 't-replace', 'Sostituisci…', '', has && !ro), b('clearbarriers', 'i-trash', 'Togli barriere', '', has && hasSelection() && !ro), '|',
+      b('askclaude', 't-terrain', 'Chiedi a Claude…', '⌘K', has && hasSelection() && !ro, false, has && !hasSelection() ? 'Prima seleziona un\'area' : '')];
     case 'Selezione': return [b('selall', 'i-grid', 'Seleziona tutto', '⌘A', has), b('deselect', 'i-eye', 'Deseleziona', '⌘D', has && hasSelection()),
       b('invert', 'i-flip', 'Inverti', '⇧⌘I', has), '|', b('savesel', 'i-down', 'Salva selezione…', '', has && hasSelection()),
       b('ycut', 'i-fill', 'Y dalla quota di taglio', '', has && t.maxY !== null), '|', b('fillbiome', 't-biome', 'Riempi con il bioma', '', has && hasSelection() && !ro)];
     case 'Mondo': return [b('tool:spawn', 't-spawn', 'Spawn e regole', '', has, state.tool === 'spawn'), b('tool:search', 't-search', 'Cerca blocchi', '⌘F', has, state.tool === 'search'),
-      b('replace', 't-replace', 'Sostituisci…', '', has && !ro), b('icon', 'i-eye', 'Icona del mondo…', '', has && !ro), '|', soon('t-border', 'Bordo del mondo', 7), soon('t-players', 'Giocatori', 7), soon('t-prune', 'Pota chunk', 7)];
+      b('replace', 't-replace', 'Sostituisci…', '', has && !ro), b('askclaude', 't-terrain', 'Chiedi a Claude…', '⌘K', has && hasSelection() && !ro), b('icon', 'i-eye', 'Icona del mondo…', '', has && !ro), '|', soon('t-border', 'Bordo del mondo', 7), soon('t-players', 'Giocatori', 7), soon('t-prune', 'Pota chunk', 7)];
     case 'Vista': return has ? [
       ...t.info.dimensions.map((d) => b(`dim:${d.id}`, DIM_ICON[d.id] || 'd-over', d.label, '', true, t.dim === d.id)), '|',
       b('biomeview', 't-biome', 'Vista biomi', '', true, t.view === 'biomes'), b('grid', 'i-grid', 'Griglia chunk', '', true, state.grid), b('invisible', 'i-eye', 'Nascondi blocchi invisibili', '', true, hideInvisible()), '|',
@@ -623,6 +624,7 @@ function selectionPanel(t, compact = false) {
     <div class="sec"><div class="caps sh">Azioni</div><div class="actions">
       <button class="btn" data-act="fillbiome" ${hasSelection() && !t.info.readOnly ? '' : 'disabled'}>Riempi con il bioma</button>
       <button class="btn" data-act="replace" ${t.info.readOnly ? 'disabled' : ''}>Sostituisci…</button>
+      <button class="btn" data-act="askclaude" ${hasSelection() && !t.info.readOnly ? '' : 'disabled'}>Chiedi a Claude…</button>
       <button class="btn" data-act="searchhere" ${hasSelection() ? '' : 'disabled'}>Cerca qui</button>
       <button class="btn" data-act="savesel" ${hasSelection() ? '' : 'disabled'}>Salva…</button>
       <button class="btn" data-act="invert">Inverti</button>
@@ -677,7 +679,7 @@ function levelPanel(t) {
     <div class="sec"><div class="caps sh">Regole di gioco</div>${rules || '<p class="empty-note">Nessuna regola salvata.</p>'}</div>`;
 }
 
-const OP_COLOR = { setIcon: '#9b7ff0', setSpawn: '#ee6a62', setGameRule: '#62a8f0', setLevelValue: '#f2b13b', setDayTime: '#f2b13b', setWeather: '#f2b13b', fillBox: '#d9a033', replaceBlocks: '#76ba5a', paintBiome: '#3f7d35' };
+const OP_COLOR = { setIcon: '#9b7ff0', setSpawn: '#ee6a62', setGameRule: '#62a8f0', setLevelValue: '#f2b13b', setDayTime: '#f2b13b', setWeather: '#f2b13b', fillBox: '#d9a033', replaceBlocks: '#76ba5a', paintBiome: '#3f7d35', group: '#d97757', setTerrain: '#b07840', placeFeatures: '#3f8a34' };
 
 function describeOp(op) {
   const c = (n) => fmt(n);
@@ -691,6 +693,12 @@ function describeOp(op) {
     case 'fillBox': return [`Riempi · ${op.state}`, `${c(Math.abs(op.x2 - op.x1) + 1)} × ${c(Math.abs(op.z2 - op.z1) + 1)} × ${c(Math.abs(op.y2 - op.y1) + 1)}`];
     case 'replaceBlocks': return [`Sostituisci · ${op.rules.length === 1 ? `${op.rules[0].from} → ${op.rules[0].to}` : `${op.rules.length} regole`}`, bboxText(op.region)];
     case 'paintBiome': return [`Bioma · ${biomeLabel(op.biome)}`, bboxText(op.region)];
+    case 'setTerrain': return ['Terreno', `${c(op.w)} × ${c(op.d)}`];
+    case 'placeFeatures': return ['Alberi e piante', `${c(op.items.length)}`];
+    case 'group': {
+      const parts = op.ops.map((o) => OP_LABELS[o.type] || o.type).filter((x, i, a) => a.indexOf(x) === i);
+      return [`${op.source === 'claude' ? 'Claude' : 'Gruppo'} · ${op.label || ''}`, parts.join(', ')];
+    }
     default: return [op.type, ''];
   }
 }
@@ -866,7 +874,8 @@ function setTool(id) {
 }
 
 const ctx = {
-  api, tab, selection, pushOp, afterJournal, openWorld, saveSelection,
+  api, tab, selection, pushOp, afterJournal, openWorld, saveSelection, undo,
+  settings: () => state.settings,
   center: () => fromLatLng(map.getCenter()),
   goTo: (x, z) => goTo(x, z),
   mapRect: () => $('map').getBoundingClientRect(),
@@ -884,6 +893,7 @@ const ACTIONS = {
   apply: () => applyDialog(ctx),
   reveal: () => tab() && api.reveal(tab().info.path),
   replace: () => tab() && replaceDialog(ctx),
+  askclaude: () => { const t = tab(); if (t && !t.info.readOnly) claudeDialog(ctx); },
   selall: selectAll, deselect, invert: invertSelection,
   savesel: () => hasSelection() && saveSelectionDialog(ctx),
   ycut: () => { const t = tab(); if (t && t.maxY !== null) setYRange(dimensionInfo(t.dim).minY, t.maxY); },
@@ -1028,6 +1038,7 @@ document.addEventListener('keydown', (e) => {
     else if (k === '0') { e.preventDefault(); fitDimension(); }
     else if (k === 'g') { e.preventDefault(); ACTIONS.goto(); }
     else if (k === 'f') { e.preventDefault(); setTool('search'); }
+    else if (k === 'k') { e.preventDefault(); ACTIONS.askclaude(); }
     else if (e.key === '\\' || e.code === 'Backslash') { e.preventDefault(); if (e.altKey) { ui.panelCollapsed = !ui.panelCollapsed; } else { ui.toolsCollapsed = !ui.toolsCollapsed; } saveUi(); applyLayout(); }
     return;
   }

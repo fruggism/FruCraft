@@ -22,6 +22,9 @@ import { Journal, chunkBoundsOf, levelSummary } from '../core/journal.js';
 import { biomeColor } from '../core/biomes.js';
 import { applyJournal, preflight, readLevel, readLevelFiles, dataVersionOf, isCantiereCopy, uniqueCopyName, INCOMPLETE_MARK } from '../core/apply.js';
 import { runTask } from './tasks.js';
+import { claudeStatus, runClaude } from './claude.js';
+import { SYSTEM_PROMPT, buildPrompt, parseRecipe, compileRecipe } from '../core/recipe.js';
+import { surveyProblem, surveyStats } from '../core/survey.js';
 import { MIN_DATA_VERSION } from '../core/chunk.js';
 
 export const defaultSavesDir = () => (process.platform === 'darwin'
@@ -358,6 +361,62 @@ export class WorldSession {
     }, onProgress);
   }
 
+  /** Read the ground of the selected columns, in a worker (see survey.js). */
+  survey(dimId, selection, onProgress) {
+    return runTask('survey', {
+      worldDir: this.worldDir, journal: this.journal.toJSON(), dim: dimId, regions: this.regionsOf(dimId), selection,
+    }, onProgress);
+  }
+
+  /**
+   * Ask Claude to change the selected area: survey it, send the description to
+   * the user's Claude Code CLI (their subscription, no tools), compile the
+   * answer into one `group` operation. Nothing is pushed: the window shows the
+   * result and pushes it. Returns { promise, cancel }.
+   * onProgress({ phase: 'controllo' | 'lettura' | 'claude' | 'compila', ... })
+   */
+  askClaude({ dim, selection, request, model = 'opus', claudePath = null }, onProgress = () => {}) {
+    let current = null, cancelled = false;
+    const stop = () => { if (cancelled) throw Object.assign(new Error('Annullato.'), { cancelled: true }); };
+    const promise = (async () => {
+      this.assertWritable();
+      if (!String(request || '').trim()) throw new Error('Scrivi cosa vuoi che Claude faccia nell\'area.');
+      const problem = surveyProblem(selection);
+      if (problem) throw new Error(problem);
+      onProgress({ phase: 'controllo' });
+      const st = await claudeStatus(claudePath);
+      if (!st.ok) throw new Error(st.error);
+      stop();
+      current = this.survey(dim, selection, (p) => onProgress({ phase: 'lettura', ...p }));
+      const survey = await current.promise;
+      stop();
+      const stats = surveyStats(survey);
+      if (!stats.known) throw new Error('Nell\'area selezionata non c\'è terreno (chunk vuoti o non generati).');
+      const prompt = buildPrompt(request, survey);
+      // Kept on disk for a look when something goes wrong (last 10 requests).
+      const logDir = path.join(this.dataDir, 'claude', new Date().toISOString().replace(/[:.]/g, '-'));
+      fs.mkdirSync(logDir, { recursive: true });
+      fs.writeFileSync(path.join(logDir, 'prompt.txt'), prompt);
+      pruneLogs(path.dirname(logDir), 10);
+      current = runClaude({ exe: st.exe, prompt, system: SYSTEM_PROMPT, model, onEvent: (e) => onProgress({ ...e, phase: 'claude', step: e.phase }) });
+      const reply = await current.promise;
+      current = null;
+      fs.writeFileSync(path.join(logDir, 'answer.txt'), reply.text);
+      onProgress({ phase: 'compila' });
+      const recipe = parseRecipe(reply.text);
+      const seed = Math.floor(Math.random() * 1e9);
+      const out = compileRecipe(recipe, survey, { selection, request, seed });
+      return {
+        ...out, explanation: String(recipe.explanation || ''), seconds: reply.seconds, model,
+        area: { w: survey.w, d: survey.d, columns: stats.columns }, logDir,
+      };
+    })();
+    return {
+      promise,
+      cancel: async () => { cancelled = true; if (current) await current.cancel(); },
+    };
+  }
+
   /**
    * Apply in a worker. Returns { promise, cancel }. A cancelled Apply removes
    * its unfinished copy (marked incomplete — never the original); a failed one
@@ -391,6 +450,14 @@ export class WorldSession {
     this.takeDirty();
     return res;
   }
+}
+
+/** Keep only the newest `keep` folders of a log directory. */
+function pruneLogs(dir, keep) {
+  try {
+    const all = fs.readdirSync(dir).sort();
+    for (const old of all.slice(0, Math.max(0, all.length - keep))) fs.rmSync(path.join(dir, old), { recursive: true, force: true });
+  } catch { /* nothing to prune */ }
 }
 
 export { TILE_SIZE };

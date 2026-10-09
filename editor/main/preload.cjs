@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('cantiere', {
     countReplace: call('world:countReplace'),
   },
   journal: { push: call('journal:push'), undo: call('journal:undo'), redo: call('journal:redo'), remove: call('journal:remove'), ops: call('journal:ops') },
+  claude: { status: call('claude:status'), ask: call('claude:ask') },
   apply: {
     check: call('apply:check'),
     run: call('apply:run'),

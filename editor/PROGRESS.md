@@ -96,6 +96,52 @@ su una copia** con verifica per rilettura, spawn/ora/meteo/regole di gioco.
   operazioni `setDayTime` e `setWeather`; `setGameRule` scrive dove serve. Le
   vecchie `setLevelValue` restano valide per i giornali già salvati.
 
+**Chiedi a Claude** (⌘K, Modifica/Mondo → *Chiedi a Claude…*, o dal pannello
+della selezione)
+- Si seleziona un'area (lato massimo **256** blocchi), si scrive la richiesta
+  ("trasforma in una collina boscosa"), si sceglie Opus (default) o Sonnet.
+- **Usa l'abbonamento Claude, non una chiave API**: l'app lancia la CLI di
+  Claude Code dell'utente (`claude -p`, cercata in `~/.local/bin`,
+  `/opt/homebrew/bin`, `/usr/local/bin`, … o `claudePath` in
+  `settings.json`), dopo aver tolto dall'ambiente `ANTHROPIC_*` e
+  `CLAUDE_CODE_*`. Prima controlla `claude auth status`: se non è collegata o
+  è collegata con una chiave API lo dice e si ferma.
+- **Claude non tocca niente**: `--tools ""` (nessuno strumento: non legge né
+  scrive file, non esegue comandi), `--safe-mode` e `--strict-mcp-config`
+  (niente hook, plugin, MCP, CLAUDE.md dell'utente),
+  `--no-session-persistence`, cartella di lavoro temporanea vuota. Riceve sul
+  stdin il riassunto dell'area (`editor/core/survey.js`: quota del suolo,
+  blocchi in superficie, acqua, chiome degli alberi, biomi, limiti Y; griglie
+  ridotte a ~64×64 celle) e risponde con una **ricetta JSON**
+  (`editor/core/recipe.js`: passi di terreno — set, raise, hill, ridge,
+  plateau, grid, noise, smooth, clamp, terrace — materiali, livello
+  dell'acqua, raccordo coi bordi; modifiche fillBox / replace / biome; alberi
+  e piante sparsi o puntuali).
+- La ricetta è **validata e compilata** in un'unica operazione `group` del
+  giornale: le altezze per colonna e la quota di ogni albero sono risolte
+  subito, così ogni chunk si ricostruisce da solo. Il dialogo mostra la
+  spiegazione di Claude e i numeri (colonne alzate/abbassate, alberi,
+  piante); **Metti in sospeso** la aggiunge come **una voce sola** (⌘Z la
+  toglie tutta) e la mappa si aggiorna; si scrive solo con Applica, su una
+  copia. Errori di ricetta, di CLI, limite d'uso e area troppo grande sono
+  messaggi in italiano; **Annulla** ferma lettura o Claude in ogni momento.
+- Avanzamento: controllo → lettura dell'area (worker) → "Claude pensa /
+  scrive" con secondi e caratteri → controllo della ricetta.
+- Prompt e risposta delle ultime 10 richieste restano in
+  `<dati dell'app>/claude/<data>/` per capire cosa è successo.
+- Nuove operazioni (`editor/core/terrain.js`, con test in
+  `editor/test/claude.test.js`): `setTerrain` (altezza per colonna, base64
+  Int16; sopra la nuova superficie aria o acqua fino a `waterLevel`, poi
+  top/filler/pietra), `placeFeatures` (querce, betulle, abeti, ciliegi,
+  giungla, acacia, quercia scura/pallida, mangrovie, azalee, cespugli; erba,
+  felci, fiori, piante alte; le foglie hanno la `distance` vera, quindi non
+  seccano), `group`.
+- Provato: test con una CLI finta (stato, ambiente senza chiave API,
+  annullamento, errori, dall'area alla copia) e nell'app su una copia di
+  Samarcanda (26.3): dialogo, proposta, anteprima sulla mappa, una voce in
+  Cronologia, ⌘Z. **Da provare con l'account vero**: questa sessione vedeva la
+  CLI "non collegata", quindi la chiamata reale a Claude non è stata fatta.
+
 ## Cosa manca / scelte da conoscere
 - **"Solo esposti all'aria"** guarda i vicini dentro lo stesso chunk: sul
   bordo di un chunk un blocco con aria solo nel chunk accanto non conta come
@@ -109,6 +155,15 @@ su una copia** con verifica per rilettura, spawn/ora/meteo/regole di gioco.
   passeranno nella libreria degli Appunti (fase 4).
 - Strumenti delle fasi successive: visibili ma disabilitati, col tooltip
   "in arrivo (fase N)". Taglia/Copia/Incolla/Ruota/Specchia: fase 3.
+
+- **Chiedi a Claude — limiti**: area fino a 256×256; Claude vede il terreno
+  campionato (una cella ogni 2–4 blocchi oltre i 64 di lato) e non vede
+  l'interno delle costruzioni. Una colonna la cui altezza cambia viene rifatta:
+  quello che c'era sopra (alberi, erba, edifici) sparisce, e una chioma di un
+  albero fuori dall'area può restare sospesa. Gli edifici contano come
+  "suolo". Niente conversazione: per correggere si cambia la richiesta e si
+  chiede di nuovo. Il risultato dipende da Claude: va sempre guardato prima di
+  Applica. Serve Claude Code installato e collegato (`claude`, poi `/login`).
 
 ## Dipendenze
 - `electron`, `electron-builder` (devDependencies). Nient'altro.

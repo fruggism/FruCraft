@@ -20,6 +20,7 @@ import { selectionBounds, chunkMask, yRange } from './selection.js';
 import { blockMatcher, compileMix, pickFromMix, carryProperties, hash3 } from './blocks.js';
 import { AIR_NAMES } from '../../web/js/core/anvil.js';
 import { readSpawn } from '../../web/js/core/worldScan.js';
+import { setTerrain, placeFeatures } from './terrain.js';
 
 // ---------------------------------------------------------------------------
 // Level operations
@@ -183,6 +184,11 @@ export const CHUNK_OPS = {
   /** Fill a box with one block state. */
   fillBox: {
     bounds: blockRange,
+    validate(op) {
+      for (const k of ['x1', 'y1', 'z1', 'x2', 'y2', 'z2']) if (!Number.isFinite(Number(op[k]))) throw new Error(`Riempimento: coordinata ${k} non valida.`);
+      const st = parseState(String(op.state || ''));
+      if (!/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(st.Name)) throw new Error(`Riempimento: blocco non valido “${op.state}”.`);
+    },
     apply(op, ed, cx, cz) {
       const r = blockRange(op);
       const state = parseState(op.state);
@@ -313,6 +319,49 @@ CHUNK_OPS.paintBiome = {
           ed.setBiome(cx * 16 + x4 * 4, y, cz * 16 + z4 * 4, op.biome);
         }
       }
+    }
+  },
+};
+
+/** Terrain heights and trees: see terrain.js. */
+CHUNK_OPS.setTerrain = setTerrain;
+CHUNK_OPS.placeFeatures = placeFeatures;
+
+const touches = (b, cx, cz) => !!b && b.maxX >= cx * 16 && b.minX <= cx * 16 + 15 && b.maxZ >= cz * 16 && b.minZ <= cz * 16 + 15;
+
+/**
+ * Several chunk operations of one dimension as a single journal entry (one
+ * line in the history, one undo): what "Ask Claude" produces. They run in
+ * their own order inside each chunk.
+ */
+CHUNK_OPS.group = {
+  bounds(op) {
+    let b = null;
+    for (const sub of op.ops || []) {
+      const s = CHUNK_OPS[sub.type] && CHUNK_OPS[sub.type].bounds(sub);
+      if (!s) continue;
+      b = !b ? { ...s } : {
+        minX: Math.min(b.minX, s.minX), maxX: Math.max(b.maxX, s.maxX),
+        minZ: Math.min(b.minZ, s.minZ), maxZ: Math.max(b.maxZ, s.maxZ),
+      };
+    }
+    return b;
+  },
+  validate(op) {
+    if (!Array.isArray(op.ops) || !op.ops.length) throw new Error('Il gruppo è vuoto.');
+    op.ops.forEach((sub, i) => {
+      const def = CHUNK_OPS[sub && sub.type];
+      const where = `Operazione ${i + 1} (${sub && sub.type})`;
+      if (!def || sub.type === 'group') throw new Error(`${where}: tipo non ammesso in un gruppo.`);
+      if (sub.dim !== op.dim) throw new Error(`${where}: dimensione diversa da quella del gruppo.`);
+      if (!def.bounds(sub)) throw new Error(`${where}: area vuota.`);
+      try { if (def.validate) def.validate(sub); } catch (err) { throw new Error(`${where}: ${err.message}`); }
+    });
+  },
+  apply(op, ed, cx, cz) {
+    for (const sub of op.ops) {
+      const def = CHUNK_OPS[sub.type];
+      if (touches(def.bounds(sub), cx, cz)) def.apply(sub, ed, cx, cz);
     }
   },
 };

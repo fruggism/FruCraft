@@ -318,3 +318,10 @@ body.panel-collapsed #panel-body { display: none; }
   #status .where { display: none; }
   .safe-pill { display: none; }
 }
+
+/* --- Ask Claude ---------------------------------------------------------- */
+.fld.cl-req { height: auto; min-height: 84px; padding: 7px 8px; line-height: 1.45; resize: vertical; }
+.cl-ex { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.cl-ex .bchip { cursor: pointer; color: var(--tx2); }
+.cl-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.cl-expl { margin: 0 0 12px; line-height: 1.5; font-size: var(--fs-body); white-space: pre-wrap; }

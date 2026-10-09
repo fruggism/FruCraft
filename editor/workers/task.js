@@ -14,6 +14,7 @@ import { OverlaySource } from '../core/overlay.js';
 import { Journal } from '../core/journal.js';
 import { applyJournal } from '../core/apply.js';
 import { search, countReplace } from '../core/search.js';
+import { surveyArea } from '../core/survey.js';
 
 const progress = (p) => parentPort.postMessage({ type: 'progress', p });
 
@@ -28,6 +29,10 @@ const TASKS = {
   async search({ worldDir, journal, dim, regions, selection, query, limit }) {
     const source = new OverlaySource(new NodeSource(worldDir), Journal.fromJSON(journal));
     return search({ source, dim, regions, selection, query, limit, onProgress: progress });
+  },
+  async survey({ worldDir, journal, dim, regions, selection }) {
+    const source = new OverlaySource(new NodeSource(worldDir), Journal.fromJSON(journal));
+    return surveyArea({ source, dim, regions, selection, onProgress: progress });
   },
   async countReplace({ worldDir, journal, dim, regions, op }) {
     const source = new OverlaySource(new NodeSource(worldDir), Journal.fromJSON(journal));
