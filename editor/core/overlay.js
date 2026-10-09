@@ -8,7 +8,7 @@
  */
 
 import { RegionData } from './region.js';
-import { replayOnRegion } from './replay.js';
+import { replayOnRegion, createsChunks } from './replay.js';
 import { dimensionInfo } from './dimensions.js';
 import { chunkBoundsOf } from './journal.js';
 
@@ -63,8 +63,9 @@ export class OverlaySource {
     const cached = this.cache.get(rel);
     if (cached) return cached;
     const bytes = await this.base.readFile(rel);
-    if (!bytes) return bytes;
-    const region = RegionData.fromBuffer(Buffer.from(bytes), hit.rx, hit.rz);
+    // A whole-chunk paste may land where the world has no region file yet.
+    if (!bytes && !createsChunks(this.plan, hit.dim, hit.rx, hit.rz)) return bytes;
+    const region = bytes ? RegionData.fromBuffer(Buffer.from(bytes), hit.rx, hit.rz) : new RegionData(hit.rx, hit.rz);
     const done = replayOnRegion(region, hit.chunks, hit.dim);
     const out = done.length ? new Uint8Array(region.serialize().file) : bytes;
     this.cache.set(rel, out);

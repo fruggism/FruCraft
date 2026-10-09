@@ -14,7 +14,7 @@ import { colorFor, COLORS } from '../../web/js/core/blockColors.js';
 
 export const OP_LABELS = {
   setIcon: 'Icona del mondo', setSpawn: 'Spawn', setGameRule: 'Regole di gioco', setLevelValue: 'Ora e meteo', setDayTime: 'Ora e meteo', setWeather: 'Ora e meteo',
-  fillBox: 'Riempimenti', replaceBlocks: 'Sostituzioni', paintBiome: 'Biomi dipinti',
+  fillBox: 'Riempimenti', replaceBlocks: 'Sostituzioni', paintBiome: 'Biomi dipinti', paste: 'Incollati', smoothTerrain: 'Raccordi del terreno',
   group: 'Modifiche di Claude', setTerrain: 'Terreno', placeFeatures: 'Alberi e piante',
 };
 

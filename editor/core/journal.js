@@ -21,6 +21,8 @@ import { blockMatcher, compileMix, pickFromMix, carryProperties, hash3 } from '.
 import { AIR_NAMES } from '../../web/js/core/anvil.js';
 import { readSpawn } from '../../web/js/core/worldScan.js';
 import { setTerrain, placeFeatures } from './terrain.js';
+import { PASTE } from './paste.js';
+import { SMOOTH } from './seam.js';
 
 // ---------------------------------------------------------------------------
 // Level operations
@@ -301,6 +303,9 @@ CHUNK_OPS.replaceBlocks = {
  * column at its centre is selected, so a brush paints whole cells, the way the
  * game itself sees biomes. Missing sections are not created for a biome.
  */
+CHUNK_OPS.paste = PASTE;
+CHUNK_OPS.smoothTerrain = SMOOTH;
+
 CHUNK_OPS.paintBiome = {
   bounds: (op) => selectionBounds(op.region),
   validate(op) {

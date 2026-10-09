@@ -38,6 +38,15 @@ export function stateKey(state) {
   return `${state.Name}[${keys.map((k) => `${k}=${p[k]}`).join(',')}]`;
 }
 
+// setState runs once per block (a pasted chunk is ~100,000 calls): the key of
+// a state object is computed once, and each section keeps key -> palette index.
+const keyCache = new WeakMap();
+function cachedKey(state) {
+  let k = keyCache.get(state);
+  if (k === undefined) { k = stateKey(state); keyCache.set(state, k); }
+  return k;
+}
+
 /** 'oak_stairs[facing=east]' -> { Name: 'minecraft:oak_stairs', Properties: {...} } */
 export function parseState(text) {
   const m = /^([^[\]]+)(?:\[(.*)\])?$/.exec(text.trim());
@@ -179,6 +188,7 @@ export class ChunkEditor {
     this.changedBlocks = new Set();  // "x,y,z" of blocks whose state changed
     this.touchedBlocks = new Set();  // section Y of sections with block changes
     this.biomesChanged = false;
+    this.addedBlockData = [];        // [key, entry]: block entities / ticks brought in by a paste
   }
 
   /** The chunk's own position, from the chunk itself. */
@@ -230,9 +240,13 @@ export class ChunkEditor {
   setState(x, y, z, state) {
     const sec = this.section(y >> 4, true);
     if (!sec) throw new Error(`Quota fuori dal mondo: ${y}`);
-    const key = stateKey(state);
-    let idx = sec.palette.findIndex((s) => stateKey(s) === key);
-    if (idx < 0) { sec.palette.push(stateFromTag(state)); idx = sec.palette.length - 1; }
+    const key = cachedKey(state);
+    if (!sec.index) {
+      sec.index = new Map();
+      sec.palette.forEach((s, i) => { const k = cachedKey(s); if (!sec.index.has(k)) sec.index.set(k, i); });
+    }
+    let idx = sec.index.get(key);
+    if (idx === undefined) { sec.palette.push(stateFromTag(state)); idx = sec.palette.length - 1; sec.index.set(key, idx); }
     const at = ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
     if (sec.blocks[at] === idx) return false;
     sec.blocks[at] = idx;
@@ -308,7 +322,26 @@ export class ChunkEditor {
       this.changedBlocks.clear();
       this.touchedBlocks.clear();
     }
+    if (this.addedBlockData.length) this.flushAddedBlockData();
     return root;
+  }
+
+  /**
+   * Add a block entity ('block_entities') or a scheduled tick ('block_ticks',
+   * 'fluid_ticks') at its own x, y, z — after the changed blocks' old ones are
+   * dropped on commit, and replacing any entry already at that position.
+   */
+  addBlockData(key, entry) { this.addedBlockData.push([key, entry]); }
+
+  flushAddedBlockData() {
+    for (const key of ['block_entities', 'block_ticks', 'fluid_ticks']) {
+      const add = this.addedBlockData.filter(([k]) => k === key).map(([, e]) => e);
+      if (!add.length) continue;
+      const at = new Set(add.map((e) => `${e.x},${e.y},${e.z}`));
+      const old = this.root[key] instanceof TList ? this.root[key].items : [];
+      this.root[key] = new TList(TAG.Compound, [...old.filter((e) => !at.has(`${e.x},${e.y},${e.z}`)), ...add]);
+    }
+    this.addedBlockData = [];
   }
 
   /** Block entities and scheduled ticks of blocks that were replaced. */

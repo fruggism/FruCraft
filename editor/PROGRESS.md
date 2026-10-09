@@ -141,6 +141,47 @@ della selezione)
   Samarcanda (26.3): dialogo, proposta, anteprima sulla mappa, una voce in
   Cronologia, ⌘Z. **Da provare con l'account vero**: questa sessione vedeva la
   CLI "non collegata", quindi la chiamata reale a Claude non è stata fatta.
+**Copia e incolla tra mondi** (fase 3, `editor/core/clips.js`, `paste.js`, `placement.js`)
+- **Copia** (⌘C, Modifica → Copia): la selezione diventa un *appunto* nella
+  cartella dati dell'app (`clips/<id>/`): `clip.json` più i file region ed
+  entities sotto la selezione, clonati (APFS: istantaneo, niente spazio). Da lì
+  in poi il mondo di origine non serve più. Pannello **Appunti**: elenco,
+  Incolla, Elimina (rifiutato se un incolla in sospeso lo usa).
+- **Incolla** (⌘V): un riquadro fantasma segue il cursore, clic per posare,
+  Esc annulla, "Stessa posizione" lo rimette dov'era. Diventa un'operazione
+  `paste` del giornale, rigiocata dall'appunto sia per l'anteprima sia in Applica.
+  - *Chunk interi*: si aggancia ai chunk (spostamento multiplo di 16, quota
+    invariata); arrivano blocchi, biomi, block entity, luce e heightmap così
+    come sono, e può creare chunk e region dove il mondo non ne ha. L'anello
+    esterno ha `isLightOn = 0` (lo rilluma il gioco). In Applica le entità e i
+    POI di questo mondo sotto il pezzo spariscono e arrivano le entità
+    dell'appunto, spostate e con UUID nuovi (`apply.js: pasteEntities`).
+  - *Blocchi*: solo le colonne e l'intervallo Y selezionati, a qualsiasi
+    spostamento anche in verticale (**Sposta Y**), con block entity e tick
+    spostati, aria e biomi a scelta. Le entità non si toccano.
+  - Controlli: stessa dimensione; appunto di una versione più recente del mondo
+    rifiutato; più vecchia, a blocchi, solo avviso.
+- La mappa: le region create da un incolla entrano nell'insieme delle region
+  della dimensione, e le tile lontane senza copia vecchia si ricostruiscono in
+  background.
+
+**Terreno — raccordo dei bordi** (fase 5, `editor/core/seam.js`, strumento T)
+- Sul riquadro dell'ultimo incollato o della selezione: per ogni lato scelto
+  una fascia da "Fascia dentro" a "Fascia fuori" in cui il terreno segue una
+  rampa smoothstep fra il suolo dentro e quello fuori, misurati sullo stesso
+  punto del lato. Le misure si prendono quando si crea l'operazione (dal mondo
+  con le modifiche in sospeso) e viaggiano nell'operazione (`prof`), così ogni
+  chunk si applica da solo. Sopra la nuova superficie: aria (acqua sotto il
+  livello del mare); sotto: erba, terra, pietra (sabbia e arenaria sott'acqua).
+- **Quota minima dentro** (per non aprire una conca), **Irregolarità** (il
+  confine della fascia entra ed esce di qualche blocco, rumore liscio),
+  **Alberi** (densità e legno, "come quelli intorno" = il legno più tolto nel
+  chunk; chioma tutta nel chunk del tronco, foglie persistenti).
+- Le colonne con qualcosa di costruito restano com'erano; dove fuori non c'è
+  terreno generato quel tratto si salta.
+- Prova su copie di Parco degli Dei e Città Proibita: parterre e Atlante
+  incollati a blocchi con Sposta Y +67 nel prato, raccordo su 4 lati, Applica
+  nel worker in ~11 s (1.035 chunk).
 
 ## Cosa manca / scelte da conoscere
 - **"Solo esposti all'aria"** guarda i vicini dentro lo stesso chunk: sul
@@ -154,7 +195,9 @@ della selezione)
 - Le selezioni salvate stanno nel `localStorage` della finestra (per mondo);
   passeranno nella libreria degli Appunti (fase 4).
 - Strumenti delle fasi successive: visibili ma disabilitati, col tooltip
-  "in arrivo (fase N)". Taglia/Copia/Incolla/Ruota/Specchia: fase 3.
+  "in arrivo (fase N)". Taglia/Ruota/Specchia: fase 3 (Copia e Incolla ci sono).
+- Incolla a blocchi non porta le entità; il raccordo nella fascia interna
+  rifà anche vialetti di ghiaia o sabbia (sono terreno): "Fascia dentro" 0 li lascia.
 
 - **Chiedi a Claude — limiti**: area fino a 256×256; Claude vede il terreno
   campionato (una cella ogni 2–4 blocchi oltre i 64 di lato) e non vede

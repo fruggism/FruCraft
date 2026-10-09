@@ -19,6 +19,8 @@ import { readSurface, forgetRegions, NO_DATA } from '../../web/js/core/anvil.js'
 import { NodeSource } from '../core/nodeSource.js';
 import { OverlaySource } from '../core/overlay.js';
 import { Journal, chunkBoundsOf, levelSummary } from '../core/journal.js';
+import { createClip, clipMeta } from '../core/clips.js';
+import { computeProfiles } from '../core/seam.js';
 import { biomeColor } from '../core/biomes.js';
 import { applyJournal, preflight, readLevel, readLevelFiles, dataVersionOf, isCantiereCopy, uniqueCopyName, INCOMPLETE_MARK } from '../core/apply.js';
 import { runTask } from './tasks.js';
@@ -157,6 +159,11 @@ export class WorldSession {
       return;
     }
     if (!b) return;
+    // A whole-chunk paste can bring regions the scan never saw: the map must ask for their tiles.
+    if (op.type === 'paste' && op.mode === 'chunks') {
+      const set = this.regionSets.get(op.dim);
+      if (set) for (let rz = b.minZ >> 9; rz <= b.maxZ >> 9; rz++) for (let rx = b.minX >> 9; rx <= b.maxX >> 9; rx++) set.add(`${rx},${rz}`);
+    }
     forgetRegions(this.overlay, this.overlay.regionsOf(op.dim, b));
     for (const [key, tiles] of this.caches) {
       if (!key.startsWith(`${op.dim}|`)) continue;
@@ -320,6 +327,46 @@ export class WorldSession {
   undo() { this.journal.undo(); return { ...this.journalState(), dirty: this.takeDirty() }; }
   redo() { this.journal.redo(); return { ...this.journalState(), dirty: this.takeDirty() }; }
   removeAt(i) { this.journal.removeAt(i); return { ...this.journalState(), dirty: this.takeDirty() }; }
+
+  /** Copy the selection into a new clip (see clips.js) under clipsDir. */
+  copy(dimId, selection, clipsDir) {
+    const dim = this.scan.dimensions.find((d) => d.id === dimId);
+    if (!dim) throw new Error(`Dimensione sconosciuta: ${dimId}`);
+    return createClip({
+      worldDir: this.worldDir, modern: this.base.modernLayout, dim: dimId, selection, clipsDir,
+      worldName: this.scan.levelName, dataVersion: this.scan.dataVersion,
+    });
+  }
+
+  /** Check a paste against this world before it goes in the journal. Returns warnings. */
+  pasteWarnings(op) {
+    const clip = clipMeta(op.clip);
+    if (!clip) throw new Error('L\'appunto da incollare non esiste più.');
+    if (clip.dim !== op.dim) throw new Error(`L'appunto viene da un'altra dimensione (${clip.dim}).`);
+    const warnings = [];
+    const mine = this.scan.dataVersion, theirs = clip.dataVersion;
+    if (mine && theirs && theirs > mine) throw new Error('L\'appunto viene da una versione di Minecraft più recente di questo mondo.');
+    if (mine && theirs && theirs < mine && op.mode === 'blocks') warnings.push('L\'appunto viene da una versione più vecchia: a blocchi alcuni nomi potrebbero non esistere più. A chunk interi il gioco li aggiorna da sé.');
+    return warnings;
+  }
+
+  /** The box of the last pending paste in this dimension, or null. */
+  lastPasteBox(dimId) {
+    const op = [...this.journal.ops].reverse().find((o) => o.type === 'paste' && o.dim === dimId);
+    return op ? { ...op.to } : null;
+  }
+
+  /**
+   * Measure the ground along the chosen sides of a box (pending changes
+   * included) and put a smoothTerrain operation in the journal.
+   */
+  async smooth(params) {
+    this.assertWritable();
+    const dim = this.scan.dimensions.find((d) => d.id === params.dim);
+    if (!dim) throw new Error(`Dimensione sconosciuta: ${params.dim}`);
+    const prof = await computeProfiles({ source: this.overlay, regionDir: dim.regionDir, ...params });
+    return this.push({ type: 'smoothTerrain', ...params, prof });
+  }
 
   assertWritable() {
     if (this.readOnly) throw new Error('Questo mondo è anteriore alla 1.18: il Cantiere lo apre solo in lettura.');

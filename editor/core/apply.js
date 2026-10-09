@@ -13,11 +13,12 @@ import { execFileSync } from 'node:child_process';
 import { parse } from '../../web/js/core/nbt.js';
 import { writeNbt } from '../../web/js/core/nbtWrite.js';
 import { gzipSync } from 'node:zlib';
-import { readRegionFile, writeRegionFile } from './region.js';
+import { readRegionFile, writeRegionFile, RegionData } from './region.js';
 import { MIN_DATA_VERSION, ChunkEditor, stateKey } from './chunk.js';
 import { CHUNK_OPS, LEVEL_FILES } from './journal.js';
-import { replayOnRegion, regionsOfPlan } from './replay.js';
-import { dimensionInfo, MODERN_PROBE } from './dimensions.js';
+import { replayOnRegion, regionsOfPlan, createsChunks } from './replay.js';
+import { pastedEntityChunk } from './paste.js';
+import { dimensionInfo, dimensionDir, MODERN_PROBE } from './dimensions.js';
 
 export const INCOMPLETE_MARK = '.cantiere-incompleto';
 export const COPY_MARK = 'cantiere.json';
@@ -212,14 +213,19 @@ export async function applyJournal({
   for (const r of regions) {
     onProgress({ phase: 'scrittura', done: n++, total: regions.length, file: r.rel });
     const file = path.join(targetDir, r.rel);
-    if (!fs.existsSync(file)) continue;
-    const region = readRegionFile(file);
+    let region;
+    if (fs.existsSync(file)) region = readRegionFile(file);
+    else if (createsChunks(plan, r.dim, r.rx, r.rz)) { fs.mkdirSync(path.dirname(file), { recursive: true }); region = new RegionData(r.rx, r.rz); }
+    else continue;
     const chunks = plan.get(r.dim);
     const done = replayOnRegion(region, chunks, r.dim);
     if (!done.length) continue;
     writeRegionFile(file, region);
     written.push(...done.map((c) => ({ ...c, dim: r.dim, rel: r.rel })));
   }
+
+  // Entities and points of interest under whole-chunk pastes
+  pasteEntities(targetDir, journal, isModernWorld(worldDir), onProgress);
 
   // Verify: read every rewritten chunk back from disk.
   onProgress({ phase: 'verifica', done: 0, total: written.length });
@@ -234,6 +240,45 @@ export async function applyJournal({
 }
 
 /** Re-read the chunks that were written and check the operations show in them. */
+/**
+ * A whole-chunk paste brings its own entities: under it, the copy's entity
+ * chunks are replaced by the clip's (moved, see paste.js) and its points of
+ * interest dropped — the game rebuilds those from the blocks it finds.
+ * Pastes are taken in journal order, so where two overlap the later one wins,
+ * as it does for the blocks.
+ */
+export function pasteEntities(targetDir, journal, modern, onProgress = () => {}) {
+  const ops = journal.chunkOps().filter((op) => op.type === 'paste' && op.mode === 'chunks');
+  if (!ops.length) return;
+  const files = new Map();   // path -> RegionData | null
+  const fileFor = (dim, kind, rx, rz, create) => {
+    const file = path.join(targetDir, dimensionDir(dim, kind, modern), `r.${rx}.${rz}.mca`);
+    if (!files.has(file)) files.set(file, fs.existsSync(file) ? readRegionFile(file) : null);
+    if (!files.get(file) && create) files.set(file, new RegionData(rx, rz));
+    return files.get(file);
+  };
+  onProgress({ phase: 'entità', done: 0, total: ops.length });
+  for (const op of ops) {
+    const t = op.to;
+    for (let cz = t.minZ >> 4; cz <= t.maxZ >> 4; cz++) {
+      for (let cx = t.minX >> 4; cx <= t.maxX >> 4; cx++) {
+        for (const kind of ['entities', 'poi']) {
+          const r = fileFor(op.dim, kind, cx >> 5, cz >> 5, false);
+          if (r) r.deleteChunk(cx & 31, cz & 31);
+        }
+        const ents = pastedEntityChunk(op, cx, cz);
+        if (ents) fileFor(op.dim, 'entities', cx >> 5, cz >> 5, true).setChunk(cx & 31, cz & 31, ents.value, ents.name || '');
+      }
+    }
+  }
+  for (const [file, r] of files) {
+    if (!r) continue;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    if (r.chunks().length) writeRegionFile(file, r);
+    else fs.rmSync(file, { force: true });
+  }
+}
+
 export function verifyWritten(targetDir, written, plan) {
   const problems = [];
   const cache = new Map();

@@ -16,6 +16,7 @@ import {
 } from '../core/selection.js';
 import { biomesFor, biomeColor, biomeLabel } from '../core/biomes.js';
 import { dimensionInfo } from '../core/dimensions.js';
+import { pastePlacement, clipSize } from '../core/placement.js';
 
 const api = window.cantiere;
 const toLatLng = (x, z) => L.latLng(-z, x);
@@ -35,6 +36,9 @@ const state = {
   draft: null,             // shape being drawn
   space: false,            // space held: pan with any tool
   grid: false,
+  clips: [],               // the clip library (Appunti), newest first
+  paste: null,             // { clip, mode, dy, air, biomes, at } while placing a paste
+  terrain: { box: 'paste', sides: ['n', 's', 'w', 'e'], bin: 20, bout: 56, rim: '', sea: 62, wobble: 8, trees: 30, tree: 'auto', running: false },
   search: { kind: 'block', block: 'diamond_ore', id: '', item: '', text: '', scope: 'auto', running: null, progress: 0 },
 };
 
@@ -50,10 +54,12 @@ const saveUi = () => { try { localStorage.setItem('cantiere.ui', JSON.stringify(
 const TOOL_GROUPS = [
   ['Naviga', [['move', 'Sposta', 'V']]],
   ['Seleziona', [['rect', 'Rettangolo', 'M'], ['poly', 'Poligono', 'P'], ['lasso', 'Lazo', 'L'], ['sbrush', 'Pennello', 'S']]],
-  ['Modifica', [['biome', 'Bioma', 'B'], ['terrain', 'Terreno', '', 5], ['veg', 'Vegetazione', '', 6], ['river', 'Fiume e lago', '', 6], ['replace', 'Sostituisci', 'R']]],
+  ['Modifica', [['biome', 'Bioma', 'B'], ['terrain', 'Terreno', 'T'], ['veg', 'Vegetazione', '', 6], ['river', 'Fiume e lago', '', 6], ['replace', 'Sostituisci', 'R']]],
   ['Mondo', [['spawn', 'Spawn', ''], ['border', 'Bordo del mondo', '', 7], ['players', 'Giocatori', '', 7], ['search', 'Cerca', 'F'], ['prune', 'Pota chunk', '', 7]]],
 ];
 const TOOL = Object.fromEntries(TOOL_GROUPS.flatMap(([, items]) => items.map(([id, label, key, phase]) => [id, { id, label, key, phase }])));
+// Not in the column: placing a paste is a mode entered from Incolla.
+TOOL.paste = { id: 'paste', label: 'Incolla', key: '⌘V' };
 const SELECT_TOOLS = new Set(['rect', 'poly', 'lasso', 'sbrush']);
 const BRUSH_TOOLS = new Set(['sbrush', 'biome']);
 
@@ -99,6 +105,7 @@ function overlayState() {
     hits: t && t.search ? t.search.items : null,
     hitChunks: t && t.search ? t.search.chunks : null,
     focusHit: t && t.focusHit,
+    ghosts: ghosts(t),
     cursor: c && BRUSH_TOOLS.has(state.tool) && !state.space
       ? { x: c.fx, z: c.fz, r: state.brushR, color: state.tool === 'biome' ? rgb(biomeColor(state.biome)) : null }
       : null,
@@ -199,6 +206,7 @@ function onMove(e) {
   } else if (d && d.type === 'poly') {
     d.hover = [half(b.fx), half(b.fz)];
   }
+  if (state.tool === 'paste' && state.paste && !state.space) state.paste.at = { x: b.fx, z: b.fz };
   overlay.draw(false);
   renderStatus();
   clearTimeout(probeTimer);
@@ -252,6 +260,7 @@ async function onClick(e) {
   const t = tab();
   if (!t || state.space) return;
   const b = blockAt(e);
+  if (state.tool === 'paste') { await placePaste(); return; }
   if (state.tool === 'spawn') {
     if (t.dim !== 'overworld') { toast('Lo spawn del mondo sta nell\'Overworld.', 'warn'); return; }
     const p = await api.world.probe(t.id, t.dim, b.x, b.z, null);
@@ -441,7 +450,7 @@ function ribbonItems() {
     case 'File': return [b('open', 'i-open', 'Apri mondo…', '⌘O'), b('opensaves', 'i-open', 'Apri cartella saves'), b('close', 'i-plus', 'Chiudi mondo', '⌘W', has), '|',
       b('apply', 'i-check', 'Applica…', '⌘↩', has && j.size > 0 && !ro), b('reveal', 'i-eye', 'Mostra nel Finder', '', has)];
     case 'Modifica': return [b('undo', 'i-undo', 'Annulla', '⌘Z', has && j.canUndo), b('redo', 'i-redo', 'Ripeti', '⇧⌘Z', has && j.canRedo), '|',
-      soon('i-cut', 'Taglia', 3), soon('i-copy', 'Copia', 3), soon('i-paste', 'Incolla', 3), '|', soon('i-rot', 'Ruota', 3), soon('i-flip', 'Specchia', 3), '|',
+      soon('i-cut', 'Taglia', 3), b('copy', 'i-copy', 'Copia', '⌘C', has && hasSelection()), b('paste', 'i-paste', 'Incolla…', '⌘V', has && !ro && state.clips.length > 0, state.tool === 'paste'), '|', soon('i-rot', 'Ruota', 3), soon('i-flip', 'Specchia', 3), '|',
       b('replace', 't-replace', 'Sostituisci…', '', has && !ro), b('clearbarriers', 'i-trash', 'Togli barriere', '', has && hasSelection() && !ro), '|',
       b('askclaude', 't-terrain', 'Chiedi a Claude…', '⌘K', has && hasSelection() && !ro, false, has && !hasSelection() ? 'Prima seleziona un\'area' : '')];
     case 'Selezione': return [b('selall', 'i-grid', 'Seleziona tutto', '⌘A', has), b('deselect', 'i-eye', 'Deseleziona', '⌘D', has && hasSelection()),
@@ -546,6 +555,20 @@ function renderOptions() {
   } else if (state.tool === 'spawn') {
     el.innerHTML = `${name}<span class="hint">${t.dim === 'overworld' ? 'Clicca sulla mappa dove vuoi il punto di partenza (Y = superficie + 1)' : 'Lo spawn del mondo si imposta nell\'Overworld'}</span>
       <span class="hint right">Spawn attuale <b class="mono" style="color:var(--tx)">${signed(t.info.spawn.x)}, ${signed(t.info.spawn.y)}, ${signed(t.info.spawn.z)}</b></span>`;
+  } else if (state.tool === 'paste' && state.paste) {
+    const p = state.paste;
+    const size = clipSize(p.clip, p.mode);
+    const seg = [['chunks', 'Chunk interi'], ['blocks', 'Blocchi']].map(([id, l]) => `<button class="sg${p.mode === id ? ' on' : ''}" data-pmode="${id}">${l}</button>`).join('');
+    el.innerHTML = `${name}<span class="hint" title="${esc(p.clip.worldName || '')}">${esc(p.clip.name)}</span><div class="seg" style="width:200px">${seg}</div>
+      ${p.mode === 'blocks' ? `<label>Sposta Y <input class="fld" id="paste-dy" value="${signed(p.dy)}" aria-label="Spostamento verticale"></label>
+      <label>Aria <button class="sw${p.air ? ' on' : ''}" id="paste-air" role="switch" aria-checked="${p.air}" aria-label="Incolla anche l'aria"></button></label>
+      <label>Biomi <button class="sw${p.biomes ? ' on' : ''}" id="paste-bio" role="switch" aria-checked="${p.biomes}" aria-label="Incolla i biomi"></button></label>` : '<span class="hint">Tutta l\'altezza, entità comprese · si aggancia ai chunk</span>'}
+      <span class="hint right"><b class="mono" style="color:var(--tx)">${fmt(size.w)} × ${fmt(size.h)}</b> · clic per posare · Esc annulla</span>
+      <button class="btn" data-act="pastesame" title="Alle coordinate da cui è stato copiato">Stessa posizione</button>`;
+  } else if (state.tool === 'terrain') {
+    const tr = state.terrain;
+    el.innerHTML = `${name}<span class="hint">Raccorda i bordi ${tr.box === 'paste' ? 'dell\'ultimo pezzo incollato' : 'della selezione'}: una rampa fra il terreno dentro e quello fuori · i parametri sono nel pannello</span>
+      <button class="btn pri right" data-act="terrainrun" ${tr.running || t.info.readOnly ? 'disabled' : ''}>${tr.running ? 'Misuro il terreno…' : 'Metti in sospeso'}</button>`;
   } else if (state.tool === 'search') {
     el.innerHTML = `${name}<span class="hint">${hasSelection() ? 'Cerca nella selezione' : 'Cerca in tutta la dimensione'} · i risultati compaiono nel pannello e sulla mappa</span>`;
   } else {
@@ -567,7 +590,7 @@ function renderPanel() {
   if (state.panelTab === 'props') body.innerHTML = propsHtml(t);
   else if (state.panelTab === 'history') historyHtml(t).then((h) => { if (state.panelTab === 'history') body.innerHTML = h; });
   else if (state.panelTab === 'results') body.innerHTML = searchHtml(t);
-  else body.innerHTML = '<div class="sec"><div class="caps sh">Appunti</div><p class="empty-note">La libreria dei pezzi copiati, con le schematiche .schem e .nbt, arriva con il copia e incolla (fasi 3–4).</p></div>';
+  else body.innerHTML = clipsHtml(t);
 }
 
 const sw = (id, on, label) => `<button class="sw${on ? ' on' : ''}" id="${id}" role="switch" aria-checked="${on}" aria-label="${esc(label)}"></button>`;
@@ -578,6 +601,7 @@ function propsHtml(t) {
   if (SELECT_TOOLS.has(state.tool)) return selectionPanel(t);
   if (state.tool === 'biome') return biomePanel(t);
   if (state.tool === 'spawn') return levelPanel(t);
+  if (state.tool === 'terrain') return terrainPanel(t);
   if (state.tool === 'search') return searchHtml(t);
   if (state.tool === 'replace') {
     return `<div class="sec"><div class="caps sh">Sostituisci</div><p class="hint" style="margin:0 0 10px">Le regole si scrivono nella finestra “Sostituisci blocchi”. ${hasSelection() ? 'Valgono dentro la selezione attiva.' : 'Senza selezione valgono in tutta la dimensione.'}</p>
@@ -679,7 +703,7 @@ function levelPanel(t) {
     <div class="sec"><div class="caps sh">Regole di gioco</div>${rules || '<p class="empty-note">Nessuna regola salvata.</p>'}</div>`;
 }
 
-const OP_COLOR = { setIcon: '#9b7ff0', setSpawn: '#ee6a62', setGameRule: '#62a8f0', setLevelValue: '#f2b13b', setDayTime: '#f2b13b', setWeather: '#f2b13b', fillBox: '#d9a033', replaceBlocks: '#76ba5a', paintBiome: '#3f7d35', group: '#d97757', setTerrain: '#b07840', placeFeatures: '#3f8a34' };
+const OP_COLOR = { setIcon: '#9b7ff0', setSpawn: '#ee6a62', setGameRule: '#62a8f0', setLevelValue: '#f2b13b', setDayTime: '#f2b13b', setWeather: '#f2b13b', fillBox: '#d9a033', replaceBlocks: '#76ba5a', paintBiome: '#3f7d35', group: '#d97757', setTerrain: '#b07840', placeFeatures: '#3f8a34', paste: '#a78bfa', smoothTerrain: '#8d6e4a' };
 
 function describeOp(op) {
   const c = (n) => fmt(n);
@@ -699,6 +723,8 @@ function describeOp(op) {
       const parts = op.ops.map((o) => OP_LABELS[o.type] || o.type).filter((x, i, a) => a.indexOf(x) === i);
       return [`${op.source === 'claude' ? 'Claude' : 'Gruppo'} · ${op.label || ''}`, parts.join(', ')];
     }
+    case 'paste': return [`Incolla · ${op.name || 'appunto'}`, `${op.mode === 'chunks' ? 'chunk interi' : 'blocchi'} · X ${signed(op.to.minX)}, Z ${signed(op.to.minZ)} · ${fmt(op.to.maxX - op.to.minX + 1)} × ${fmt(op.to.maxZ - op.to.minZ + 1)}`];
+    case 'smoothTerrain': return ['Raccordo del terreno', `lati ${op.sides.map((x) => SIDE_LABEL[x]).join(' ')} · dentro ${op.bin}, fuori ${op.bout}`];
     default: return [op.type, ''];
   }
 }
@@ -865,7 +891,9 @@ function applyTheme() {
 function setTool(id) {
   if (!TOOL[id] || TOOL[id].phase) return;
   if (state.draft && state.draft.type === 'poly' && id !== 'poly') state.draft = null;
+  if (id !== 'paste') state.paste = null;
   state.tool = id;
+  if (id === 'terrain') { state.panelTab = 'props'; refreshTerrainBox(); }
   if (id === 'search') state.panelTab = 'props';
   if (['biome', 'spawn', 'replace'].includes(id) || SELECT_TOOLS.has(id)) state.panelTab = 'props';
   render();
@@ -880,6 +908,165 @@ const ctx = {
   goTo: (x, z) => goTo(x, z),
   mapRect: () => $('map').getBoundingClientRect(),
 };
+
+// ---------------------------------------------------------------------------
+// Copy and paste (Appunti)
+// ---------------------------------------------------------------------------
+
+async function copySelection() {
+  const t = tab();
+  if (!t || !hasSelection()) { toast('Prima seleziona l\'area da copiare.', 'warn'); return; }
+  const clip = await guard(() => api.clips.copy(t.id, t.dim, t.selection));
+  if (!clip) return;
+  state.clips = await api.clips.list();
+  toast(`Copiato: ${fmt(clip.bounds.maxX - clip.bounds.minX + 1)} × ${fmt(clip.bounds.maxZ - clip.bounds.minZ + 1)} blocchi. Incollalo con ⌘V, anche in un altro mondo.`);
+  render();
+}
+
+function startPaste(clip) {
+  const t = tab();
+  if (!t || !clip) { toast('Negli Appunti non c\'è niente: copia prima una selezione (⌘C).', 'warn'); return; }
+  if (t.info.readOnly) { toast('Mondo in sola lettura.', 'warn'); return; }
+  if (clip.dim !== t.dim) { toast(`L'appunto viene da un'altra dimensione (${clip.dim}).`, 'warn'); return; }
+  setTool('paste');
+  state.paste = { clip, mode: 'chunks', dy: 0, air: true, biomes: true, at: state.cursor ? { x: state.cursor.fx, z: state.cursor.fz } : null };
+  render();
+  overlay.draw(false);
+}
+
+/** Where the ghost of the paste is: the clip centred on the cursor (or where it came from). */
+function pasteNow(p, same = false) {
+  const size = clipSize(p.clip, p.mode);
+  const corner = p.mode === 'chunks'
+    ? { x: p.clip.chunks.minX * 16, z: p.clip.chunks.minZ * 16 }
+    : { x: p.clip.bounds.minX, z: p.clip.bounds.minZ };
+  const at = same || !p.at ? corner : { x: p.at.x - size.w / 2, z: p.at.z - size.h / 2 };
+  return pastePlacement(p.clip, { mode: p.mode, x: at.x, z: at.z, dy: p.dy });
+}
+
+async function placePaste(same = false) {
+  const t = tab();
+  const p = state.paste;
+  if (!t || !p) return;
+  const place = pasteNow(p, same);
+  const op = {
+    type: 'paste', dim: t.dim, clip: p.clip.dir, name: p.clip.name, mode: p.mode, ...place,
+    air: p.air, biomes: p.biomes, selection: p.clip.selection,
+    yMin: p.clip.selection.yMin ?? null, yMax: p.clip.selection.yMax ?? null,
+  };
+  const warnings = await guard(() => api.clips.check(t.id, op));
+  if (!warnings) return;
+  for (const w of warnings) toast(w, 'warn');
+  await pushOp(op);
+  setTool('move');
+  toast('Incollato in sospeso. Lo strumento Terreno (T) raccorda i bordi del pezzo.');
+}
+
+async function deleteClip(dir) {
+  const list = await guard(() => api.clips.remove(dir));
+  if (!list) return;
+  state.clips = list;
+  render();
+}
+
+function clipsHtml(t) {
+  if (!state.clips.length) {
+    return '<div class="sec"><div class="caps sh">Appunti</div><p class="empty-note">Vuoti. Seleziona un\'area e premi ⌘C (Modifica → Copia): il pezzo resta qui, pronto da incollare in questo mondo o in un altro.</p></div>';
+  }
+  return `<div class="sec"><div class="caps sh">Appunti · ${state.clips.length}</div>${state.clips.map((c) => {
+    const w = c.bounds.maxX - c.bounds.minX + 1, h = c.bounds.maxZ - c.bounds.minZ + 1;
+    const other = c.dim !== t.dim;
+    return `<div class="hi"><i class="tile" style="background:#a78bfa"></i><div class="t"><div>${esc(c.name)}</div>
+      <small>${esc(c.worldName || '')} · ${fmt(w)} × ${fmt(h)} · ${esc(ago(c.created))}${other ? ` · ${esc(c.dim)}` : ''}</small></div>
+      <button class="btn" data-pasteclip="${esc(c.dir)}" ${other || t.info.readOnly ? 'disabled' : ''}>Incolla</button>
+      <button class="undo" data-delclip="${esc(c.dir)}" title="Elimina l'appunto" aria-label="Elimina ${esc(c.name)}">${icon('i-trash')}</button></div>`;
+  }).join('')}</div>
+  <div class="sec"><p class="hint" style="margin:0">A <b>chunk interi</b> il pezzo arriva identico, entità comprese, agganciato ai chunk. A <b>blocchi</b> solo le colonne selezionate, dove vuoi e anche più in alto o più in basso.</p></div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Terrain: smoothing the seam around a box
+// ---------------------------------------------------------------------------
+
+const SIDES = ['n', 's', 'w', 'e'];
+const SIDE_LABEL = { n: 'N', s: 'S', w: 'O', e: 'E' };
+const TREES = [['auto', 'Come quelli intorno'], ['oak', 'Quercia'], ['spruce', 'Abete'], ['birch', 'Betulla'], ['jungle', 'Giungla'], ['acacia', 'Acacia'], ['dark_oak', 'Quercia scura'], ['cherry', 'Ciliegio'], ['mangrove', 'Mangrovia'], ['pale_oak', 'Quercia pallida']];
+let terrainBox = null;
+
+async function refreshTerrainBox() {
+  const t = tab();
+  if (!t) return;
+  if (state.terrain.box === 'paste') terrainBox = await api.terrain.lastPaste(t.id, t.dim).catch(() => null);
+  else { const b = selectionBounds(t.selection); terrainBox = b ? { minX: b.minX, minZ: b.minZ, maxX: b.maxX, maxZ: b.maxZ } : null; }
+  renderPanel(); renderOptions(); overlay.draw(false);
+}
+
+function terrainPanel(t) {
+  const tr = state.terrain;
+  const b = terrainBox;
+  const num = (id, label, value, hint = '') => `<div class="row"><span title="${esc(hint)}">${label}</span><input class="fld" id="tr-${id}" value="${esc(String(value))}" aria-label="${label}" style="width:70px"></div>`;
+  return `
+    <div class="sec"><div class="caps sh">Riquadro da raccordare</div>
+      <div class="seg">${[['paste', 'Ultimo incollato'], ['selection', 'Selezione']].map(([id, l]) => `<button class="sg${tr.box === id ? ' on' : ''}" data-tbox="${id}">${l}</button>`).join('')}</div>
+      ${b ? `<div class="row"><span>Da</span><span class="v mono">X ${signed(b.minX)}, Z ${signed(b.minZ)}</span></div><div class="row"><span>A</span><span class="v mono">X ${signed(b.maxX)}, Z ${signed(b.maxZ)}</span></div>`
+    : `<p class="empty-note" style="padding:0">${tr.box === 'paste' ? 'Nessun incollato in sospeso in questa dimensione.' : 'Disegna una selezione: vale il suo rettangolo.'}</p>`}
+    </div>
+    <div class="sec"><div class="caps sh">Lati</div>
+      <div class="seg">${SIDES.map((s) => `<button class="sg${tr.sides.includes(s) ? ' on' : ''}" data-side="${s}" title="${{ n: 'Nord', s: 'Sud', w: 'Ovest', e: 'Est' }[s]}">${SIDE_LABEL[s]}</button>`).join('')}</div>
+      <p class="hint" style="margin:8px 0 0">Dove fuori non c'è terreno generato il lato si salta da solo.</p>
+    </div>
+    <div class="sec"><div class="caps sh">Rampa</div>
+      ${num('bin', 'Fascia dentro', tr.bin, 'Blocchi dentro il riquadro dove il terreno può cambiare')}
+      ${num('bout', 'Fascia fuori', tr.bout, 'Blocchi fuori dal riquadro: la lunghezza della rampa')}
+      ${num('rim', 'Quota minima dentro', tr.rim, 'Vuoto: nessuna. Utile se dentro c\'è una conca da tenere chiusa')}
+      ${num('sea', 'Livello del mare', tr.sea)}
+      ${num('wobble', 'Irregolarità', tr.wobble, 'Di quanti blocchi il confine della fascia entra ed esce, per non sembrare tirato col righello')}
+    </div>
+    <div class="sec"><div class="caps sh">Alberi sulla rampa</div>
+      ${num('trees', 'Densità %', tr.trees)}
+      <div class="row"><span>Tipo</span><select class="fld" id="tr-tree">${TREES.map(([v, l]) => `<option value="${v}" ${tr.tree === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    </div>
+    <div class="sec"><div class="actions"><button class="btn pri" data-act="terrainrun" ${!b || tr.running || t.info.readOnly || !tr.sides.length ? 'disabled' : ''}>${tr.running ? 'Misuro il terreno…' : 'Metti in sospeso'}</button></div>
+      <p class="hint" style="margin:8px 0 0">Le colonne con qualcosa di costruito restano com'erano. Sotto il livello del mare la rampa è sabbia sott'acqua.</p></div>`;
+}
+
+async function runTerrain() {
+  const t = tab();
+  const tr = state.terrain;
+  if (!t || !terrainBox || tr.running) { if (!terrainBox) toast('Niente da raccordare: incolla un pezzo o seleziona un\'area.', 'warn'); return; }
+  tr.running = true; render();
+  const params = {
+    dim: t.dim, box: terrainBox, sides: tr.sides, bin: Math.round(tr.bin), bout: Math.round(tr.bout),
+    rim: tr.rim === '' ? null : Math.round(Number(tr.rim)), sea: Math.round(tr.sea), wobble: Math.round(tr.wobble),
+    trees: Math.max(0, Math.min(1, tr.trees / 100)), tree: tr.tree, seed: Math.floor(Math.random() * 1e9),
+  };
+  try {
+    const res = await guard(() => api.terrain.smooth(t.id, params));
+    if (res) afterJournal(t, res);
+  } finally { tr.running = false; render(); }
+}
+
+/** Boxes drawn over the map: where a paste would land, and the bands of the terrain tool. */
+function ghosts(t) {
+  if (!t) return null;
+  if (state.tool === 'paste' && state.paste && (state.paste.at || false)) {
+    const b = pasteNow(state.paste).to;
+    return [{ box: b, color: '#a78bfa', fill: 'rgba(167,139,250,.18)', label: `${state.paste.clip.name}` }];
+  }
+  if (state.tool === 'terrain' && terrainBox) {
+    const tr = state.terrain, b = terrainBox, on = new Set(tr.sides);
+    const grow = (k) => ({
+      minX: b.minX - (on.has('w') ? k : 0), maxX: b.maxX + (on.has('e') ? k : 0),
+      minZ: b.minZ - (on.has('n') ? k : 0), maxZ: b.maxZ + (on.has('s') ? k : 0),
+    });
+    return [
+      { box: grow(tr.bout), color: '#f2b13b', dashed: true, label: 'Fine della rampa' },
+      { box: b, color: '#f2b13b' },
+      { box: grow(-tr.bin), color: '#f2b13b', dashed: true },
+    ];
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Events
@@ -915,6 +1102,10 @@ const ACTIONS = {
       yMin: null, yMax: null, exposedOnly: false, keepProps: false, biomes: [], seed: 0,
     });
   },
+  copy: copySelection,
+  paste: () => startPaste(state.clips[0]),
+  pastesame: () => { const p = state.paste; if (p) { p.at = null; placePaste(true); } },
+  terrainrun: runTerrain,
   fit: fitDimension,
   goto: () => tab() && gotoDialog(ctx),
   gospawn: () => { const t = tab(); if (t) goTo(t.info.spawn.x, t.info.spawn.z); },
@@ -932,7 +1123,7 @@ function applyLayout() {
 }
 
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-menu],[data-act],[data-tab],[data-close],[data-tool],[data-open],[data-ptab],[data-selmode],[data-hit],[data-biome],[data-unop],[data-loadsel],[data-delsel],[data-qkind],[data-weather],[data-rule][data-bool]');
+  const el = e.target.closest('[data-menu],[data-act],[data-tab],[data-close],[data-tool],[data-open],[data-ptab],[data-selmode],[data-hit],[data-biome],[data-unop],[data-loadsel],[data-delsel],[data-qkind],[data-weather],[data-rule][data-bool],[data-pmode],[data-pasteclip],[data-delclip],[data-side],[data-tbox]');
   if (!el) {
     if (e.target.id === 'sp-set') pushOp({ type: 'setSpawn', x: Number($('sp-x').value), y: Number($('sp-y').value), z: Number($('sp-z').value) });
     else if (e.target.id === 'biome-pick') {
@@ -947,6 +1138,8 @@ document.addEventListener('click', async (e) => {
     } else if (e.target.id === 'pv-grid') ACTIONS.grid();
     else if (e.target.id === 'pv-biomes') ACTIONS.biomeview();
     else if (e.target.id === 'pv-invisible') ACTIONS.invisible();
+    else if (e.target.id === 'paste-air' && state.paste) { state.paste.air = !state.paste.air; renderOptions(); }
+    else if (e.target.id === 'paste-bio' && state.paste) { state.paste.biomes = !state.paste.biomes; renderOptions(); }
     return;
   }
   const d = el.dataset;
@@ -972,6 +1165,11 @@ document.addEventListener('click', async (e) => {
   else if (d.qkind) { state.search.kind = d.qkind; renderPanel(); }
   else if (d.weather) setWeather(d.weather);
   else if (d.rule && d.bool) pushOp({ type: 'setGameRule', rule: d.rule, value: !el.classList.contains('on') });
+  else if (d.pmode && state.paste) { state.paste.mode = d.pmode; renderOptions(); overlay.draw(false); }
+  else if (d.pasteclip) startPaste(state.clips.find((c) => c.dir === d.pasteclip));
+  else if (d.delclip) deleteClip(d.delclip);
+  else if (d.side) { const s = new Set(state.terrain.sides); if (s.has(d.side)) s.delete(d.side); else s.add(d.side); state.terrain.sides = SIDES.filter((x) => s.has(x)); renderPanel(); overlay.draw(false); }
+  else if (d.tbox) { state.terrain.box = d.tbox; refreshTerrainBox(); }
 });
 
 const parseY = (v) => Number(String(v).replace('−', '-'));
@@ -988,6 +1186,12 @@ document.addEventListener('change', (e) => {
   } else if (el.dataset.rule && !el.dataset.bool) pushOp({ type: 'setGameRule', rule: el.dataset.rule, value: Number(el.value) });
   else if (el.id === 'day-preset') { if (el.value !== '') pushOp({ type: 'setDayTime', value: Number(el.value) }); }
   else if (el.id === 'day-time') pushOp({ type: 'setDayTime', value: Math.max(0, Math.floor(Number(el.value) || 0)) });
+  else if (el.id === 'paste-dy' && state.paste) { state.paste.dy = Math.round(parseY(el.value)) || 0; renderOptions(); }
+  else if (el.id && el.id.startsWith('tr-')) {
+    const key = el.id.slice(3);
+    state.terrain[key] = key === 'tree' ? el.value : key === 'rim' ? el.value.trim() : Number(String(el.value).replace('−', '-')) || 0;
+    renderPanel(); overlay.draw(false);
+  }
 });
 
 document.addEventListener('input', (e) => {
@@ -1014,6 +1218,7 @@ document.addEventListener('keydown', (e) => {
     if (document.querySelector('#popover-host .popover')) return;
     if (modalOpen()) { closeModal(); return; }
     if (state.draft) { state.draft = null; dragging = false; overlay.draw(false); return; }
+    if (state.tool === 'paste') { setTool('move'); return; }
   }
   if (modalOpen()) return;
   if (e.key === 'Enter' && !meta && state.draft && state.draft.type === 'poly') { closePoly(); return; }
@@ -1033,6 +1238,8 @@ document.addEventListener('keydown', (e) => {
     else if (k === 'z') { e.preventDefault(); (e.shiftKey ? redo : undo)(); }
     else if (e.key === 'Enter') { e.preventDefault(); applyDialog(ctx); }
     else if (k === 'a') { e.preventDefault(); selectAll(); }
+    else if (k === 'c') { e.preventDefault(); copySelection(); }
+    else if (k === 'v') { e.preventDefault(); ACTIONS.paste(); }
     else if (k === 'd') { e.preventDefault(); deselect(); }
     else if (k === 'i' && e.shiftKey) { e.preventDefault(); invertSelection(); }
     else if (k === '0') { e.preventDefault(); fitDimension(); }
@@ -1042,7 +1249,7 @@ document.addEventListener('keydown', (e) => {
     else if (e.key === '\\' || e.code === 'Backslash') { e.preventDefault(); if (e.altKey) { ui.panelCollapsed = !ui.panelCollapsed; } else { ui.toolsCollapsed = !ui.toolsCollapsed; } saveUi(); applyLayout(); }
     return;
   }
-  const byKey = { v: 'move', m: 'rect', p: 'poly', l: 'lasso', s: 'sbrush', b: 'biome', r: 'replace', f: 'search' };
+  const byKey = { v: 'move', m: 'rect', p: 'poly', l: 'lasso', s: 'sbrush', b: 'biome', r: 'replace', f: 'search', t: 'terrain' };
   if (byKey[k] && tab()) { setTool(byKey[k]); return; }
   if (e.key === '[' || e.key === ']') {
     state.brushR = Math.max(1, Math.min(64, state.brushR + (e.key === ']' ? 1 : -1) * Math.max(1, Math.round(state.brushR / 6))));
@@ -1065,6 +1272,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme
 (async function start() {
   if (api.platform === 'darwin') document.body.classList.add('mac');
   state.settings = await api.settings.get();
+  state.clips = await api.clips.list().catch(() => []);
   applyTheme();
   initMap();
   applyLayout();

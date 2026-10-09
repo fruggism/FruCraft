@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('cantiere', {
     search: call('world:search'),
     countReplace: call('world:countReplace'),
   },
+  clips: { copy: call('clips:copy'), list: call('clips:list'), remove: call('clips:remove'), check: call('paste:check') },
+  terrain: { lastPaste: call('terrain:lastPaste'), smooth: call('terrain:smooth') },
   journal: { push: call('journal:push'), undo: call('journal:undo'), redo: call('journal:redo'), remove: call('journal:remove'), ops: call('journal:ops') },
   claude: { status: call('claude:status'), ask: call('claude:ask') },
   apply: {

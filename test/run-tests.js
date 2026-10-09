@@ -1629,6 +1629,8 @@ import { register as registerCantiere2 } from '../editor/test/phase2.test.js';
 registerCantiere2({ test, section, assert, assertEqual });
 import { register as registerClaude } from '../editor/test/claude.test.js';
 registerClaude({ test, section, assert, assertEqual });
+import { register as registerPaste } from '../editor/test/paste.test.js';
+registerPaste({ test, section, assert, assertEqual });
 
 (async () => {
   for (const item of tests) {

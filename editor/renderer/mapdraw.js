@@ -152,6 +152,7 @@ export class MapOverlay {
       ctx.setLineDash([]);
     }
 
+    if (st.ghosts) for (const g of st.ghosts) this.drawGhost(g);
     if (st.draft) this.drawDraft(st.draft);
     if (st.spawn) this.drawSpawn(st.spawn);
     if (st.hits && st.hits.length) this.drawHits(st.hits, st.focusHit, st.hitChunks);
@@ -211,6 +212,25 @@ export class MapOverlay {
       ctx.strokeStyle = d.fill || SEL_FILL;
       ctx.stroke();
       ctx.lineCap = 'butt';
+    }
+  }
+
+  /** A box to place or to look at: outlined, optionally filled and labelled. */
+  drawGhost(g) {
+    const { ctx } = this;
+    const b = g.box;
+    if (b.maxX < b.minX || b.maxZ < b.minZ) return;
+    const a = this.px(b.minX, b.minZ), c = this.px(b.maxX + 1, b.maxZ + 1);
+    if (g.fill) { ctx.fillStyle = g.fill; ctx.fillRect(a.x, a.y, c.x - a.x, c.y - a.y); }
+    ctx.setLineDash(g.dashed ? [6, 5] : []);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeRect(a.x, a.y, c.x - a.x, c.y - a.y);
+    ctx.strokeStyle = g.color; ctx.lineWidth = 1.5; ctx.strokeRect(a.x, a.y, c.x - a.x, c.y - a.y);
+    ctx.setLineDash([]);
+    if (g.label) {
+      ctx.font = '600 12px -apple-system, system-ui, sans-serif';
+      const w = ctx.measureText(g.label).width + 12;
+      ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(a.x, a.y - 20, w, 18);
+      ctx.fillStyle = '#fff'; ctx.fillText(g.label, a.x + 6, a.y - 7);
     }
   }
 

@@ -12,6 +12,7 @@ import path from 'node:path';
 import url from 'node:url';
 import { WorldSession, listWorlds, defaultSavesDir } from './session.js';
 import { claudeStatus } from './claude.js';
+import { listClips, removeClip } from '../core/clips.js';
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -155,6 +156,20 @@ function registerIpc() {
     model: ['opus', 'sonnet'].includes(req.model) ? req.model : 'opus',
     claudePath: readSettings().claudePath || null,
   }, progressTo(taskId))));
+  // Copy / paste between worlds: clips live in the app's data folder.
+  const clipsDir = () => path.join(app.getPath('userData'), 'clips');
+  ipcMain.handle('clips:copy', (_e, id, dim, selection) => session(id).copy(dim, selection, clipsDir()));
+  ipcMain.handle('clips:list', () => listClips(clipsDir()));
+  ipcMain.handle('clips:remove', (_e, dir) => {
+    if (path.dirname(path.resolve(dir)) !== path.resolve(clipsDir())) throw new Error('Questo non è un appunto del Cantiere.');
+    const users = [...sessions.values()].filter((s) => s.journal.ops.some((op) => op.type === 'paste' && op.clip === dir));
+    if (users.length) throw new Error(`L'appunto è usato da un incolla in sospeso in “${users[0].scan.levelName}”: toglilo prima dalla Cronologia.`);
+    removeClip(dir);
+    return listClips(clipsDir());
+  });
+  ipcMain.handle('paste:check', (_e, id, op) => session(id).pasteWarnings(op));
+  ipcMain.handle('terrain:lastPaste', (_e, id, dim) => session(id).lastPasteBox(dim));
+  ipcMain.handle('terrain:smooth', async (_e, id, params) => { const s = session(id); const r = await s.smooth(params); return { ...(await s.info()), dirty: r.dirty }; });
   ipcMain.handle('task:cancel', async (_e, taskId) => { const c = tasks.get(taskId); if (c) await c(); });
   ipcMain.handle('shell:reveal', (_e, p) => { shell.showItemInFolder(p); });
   ipcMain.handle('shell:open', (_e, p) => { shell.openPath(p); });
