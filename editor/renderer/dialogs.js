@@ -13,7 +13,7 @@ import { dimensionInfo } from '../core/dimensions.js';
 import { colorFor, COLORS } from '../../web/js/core/blockColors.js';
 
 export const OP_LABELS = {
-  setSpawn: 'Spawn', setGameRule: 'Regole di gioco', setLevelValue: 'Ora e meteo', setDayTime: 'Ora e meteo', setWeather: 'Ora e meteo',
+  setIcon: 'Icona del mondo', setSpawn: 'Spawn', setGameRule: 'Regole di gioco', setLevelValue: 'Ora e meteo', setDayTime: 'Ora e meteo', setWeather: 'Ora e meteo',
   fillBox: 'Riempimenti', replaceBlocks: 'Sostituzioni', paintBiome: 'Biomi dipinti',
 };
 
@@ -264,6 +264,35 @@ export function gotoDialog(ctx) {
   m.querySelector('#g-no').onclick = closeModal;
   m.querySelector('#g-go').onclick = go;
   m.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+}
+
+/**
+ * The world's icon (icon.png, the picture Minecraft shows in the world list):
+ * from an image file, or from the middle square of what the map shows now.
+ */
+export function iconDialog(ctx) {
+  const t = ctx.tab();
+  const m = modal(`
+    <div class="dh">${t.info.icon ? `<img src="${t.info.icon}" alt="Icona attuale" width="64" height="64" style="image-rendering:pixelated;border-radius:6px;flex:none">` : ''}
+      <div><h2>Icona del mondo</h2><p>L'immagine che Minecraft mostra nell'elenco dei mondi (64 × 64). Resta in sospeso: Applica la scrive nella copia.</p></div></div>
+    <div class="df"><span class="end"><button class="btn" id="ic-no">Annulla</button><button class="btn" id="ic-view">Usa la vista della mappa</button><button class="btn pri" id="ic-file">Scegli immagine…</button></span></div>`, { label: 'Icona del mondo' });
+  const use = async (get) => {
+    try {
+      const png = await get();
+      if (png) await ctx.pushOp({ type: 'setIcon', png });
+    } catch (err) { toast(cleanError(err), 'err'); }
+  };
+  m.querySelector('#ic-no').onclick = closeModal;
+  m.querySelector('#ic-file').onclick = () => { closeModal(); use(() => ctx.api.icon.fromFile()); };
+  m.querySelector('#ic-view').onclick = () => {
+    closeModal();
+    // Wait for the dialog to leave the screen before taking the picture.
+    use(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))).then(() => {
+      const r = ctx.mapRect();
+      const side = Math.min(r.width, r.height);
+      return ctx.api.icon.fromView({ x: r.left + (r.width - side) / 2, y: r.top + (r.height - side) / 2, width: side, height: side });
+    }));
+  };
 }
 
 export function saveSelectionDialog(ctx) {

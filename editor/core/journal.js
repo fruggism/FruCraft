@@ -146,6 +146,8 @@ export const LEVEL_OPS = {
     const now = BigInt(val(clock.total_ticks) ?? 0);
     clock.total_ticks = now - (((now % 24000n) + 24000n) % 24000n) + BigInt(t % 24000);
   },
+  /** The world's picture (icon.png, 64x64): not in level.dat, Apply writes the file. */
+  setIcon() {},
   /** Weather: 'clear' | 'rain' | 'storm', for the next 6000 ticks (5 minutes). */
   setWeather(op, level, files = {}) {
     const rain = op.kind !== 'clear', storm = op.kind === 'storm';
@@ -319,6 +321,12 @@ CHUNK_OPS.paintBiome = {
 // Journal
 // ---------------------------------------------------------------------------
 
+const PNG_SIGNATURE = 'iVBORw0KGg'; // base64 of the PNG header (the first 60 bits of it)
+function validateIcon(op) {
+  if (typeof op.png !== 'string' || !op.png.startsWith(PNG_SIGNATURE)) throw new Error('L\'icona deve essere un PNG.');
+  if (op.png.length > 400000) throw new Error('Icona troppo grande.');
+}
+
 export class Journal {
   constructor(ops = []) {
     this.done = ops.slice();
@@ -332,6 +340,7 @@ export class Journal {
 
   push(op) {
     if (!LEVEL_OPS[op.type] && !CHUNK_OPS[op.type]) throw new Error(`Operazione sconosciuta: ${op.type}`);
+    if (op.type === 'setIcon') validateIcon(op);
     const def = CHUNK_OPS[op.type];
     if (def) {
       if (!def.bounds(op)) throw new Error('La selezione è vuota.');
@@ -361,6 +370,8 @@ export class Journal {
   get ops() { return this.done; }
 
   levelOps() { return this.done.filter((o) => LEVEL_OPS[o.type]); }
+  /** The icon a pending setIcon will write (PNG as base64), or null. */
+  pendingIcon() { const op = this.done.filter((o) => o.type === 'setIcon').pop(); return op ? op.png : null; }
   chunkOps() { return this.done.filter((o) => CHUNK_OPS[o.type]); }
 
   /** Pending operations counted by type, for the confirmation dialog. */

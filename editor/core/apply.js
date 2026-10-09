@@ -198,6 +198,8 @@ export async function applyJournal({
     // Read back: a file that doesn't parse must not survive Apply.
     for (const rel of Object.keys(levelFiles)) await parse(new Uint8Array(fs.readFileSync(path.join(targetDir, rel))));
   }
+  const icon = journal.pendingIcon();
+  if (icon) fs.writeFileSync(path.join(targetDir, 'icon.png'), Buffer.from(icon, 'base64'));
   fs.writeFileSync(path.join(targetDir, COPY_MARK), JSON.stringify({
     origine: path.basename(worldDir), creata: new Date().toISOString(), operazioni: journal.summary(),
   }, null, 2));

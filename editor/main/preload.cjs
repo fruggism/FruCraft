@@ -11,6 +11,7 @@ const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 contextBridge.exposeInMainWorld('cantiere', {
   settings: { get: call('settings:get'), set: call('settings:set'), pickSavesDir: call('settings:pickSavesDir') },
   worlds: { list: call('worlds:list'), pick: call('worlds:pick') },
+  icon: { fromFile: call('icon:fromFile'), fromView: call('icon:fromView') },
   world: {
     open: call('world:open'),
     close: call('world:close'),

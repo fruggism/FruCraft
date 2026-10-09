@@ -10,7 +10,7 @@
 
 import { $, esc, icon, fmt, signed, rgb, toast, guard, modalOpen, closeModal, pickFrom, ago, whenText, cleanError } from './ui.js';
 import { MapOverlay, scaleBar } from './mapdraw.js';
-import { applyDialog, replaceDialog, gotoDialog, saveSelectionDialog, devFillDialog, OP_LABELS } from './dialogs.js';
+import { applyDialog, replaceDialog, gotoDialog, saveSelectionDialog, devFillDialog, iconDialog, OP_LABELS } from './dialogs.js';
 import {
   emptySelection, isEmptySelection, combine, invert, selectionBounds, measure, simplifyPoints, yRange,
 } from '../core/selection.js';
@@ -446,7 +446,7 @@ function ribbonItems() {
       b('invert', 'i-flip', 'Inverti', '⇧⌘I', has), '|', b('savesel', 'i-down', 'Salva selezione…', '', has && hasSelection()),
       b('ycut', 'i-fill', 'Y dalla quota di taglio', '', has && t.maxY !== null), '|', b('fillbiome', 't-biome', 'Riempi con il bioma', '', has && hasSelection() && !ro)];
     case 'Mondo': return [b('tool:spawn', 't-spawn', 'Spawn e regole', '', has, state.tool === 'spawn'), b('tool:search', 't-search', 'Cerca blocchi', '⌘F', has, state.tool === 'search'),
-      b('replace', 't-replace', 'Sostituisci…', '', has && !ro), '|', soon('t-border', 'Bordo del mondo', 7), soon('t-players', 'Giocatori', 7), soon('t-prune', 'Pota chunk', 7)];
+      b('replace', 't-replace', 'Sostituisci…', '', has && !ro), b('icon', 'i-eye', 'Icona del mondo…', '', has && !ro), '|', soon('t-border', 'Bordo del mondo', 7), soon('t-players', 'Giocatori', 7), soon('t-prune', 'Pota chunk', 7)];
     case 'Vista': return has ? [
       ...t.info.dimensions.map((d) => b(`dim:${d.id}`, DIM_ICON[d.id] || 'd-over', d.label, '', true, t.dim === d.id)), '|',
       b('biomeview', 't-biome', 'Vista biomi', '', true, t.view === 'biomes'), b('grid', 'i-grid', 'Griglia chunk', '', true, state.grid), b('invisible', 'i-eye', 'Nascondi blocchi invisibili', '', true, hideInvisible()), '|',
@@ -589,6 +589,7 @@ function propsHtml(t) {
     </div>
     <div class="sec"><div class="caps sh">Mondo</div>
       <div class="row"><span>${esc(i.name)}</span><span class="v">${esc(dimLabel)}</span></div>
+      <div class="row"><span style="display:flex;align-items:center;gap:8px">${i.icon ? `<img src="${i.icon}" alt="" width="32" height="32" style="image-rendering:pixelated;border-radius:4px">` : ''}Icona</span><button class="btn" data-act="icon" ${i.readOnly ? 'disabled' : ''}>Cambia…</button></div>
       <div class="row"><span>Versione</span><span class="v mono">${esc(i.version || '?')}</span></div>
       <div class="row"><span>Region</span><span class="v mono">${fmt(i.dimensions.find((d) => d.id === t.dim)?.regionCount || 0)}</span></div>
       ${i.isCopy ? '<div class="row"><span>Copia creata dal Cantiere</span><span class="v">sì</span></div>' : ''}
@@ -675,13 +676,14 @@ function levelPanel(t) {
     <div class="sec"><div class="caps sh">Regole di gioco</div>${rules || '<p class="empty-note">Nessuna regola salvata.</p>'}</div>`;
 }
 
-const OP_COLOR = { setSpawn: '#ee6a62', setGameRule: '#62a8f0', setLevelValue: '#f2b13b', setDayTime: '#f2b13b', setWeather: '#f2b13b', fillBox: '#d9a033', replaceBlocks: '#76ba5a', paintBiome: '#3f7d35' };
+const OP_COLOR = { setIcon: '#9b7ff0', setSpawn: '#ee6a62', setGameRule: '#62a8f0', setLevelValue: '#f2b13b', setDayTime: '#f2b13b', setWeather: '#f2b13b', fillBox: '#d9a033', replaceBlocks: '#76ba5a', paintBiome: '#3f7d35' };
 
 function describeOp(op) {
   const c = (n) => fmt(n);
   switch (op.type) {
     case 'setSpawn': return ['Spawn spostato', `X ${signed(op.x)}, Y ${signed(op.y)}, Z ${signed(op.z)}`];
     case 'setGameRule': return [`Regola ${ruleLabel(op.rule)}`, `= ${op.value}`];
+    case 'setIcon': return ['Icona del mondo', '64 × 64'];
     case 'setDayTime': return ['Ora del giorno', String(op.value)];
     case 'setWeather': return ['Meteo', { clear: 'Sereno', rain: 'Pioggia', storm: 'Temporale' }[op.kind] || op.kind];
     case 'setLevelValue': return [{ DayTime: 'Ora del giorno', raining: 'Pioggia', thundering: 'Temporale', rainTime: 'Durata pioggia', thunderTime: 'Durata temporale', clearWeatherTime: 'Durata sereno' }[op.path[op.path.length - 1]] || op.path.join('.'), String(op.value)];
@@ -866,6 +868,7 @@ const ctx = {
   api, tab, selection, pushOp, afterJournal, openWorld, saveSelection,
   center: () => fromLatLng(map.getCenter()),
   goTo: (x, z) => goTo(x, z),
+  mapRect: () => $('map').getBoundingClientRect(),
 };
 
 // ---------------------------------------------------------------------------
@@ -891,6 +894,7 @@ const ACTIONS = {
   exportcsv: exportCsv,
   biomeview: () => { const t = tab(); if (!t) return; t.view = t.view === 'biomes' ? 'blocks' : 'biomes'; if (layer) layer.redraw(); render(); },
   grid: () => { state.grid = !state.grid; overlay.draw(false); render(); },
+  icon: () => tab() && iconDialog(ctx),
   invisible: async () => { state.settings = await api.settings.set({ hideInvisible: !hideInvisible() }); if (layer) layer.redraw(); render(); },
   clearbarriers: () => {
     const t = tab();

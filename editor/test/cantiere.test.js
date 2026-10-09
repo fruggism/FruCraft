@@ -488,6 +488,22 @@ export function register({ test, section, assert, assertEqual }) {
     assertEqual((await s.probe('overworld', 3, 3)).block, 'minecraft:grass_block', 'barriera tolta');
   });
 
+  test('icona del mondo: in sospeso si vede, Applica scrive icon.png solo nella copia', async () => {
+    const world = makeWorld(freshSaves(), 'Icona');
+    fs.writeFileSync(path.join(world, 'icon.png'), Buffer.from('89504e470d0a1a0a0000', 'hex'));
+    const before = hashTree(world);
+    const s = await WorldSession.open(world, { dataDir: path.join(scratch, 'dati-icona') });
+    const png = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.from('icona nuova')]).toString('base64');
+    let threw = false;
+    try { s.push({ type: 'setIcon', png: Buffer.from('non un png').toString('base64') }); } catch { threw = true; }
+    assert(threw, 'un file che non è PNG viene rifiutato');
+    s.push({ type: 'setIcon', png });
+    assertEqual((await s.info()).icon, `data:image/png;base64,${png}`, 'anteprima');
+    const res = await applyJournal({ worldDir: world, journal: s.journal, lockCheck: unlocked });
+    assertEqual(fs.readFileSync(path.join(res.targetDir, 'icon.png')).toString('base64'), png, 'icon.png nella copia');
+    assertEqual(hashTree(world), before, 'l\'originale è cambiato');
+  });
+
   test('il giornale non applicato sopravvive alla chiusura dell\'app', async () => {
     const saves = freshSaves();
     const world = makeWorld(saves);

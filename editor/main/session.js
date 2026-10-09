@@ -205,11 +205,19 @@ export class WorldSession {
       time: summary.time,
       gameRules: summary.gameRules,
       splitLevel: summary.split,
+      icon: this.iconUrl(),
       dimensions: this.scan.dimensions.map((x) => ({
         id: x.id, label: x.label, regionCount: x.regionCount, bounds: x.bounds,
       })),
       journal: this.journalState(),
     };
+  }
+
+  /** The world's picture as a data URL: the pending one if there is one, else icon.png, else null. */
+  iconUrl() {
+    const pending = this.journal.pendingIcon();
+    if (pending) return `data:image/png;base64,${pending}`;
+    try { return `data:image/png;base64,${fs.readFileSync(path.join(this.worldDir, 'icon.png')).toString('base64')}`; } catch { return null; }
   }
 
   journalState() {

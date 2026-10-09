@@ -6,7 +6,7 @@
  * WorldSession. Nothing here knows how to edit a world; that is editor/core.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, nativeImage } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
@@ -81,6 +81,29 @@ function registerIpc() {
     if (r.canceled || !r.filePaths[0]) return null;
     writeSettings({ savesDir: r.filePaths[0] });
     return r.filePaths[0];
+  });
+
+  // World icon: Minecraft wants a 64x64 PNG. The middle square of the picture is kept.
+  const iconFrom = (img) => {
+    if (!img || img.isEmpty()) return null;
+    const { width, height } = img.getSize();
+    const side = Math.min(width, height);
+    const square = img.crop({ x: Math.floor((width - side) / 2), y: Math.floor((height - side) / 2), width: side, height: side });
+    return square.resize({ width: 64, height: 64, quality: 'best' }).toPNG().toString('base64');
+  };
+  ipcMain.handle('icon:fromFile', async () => {
+    const r = await dialog.showOpenDialog(win, {
+      title: 'Scegli un\'immagine per il mondo', properties: ['openFile'],
+      filters: [{ name: 'Immagini', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'heic'] }],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const png = iconFrom(nativeImage.createFromPath(r.filePaths[0]));
+    if (!png) throw new Error('Immagine non leggibile.');
+    return png;
+  });
+  ipcMain.handle('icon:fromView', async (_e, rect) => {
+    const r = { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+    return iconFrom(await win.webContents.capturePage(r));
   });
 
   ipcMain.handle('worlds:list', async () => ({ dir: savesDir(), worlds: await listWorlds(savesDir()) }));
