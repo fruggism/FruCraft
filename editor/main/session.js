@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { scanWorld } from '../../web/js/core/worldScan.js';
+import { scanWorld, readSpawn } from '../../web/js/core/worldScan.js';
 import { serveTile, getTile, regionSetOf, tileRangeFor, blocksPerTile, TILE_SIZE, MIN_ZOOM, NATIVE_ZOOM } from '../../web/js/core/tiler.js';
 import { readSurface, forgetRegions, NO_DATA } from '../../web/js/core/anvil.js';
 import { NodeSource } from '../core/nodeSource.js';
@@ -195,7 +195,7 @@ export class WorldSession {
       dataVersion: this.scan.dataVersion,
       readOnly: this.readOnly,
       isCopy: isCantiereCopy(this.worldDir),
-      spawn: { x: Number(d.SpawnX), y: Number(d.SpawnY), z: Number(d.SpawnZ) },
+      spawn: readSpawn(d),
       time: {
         dayTime: String(d.DayTime ?? 0),
         raining: !!(d.raining && d.raining.v),

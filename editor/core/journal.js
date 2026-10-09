@@ -47,14 +47,15 @@ export const LEVEL_OPS = {
   /** Set the world spawn. Handles both the old (SpawnX/Y/Z) and new (Data.spawn) layouts. */
   setSpawn(op, level) {
     const d = level.Data;
+    if (d.spawn && typeof d.spawn === 'object') {
+      d.spawn.pos = new TIntArray([op.x | 0, op.y | 0, op.z | 0]);
+      if (op.angle !== undefined) d.spawn.yaw = new TFloat(op.angle);
+      return;
+    }
     d.SpawnX = op.x | 0;
     d.SpawnY = op.y | 0;
     d.SpawnZ = op.z | 0;
     if (op.angle !== undefined) d.SpawnAngle = new TFloat(op.angle);
-    if (d.spawn && typeof d.spawn === 'object') {
-      d.spawn.pos = new TIntArray([op.x | 0, op.y | 0, op.z | 0]);
-      if (op.angle !== undefined) d.spawn.yaw = new TFloat(op.angle);
-    }
   },
   /** Set any value in level.dat by path, with an explicit tag type. */
   setLevelValue(op, level) {

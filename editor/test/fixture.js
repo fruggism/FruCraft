@@ -74,7 +74,7 @@ export function makeChunk(cx, cz) {
 }
 
 /** Build <savesDir>/<name> with level.dat and region/r.0.0.mca. Returns the world dir. */
-export function makeWorld(savesDir, name = 'Prova') {
+export function makeWorld(savesDir, name = 'Prova', { newSpawn = false } = {}) {
   const dir = path.join(savesDir, name);
   fs.mkdirSync(path.join(dir, 'region'), { recursive: true });
   const region = new RegionData(0, 0);
@@ -92,6 +92,11 @@ export function makeWorld(savesDir, name = 'Prova') {
       Version: { Name: '1.20.1', Id: DATA_VERSION, Snapshot: new TByte(0) },
     },
   };
+  if (newSpawn) {
+    // 1.21.9+ layout: the spawn is a compound, SpawnX/Y/Z are gone.
+    for (const k of ['SpawnX', 'SpawnY', 'SpawnZ', 'SpawnAngle']) delete level.Data[k];
+    level.Data.spawn = { pos: new TIntArray([440, 71, 1085]), dimension: 'minecraft:overworld', yaw: new TFloat(180), pitch: new TFloat(0) };
+  }
   fs.writeFileSync(path.join(dir, 'level.dat'), zlib.gzipSync(Buffer.from(writeNbt(level, ''))));
   fs.mkdirSync(path.join(dir, 'playerdata'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'playerdata', 'x.dat'), 'dati del giocatore');

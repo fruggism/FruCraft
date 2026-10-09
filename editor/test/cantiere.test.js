@@ -373,6 +373,22 @@ export function register({ test, section, assert, assertEqual }) {
     assertEqual((await readLevel(world)).value.Data.SpawnX, 8, 'il disco no');
   });
 
+  test('mondo 1.21.9+ (spawn.pos invece di SpawnX/Y/Z): lo spawn si legge e si scrive senza NaN', async () => {
+    const saves = freshSaves();
+    const world = makeWorld(saves, 'Nuovo', { newSpawn: true });
+    const s = await WorldSession.open(world, { dataDir: path.join(scratch, 'dati-nuovo') });
+    const info = await s.info();
+    assertEqual(info.spawn.x, 440, 'spawn x');
+    assertEqual(info.spawn.y, 71, 'spawn y');
+    assertEqual(info.spawn.z, 1085, 'spawn z');
+    s.push({ type: 'setSpawn', x: -5, y: 64, z: 12 });
+    const after = (await s.info()).spawn;
+    assertEqual(after.x, -5, 'spawn in anteprima x');
+    assertEqual(after.z, 12, 'spawn in anteprima z');
+    const d = await s.levelPreview();
+    assert(!('SpawnX' in d), 'niente SpawnX nel formato nuovo');
+  });
+
   test('il giornale non applicato sopravvive alla chiusura dell\'app', async () => {
     const saves = freshSaves();
     const world = makeWorld(saves);

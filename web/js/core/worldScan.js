@@ -146,6 +146,22 @@ export async function indexRegionDir(source, regionDir) {
   };
 }
 
+/**
+ * World spawn from level.dat's Data. Up to 1.21.8 it is SpawnX/Y/Z; from
+ * 1.21.9 it is a `spawn` compound whose `pos` is an int array [x, y, z]
+ * (an Int32Array once parsed, a TIntArray after the Cantiere's journal set it).
+ */
+export function readSpawn(d) {
+  const pos = d && d.spawn && d.spawn.pos;
+  const xyz = pos ? (pos.v || pos) : null;
+  if (xyz && xyz.length >= 3) return { x: Number(xyz[0]), y: Number(xyz[1]), z: Number(xyz[2]) };
+  return {
+    x: Number((d && d.SpawnX) || 0),
+    y: Number((d && d.SpawnY) || 64),
+    z: Number((d && d.SpawnZ) || 0),
+  };
+}
+
 export async function readLevelDat(source) {
   const bytes = await source.readFile('level.dat');
   if (!bytes) return { levelName: source.name };
@@ -156,11 +172,7 @@ export async function readLevelDat(source) {
       levelName: d.LevelName || source.name,
       version: (d.Version && d.Version.Name) || null,
       dataVersion: d.DataVersion ? Number(d.DataVersion) : null,
-      spawn: {
-        x: Number(d.SpawnX || 0),
-        y: Number(d.SpawnY || 64),
-        z: Number(d.SpawnZ || 0),
-      },
+      spawn: readSpawn(d),
     };
   } catch {
     return { levelName: source.name };
