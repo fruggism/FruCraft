@@ -50,9 +50,14 @@
         "dmg",
         "zip"
       ],
-      "identity": null
+      "identity": null,
+      "icon": "build/icon.png"
     },
-    "asar": false
+    "asar": false,
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    }
   },
   "devDependencies": {
     "electron": "^44.7.0",

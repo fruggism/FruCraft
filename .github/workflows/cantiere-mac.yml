@@ -1,0 +1,93 @@
+# Builds the Cantiere as a macOS app on a real Mac and publishes it as a
+# download: one .dmg for Apple Silicon (M1 and later) and one for Intel.
+#
+# The app is signed ad hoc, not with an Apple Developer ID (there isn't one):
+# that is what lets an Apple Silicon Mac run it at all — an unsigned bundle is
+# reported as "damaged" — but Gatekeeper still asks for a confirmation the
+# first time (System Settings -> Privacy & Security -> Open Anyway).
+#
+# Download page: the "cantiere-anteprima" pre-release of the repository,
+# replaced at every build. The same files are also kept as workflow artifacts.
+name: App del Cantiere per Mac
+
+on:
+  push:
+    branches: ['claude/loving-edison-zrs9sr', 'main', 'master']
+    paths:
+      - 'editor/**'
+      - 'web/js/core/**'
+      - 'web/vendor/leaflet*'
+      - 'build/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/cantiere-mac.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cantiere-mac
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    name: Costruisci la .app
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      # Unsigned bundles first; they are signed ad hoc and packed below, so
+      # the signature covers the final bundle exactly.
+      - name: Crea la .app (Apple Silicon e Intel)
+        run: npx electron-builder --mac dir --arm64 --x64 -c.mac.identity=null
+
+      - name: Firma ad hoc e crea i .dmg
+        run: |
+          set -euo pipefail
+          for pair in "arm64:dist/mac-arm64" "intel:dist/mac"; do
+            arch="${pair%%:*}"; dir="${pair#*:}"
+            app="$dir/Cube-Atlas Cantiere.app"
+            codesign --force --deep --sign - "$app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            stage="$(mktemp -d)"
+            cp -R "$app" "$stage/"
+            ln -s /Applications "$stage/Applicazioni"
+            hdiutil create -volname "Cube-Atlas Cantiere" -srcfolder "$stage" -ov -format UDZO \
+              "dist/Cube-Atlas-Cantiere-$arch.dmg"
+          done
+          ls -la dist/*.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cube-Atlas-Cantiere-mac
+          path: dist/*.dmg
+          retention-days: 30
+
+      - name: Pubblica nella pagina di download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=cantiere-anteprima
+          notes="Anteprima del Cantiere costruita dal commit ${GITHUB_SHA::7} del branch ${GITHUB_REF_NAME} ($(date -u '+%Y-%m-%d %H:%M') UTC).
+
+          - **Cube-Atlas-Cantiere-arm64.dmg** — Mac con chip Apple (M1, M2, M3, M4…)
+          - **Cube-Atlas-Cantiere-intel.dmg** — Mac con processore Intel
+
+          Apri il .dmg e trascina l'app in Applicazioni. La prima volta macOS chiede conferma: Impostazioni di Sistema → Privacy e sicurezza → Apri comunque."
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --notes "$notes" --prerelease
+          else
+            gh release create "$tag" --prerelease --title "Cube-Atlas Cantiere (anteprima)" --notes "$notes" --target "$GITHUB_SHA"
+          fi
+          gh release upload "$tag" dist/*.dmg --clobber

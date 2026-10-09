@@ -414,7 +414,14 @@ checklist "prova in gioco" sono in [`editor/PROGRESS.md`](editor/PROGRESS.md).
 - **Scrive sempre su una copia.** Le modifiche restano in un giornale finché
   non premi **Applica**, che crea `<Nome> (Cantiere)` accanto all'originale; il
   mondo originale non viene mai scritto. Minecraft dev'essere chiuso.
-- Avvio: `npm install`, poi `npm run cantiere`.
+- **Installarlo sul Mac**: scarica il `.dmg` dalla pagina
+  [Cube-Atlas Cantiere (anteprima)](https://github.com/fruggism/FruCraft/releases/tag/cantiere-anteprima)
+  — `arm64` per i Mac con chip Apple (M1 e successivi), `intel` per gli altri —,
+  aprilo e trascina l'app in Applicazioni. La prima volta macOS chiede
+  conferma: Impostazioni di Sistema → Privacy e sicurezza → *Apri comunque*.
+  Il file viene ricostruito da un Mac di GitHub a ogni modifica del Cantiere
+  (`.github/workflows/cantiere-mac.yml`).
+- Avvio per lo sviluppo: `npm install`, poi `npm run cantiere`.
 - Creare la `.app` (dmg e zip, Apple Silicon e Intel): `npm run cantiere:build`.
   L'app non è firmata: la prima volta si apre con tasto destro → Apri.
 - Solo mondi 1.18 o successivi (gli altri si aprono in sola lettura).
