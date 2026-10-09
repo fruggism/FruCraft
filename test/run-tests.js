@@ -1625,6 +1625,8 @@ test('la provenienza della porzione resta scritta nel file', () => {
 
 import { register as registerCantiere } from '../editor/test/cantiere.test.js';
 registerCantiere({ test, section, assert, assertEqual });
+import { register as registerCantiere2 } from '../editor/test/phase2.test.js';
+registerCantiere2({ test, section, assert, assertEqual });
 
 (async () => {
   for (const item of tests) {

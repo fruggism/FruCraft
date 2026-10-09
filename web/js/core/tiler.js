@@ -104,10 +104,11 @@ export async function renderBaseTile(source, regionDir, tx, ty, options = {}) {
 
       anyPixel = true;
       const name = surfaceName[gi];
-      let [r, g, b] = colorFor(name, biome[gi]);
+      // options.biomeColor (biome name -> [r, g, b]) paints biomes instead of blocks.
+      let [r, g, b] = options.biomeColor ? options.biomeColor(biome[gi]) : colorFor(name, biome[gi]);
 
       // Water: darken with depth so shorelines and rivers stay readable.
-      if (waterDepthShading && WATER_NAMES.has(name)) {
+      if (waterDepthShading && !options.biomeColor && WATER_NAMES.has(name)) {
         const depth = clamp(y - floorY[gi], 0, 30);
         const k = Math.min(0.62, depth * 0.03);
         r *= 1 - k * 0.75;

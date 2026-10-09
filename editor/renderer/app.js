@@ -165,7 +165,7 @@ async function openWorld(dir) {
   if (!res) return;
   const t = { id: res.id, info: res.info, dim: res.info.dimensions[0].id, cut: false, maxY: 320, view: null };
   state.tabs.push(t);
-  if (res.info.readOnly) toast('Mondo anteriore alla 1.18.2: aperto in sola lettura.');
+  if (res.info.readOnly) toast('Mondo anteriore alla 1.18: aperto in sola lettura.');
   activate(t.id);
 }
 

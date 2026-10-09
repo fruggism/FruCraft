@@ -249,20 +249,32 @@ const MAX_CACHED_REGIONS = 8;
 const regionCache = new Map();
 
 export async function loadRegionFile(source, path) {
-  if (regionCache.has(path)) {
-    const v = regionCache.get(path);
-    regionCache.delete(path);
-    regionCache.set(path, v); // refresh recency
+  // Keyed by source too: two worlds open side by side both have region/r.0.0.mca.
+  const key = `${source && source.key ? source.key : ''}|${path}`;
+  if (regionCache.has(key)) {
+    const v = regionCache.get(key);
+    regionCache.delete(key);
+    regionCache.set(key, v); // refresh recency
     return v;
   }
   let region = null;
   const bytes = await source.readFile(path);
   if (bytes && bytes.length >= 8192) region = new RegionFile(bytes);
-  regionCache.set(path, region);
+  regionCache.set(key, region);
   if (regionCache.size > MAX_CACHED_REGIONS) {
     regionCache.delete(regionCache.keys().next().value);
   }
   return region;
+}
+
+/** Forget the cached copies of one source's region files (all of them when paths is omitted). */
+export function forgetRegions(source, paths = null) {
+  const prefix = `${source && source.key ? source.key : ''}|`;
+  for (const key of [...regionCache.keys()]) {
+    if (!key.startsWith(prefix)) continue;
+    if (paths && !paths.has(key.slice(prefix.length))) continue;
+    regionCache.delete(key);
+  }
 }
 
 export function clearRegionCache() { regionCache.clear(); }

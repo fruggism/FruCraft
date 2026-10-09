@@ -14,8 +14,11 @@
  */
 
 import { TByte, TLong, TFloat, TDouble, TShort, TIntArray } from '../../web/js/core/nbt.js';
-import { ChunkEditor, parseState } from './chunk.js';
+import { ChunkEditor, parseState, stateKey } from './chunk.js';
 import { dimensionInfo } from './dimensions.js';
+import { selectionBounds, chunkMask, yRange } from './selection.js';
+import { blockMatcher, compileMix, pickFromMix, carryProperties, hash3 } from './blocks.js';
+import { AIR_NAMES } from '../../web/js/core/anvil.js';
 
 // ---------------------------------------------------------------------------
 // Level operations
@@ -102,6 +105,118 @@ export const CHUNK_OPS = {
   },
 };
 
+/*
+ * Replace: the rules are compiled once per operation (cached on the op object,
+ * which the journal never mutates) and each section is first checked through
+ * its palette, so a section with nothing to replace costs one pass over a
+ * palette of a few entries, not 4096 lookups.
+ */
+const compiledRules = new WeakMap();
+function rulesOf(op) {
+  let c = compiledRules.get(op);
+  if (!c) {
+    c = op.rules.map((r) => ({ match: blockMatcher(r.from), mix: compileMix(r.to) }));
+    compiledRules.set(op, c);
+  }
+  return c;
+}
+
+const isAirState = (s) => AIR_NAMES.has(s.Name);
+
+/** Is the block at (x, y, z) next to air? Neighbours outside this chunk don't count. */
+function exposed(ed, x, y, z) {
+  const x0 = ed.xPos * 16, z0 = ed.zPos * 16;
+  const top = ed.minY + ed.height - 1;
+  for (const [dx, dy, dz] of [[0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+    const nx = x + dx, ny = y + dy, nz = z + dz;
+    if (ny < ed.minY || ny > top) continue;
+    if (nx < x0 || nx > x0 + 15 || nz < z0 || nz > z0 + 15) continue;
+    if (isAirState(ed.getState(nx, ny, nz))) return true;
+  }
+  return false;
+}
+
+/**
+ * Walk the blocks a replaceBlocks op changes in one chunk, without changing
+ * them: visit(x, y, z, newState, dropped). Shared by apply and the preview count.
+ */
+export function visitReplace(op, ed, cx, cz, visit) {
+  const mask = chunkMask(op.region, cx, cz);
+  if (!mask) return;
+  const info = dimensionInfo(op.dim);
+  let [lo, hi] = yRange(op.region, info.minY, info.height);
+  if (op.yMin !== null && op.yMin !== undefined) lo = Math.max(lo, Number(op.yMin));
+  if (op.yMax !== null && op.yMax !== undefined) hi = Math.min(hi, Number(op.yMax));
+  if (lo > hi) return;
+  const rules = rulesOf(op);
+  const biomes = op.biomes && op.biomes.length ? new Set(op.biomes) : null;
+  const seed = op.seed | 0;
+  for (let sy = lo >> 4; sy <= hi >> 4; sy++) {
+    const sec = ed.section(sy);
+    if (!sec) continue;
+    const ruleOf = sec.palette.map((st) => rules.findIndex((r) => r.match(st)));
+    if (ruleOf.every((i) => i < 0)) continue;
+    const yFrom = Math.max(lo, sy * 16), yTo = Math.min(hi, sy * 16 + 15);
+    for (let y = yFrom; y <= yTo; y++) {
+      for (let lz = 0; lz < 16; lz++) {
+        for (let lx = 0; lx < 16; lx++) {
+          if (!mask[lz * 16 + lx]) continue;
+          const from = sec.palette[sec.blocks[((y & 15) << 8) | (lz << 4) | lx]];
+          const ri = ruleOf[sec.blocks[((y & 15) << 8) | (lz << 4) | lx]];
+          if (ri < 0) continue;
+          const x = cx * 16 + lx, z = cz * 16 + lz;
+          if (op.exposedOnly && !exposed(ed, x, y, z)) continue;
+          if (biomes && !biomes.has(ed.getBiome(x, y, z))) continue;
+          const to = pickFromMix(rules[ri].mix, hash3(x, y, z, seed + ri));
+          const { state, dropped } = carryProperties(from, to, op.keepProps !== false);
+          if (stateKey(state) === stateKey(from)) continue;
+          visit(x, y, z, state, dropped);
+        }
+      }
+    }
+  }
+}
+
+CHUNK_OPS.replaceBlocks = {
+  bounds: (op) => selectionBounds(op.region),
+  validate(op) {
+    if (!Array.isArray(op.rules) || !op.rules.length) throw new Error('Nessuna regola di sostituzione.');
+    rulesOf(op);
+  },
+  apply(op, ed, cx, cz) {
+    const changes = [];
+    visitReplace(op, ed, cx, cz, (x, y, z, state) => changes.push([x, y, z, state]));
+    for (const [x, y, z, state] of changes) ed.setState(x, y, z, state);
+  },
+};
+
+/**
+ * Paint a biome. Biomes are stored per 4x4x4 cell; a cell is painted when the
+ * column at its centre is selected, so a brush paints whole cells, the way the
+ * game itself sees biomes. Missing sections are not created for a biome.
+ */
+CHUNK_OPS.paintBiome = {
+  bounds: (op) => selectionBounds(op.region),
+  validate(op) {
+    if (!/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(String(op.biome))) throw new Error(`Bioma non valido: ${op.biome}`);
+  },
+  apply(op, ed, cx, cz) {
+    const mask = chunkMask(op.region, cx, cz);
+    if (!mask) return;
+    const info = dimensionInfo(op.dim);
+    const [lo, hi] = yRange(op.region, info.minY, info.height);
+    for (let z4 = 0; z4 < 4; z4++) {
+      for (let x4 = 0; x4 < 4; x4++) {
+        if (!mask[(z4 * 4 + 2) * 16 + x4 * 4 + 2]) continue;
+        for (let y = Math.floor(lo / 4) * 4; y <= hi; y += 4) {
+          if (!ed.section(y >> 4)) continue;
+          ed.setBiome(cx * 16 + x4 * 4, y, cz * 16 + z4 * 4, op.biome);
+        }
+      }
+    }
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Journal
 // ---------------------------------------------------------------------------
@@ -113,21 +228,27 @@ export class Journal {
     this.listeners = new Set();
   }
 
+  /** fn(journal, op): op is the operation that came or went, or null when everything changed. */
   onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
-  emit() { for (const fn of this.listeners) fn(this); }
+  emit(op = null) { for (const fn of this.listeners) fn(this, op); }
 
   push(op) {
     if (!LEVEL_OPS[op.type] && !CHUNK_OPS[op.type]) throw new Error(`Operazione sconosciuta: ${op.type}`);
+    const def = CHUNK_OPS[op.type];
+    if (def) {
+      if (!def.bounds(op)) throw new Error('La selezione è vuota.');
+      if (def.validate) def.validate(op);
+    }
     this.done.push(op);
     this.undone.length = 0;
-    this.emit();
+    this.emit(op);
     return op;
   }
 
   get canUndo() { return this.done.length > 0; }
   get canRedo() { return this.undone.length > 0; }
-  undo() { if (!this.canUndo) return null; const op = this.done.pop(); this.undone.push(op); this.emit(); return op; }
-  redo() { if (!this.canRedo) return null; const op = this.undone.pop(); this.done.push(op); this.emit(); return op; }
+  undo() { if (!this.canUndo) return null; const op = this.done.pop(); this.undone.push(op); this.emit(op); return op; }
+  redo() { if (!this.canRedo) return null; const op = this.undone.pop(); this.done.push(op); this.emit(op); return op; }
   clear() { this.done.length = 0; this.undone.length = 0; this.emit(); }
 
   get size() { return this.done.length; }
@@ -176,6 +297,15 @@ export class Journal {
     }
     return plan;
   }
+}
+
+/** Region box a chunk operation touches, aligned to whole chunks; null for level operations. */
+export function chunkBoundsOf(op) {
+  const def = op && CHUNK_OPS[op.type];
+  if (!def) return null;
+  const b = def.bounds(op);
+  if (!b) return null;
+  return { minX: (b.minX >> 4) * 16, minZ: (b.minZ >> 4) * 16, maxX: (b.maxX >> 4) * 16 + 15, maxZ: (b.maxZ >> 4) * 16 + 15 };
 }
 
 /** Apply a chunk's operations to its typed root. Returns the editor, committed. */

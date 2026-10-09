@@ -89,7 +89,7 @@ export async function preflight({ worldDir, targetDir, journal, lockCheck = defa
   const level = await readLevel(worldDir);
   const dv = dataVersionOf(level);
   if (dv < MIN_DATA_VERSION) {
-    errors.push(`Il mondo è di una versione troppo vecchia (DataVersion ${dv}): il Cantiere scrive solo mondi 1.18.2 o successivi.`);
+    errors.push(`Il mondo è di una versione troppo vecchia (DataVersion ${dv}): il Cantiere scrive solo mondi 1.18 o successivi.`);
   }
   for (const [label, dir] of [['originale', worldDir], ['copia', targetDir]]) {
     if (!dir || !fs.existsSync(dir)) continue;

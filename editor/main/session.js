@@ -14,11 +14,12 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { scanWorld } from '../../web/js/core/worldScan.js';
-import { serveTile, regionSetOf, TILE_SIZE } from '../../web/js/core/tiler.js';
-import { readSurface, clearRegionCache, NO_DATA } from '../../web/js/core/anvil.js';
+import { serveTile, regionSetOf, tileRangeFor, TILE_SIZE, MIN_ZOOM, NATIVE_ZOOM } from '../../web/js/core/tiler.js';
+import { readSurface, forgetRegions, NO_DATA } from '../../web/js/core/anvil.js';
 import { NodeSource } from '../core/nodeSource.js';
 import { OverlaySource } from '../core/overlay.js';
-import { Journal } from '../core/journal.js';
+import { Journal, chunkBoundsOf } from '../core/journal.js';
+import { biomeColor } from '../core/biomes.js';
 import { applyJournal, preflight, readLevel, dataVersionOf, isCantiereCopy, uniqueCopyName } from '../core/apply.js';
 import { MIN_DATA_VERSION } from '../core/chunk.js';
 
@@ -69,9 +70,40 @@ export class WorldSession {
     this.readOnly = this.scan.dataVersion !== null && this.scan.dataVersion < MIN_DATA_VERSION;
     this.journal = this.restoreJournal();
     this.overlay = new OverlaySource(this.base, this.journal);
-    this.journal.onChange(() => { this.caches.clear(); clearRegionCache(); this.persist(); });
+    this.dirty = [];
+    this.journal.onChange((_j, op) => { this.invalidate(op); this.persist(); });
     this.regionSets = new Map(this.scan.dimensions.map((d) => [d.id, regionSetOf(d.regions)]));
   }
+
+  /**
+   * Forget what an operation changed: the region files under it and the
+   * tiles over it, at every zoom. Level operations change no tile. The
+   * boxes are remembered in this.dirty for the window to redraw.
+   */
+  invalidate(op) {
+    const b = chunkBoundsOf(op);
+    if (!op) {
+      this.caches.clear();
+      forgetRegions(this.overlay);
+      this.dirty.push({ dim: null, bounds: null });
+      return;
+    }
+    if (!b) return;
+    forgetRegions(this.overlay, this.overlay.regionsOf(op.dim, b));
+    for (const [key, tiles] of this.caches) {
+      if (!key.startsWith(`${op.dim}|`)) continue;
+      for (let z = MIN_ZOOM; z <= NATIVE_ZOOM; z++) {
+        const r = tileRangeFor(b, z);
+        for (let ty = r.minTY; ty <= r.maxTY; ty++) {
+          for (let tx = r.minTX; tx <= r.maxTX; tx++) tiles.delete(`${z}/${tx}/${ty}`);
+        }
+      }
+    }
+    this.dirty.push({ dim: op.dim, bounds: b });
+  }
+
+  /** Boxes changed since the last call: what the window must redraw. */
+  takeDirty() { const d = this.dirty; this.dirty = []; return d; }
 
   restoreJournal() {
     try {
@@ -128,10 +160,10 @@ export class WorldSession {
     };
   }
 
-  ctxFor(dimId, maxY) {
+  ctxFor(dimId, maxY, view = 'blocks') {
     const dim = this.scan.dimensions.find((x) => x.id === dimId);
     if (!dim) throw new Error(`Dimensione sconosciuta: ${dimId}`);
-    const key = `${dimId}|${maxY ?? ''}`;
+    const key = `${dimId}|${maxY ?? ''}|${view}`;
     if (!this.caches.has(key)) this.caches.set(key, new Map());
     const tiles = this.caches.get(key);
     return {
@@ -143,13 +175,16 @@ export class WorldSession {
         get: async (z, x, y) => tiles.get(`${z}/${x}/${y}`) || null,
         set: async (z, x, y, rgba) => { tiles.set(`${z}/${x}/${y}`, rgba); },
       },
-      renderOptions: maxY === null || maxY === undefined ? {} : { maxY },
+      renderOptions: {
+        ...(maxY === null || maxY === undefined ? {} : { maxY }),
+        ...(view === 'biomes' ? { biomeColor } : {}),
+      },
     };
   }
 
-  /** RGBA bytes of a 256x256 tile, or null when there is nothing there. */
-  async tile(dimId, z, x, y, maxY = null) {
-    const r = await serveTile(this.ctxFor(dimId, maxY), z, x, y);
+  /** RGBA bytes of a 256x256 tile, or null when there is nothing there. view: 'blocks' | 'biomes'. */
+  async tile(dimId, z, x, y, maxY = null, view = 'blocks') {
+    const r = await serveTile(this.ctxFor(dimId, maxY, view), z, x, y);
     return r.empty ? null : r.rgba;
   }
 
@@ -161,12 +196,12 @@ export class WorldSession {
     return { y: g.surfaceY[0], block: g.surfaceName[0], biome: g.biome[0] };
   }
 
-  push(op) { this.assertWritable(); this.journal.push(op); return this.journalState(); }
-  undo() { this.journal.undo(); return this.journalState(); }
-  redo() { this.journal.redo(); return this.journalState(); }
+  push(op) { this.assertWritable(); this.journal.push(op); return { ...this.journalState(), dirty: this.takeDirty() }; }
+  undo() { this.journal.undo(); return { ...this.journalState(), dirty: this.takeDirty() }; }
+  redo() { this.journal.redo(); return { ...this.journalState(), dirty: this.takeDirty() }; }
 
   assertWritable() {
-    if (this.readOnly) throw new Error('Questo mondo è anteriore alla 1.18.2: il Cantiere lo apre solo in lettura.');
+    if (this.readOnly) throw new Error('Questo mondo è anteriore alla 1.18: il Cantiere lo apre solo in lettura.');
   }
 
   /** True if level.dat was changed by someone else since the tab was opened. */
@@ -188,6 +223,7 @@ export class WorldSession {
     this.assertWritable();
     const res = await applyJournal({ worldDir: this.worldDir, journal: this.journal, ...opts });
     this.journal.clear();
+    this.takeDirty();
     return res;
   }
 }

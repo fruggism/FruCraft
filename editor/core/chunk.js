@@ -19,7 +19,7 @@ import {
   readPaddedPacked, readSpanningPacked, blockBits, biomeBits, AIR_NAMES, WATER_NAMES,
 } from '../../web/js/core/anvil.js';
 
-export const MIN_DATA_VERSION = 2860;   // 1.18.2: the format the editor writes
+export const MIN_DATA_VERSION = 2860;   // 1.18: the chunk format the editor writes
 const DV_PADDED_PACKING = 2529;
 const MASK64 = (1n << 64n) - 1n;
 

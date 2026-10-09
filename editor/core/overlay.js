@@ -10,6 +10,7 @@
 import { RegionData } from './region.js';
 import { replayOnRegion } from './replay.js';
 import { dimensionInfo } from './dimensions.js';
+import { chunkBoundsOf } from './journal.js';
 
 export class OverlaySource {
   constructor(base, journal) {
@@ -18,7 +19,23 @@ export class OverlaySource {
     this.version = 0;
     this.cache = new Map();   // rel path -> { version, bytes }
     this.plan = journal.chunkPlan();
-    journal.onChange(() => { this.version++; this.cache.clear(); this.plan = journal.chunkPlan(); });
+    journal.onChange((_j, op) => {
+      this.version++;
+      this.plan = journal.chunkPlan();
+      const b = chunkBoundsOf(op);
+      if (!op) this.cache.clear();
+      else if (b) for (const rel of this.regionsOf(op.dim, b)) this.cache.delete(rel);
+    });
+  }
+
+  /** Relative paths of the region files a block box of a dimension covers. */
+  regionsOf(dim, b) {
+    const dir = dimensionInfo(dim).dir;
+    const out = new Set();
+    for (let rz = b.minZ >> 9; rz <= b.maxZ >> 9; rz++) {
+      for (let rx = b.minX >> 9; rx <= b.maxX >> 9; rx++) out.add(`${dir}/r.${rx}.${rz}.mca`);
+    }
+    return out;
   }
 
   get name() { return this.base.name; }
