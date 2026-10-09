@@ -37,7 +37,7 @@ export class RegionData {
     this.entries = new Map();
   }
 
-  /** Parse a region file's bytes. `dir` is where external .mcc files live. */
+  /** Parse a region file's bytes. `dir` is where external .mcc files live (or a Map of them). */
   static fromBuffer(buf, rx, rz, dir = null) {
     const region = new RegionData(rx, rz);
     if (buf.length < HEADER) return region;
@@ -58,7 +58,9 @@ export class RegionData {
         if (!dir) continue;
         const cx = rx * 32 + (i & 31);
         const cz = rz * 32 + (i >> 5);
-        try { data = fs.readFileSync(path.join(dir, `c.${cx}.${cz}.mcc`)); } catch { continue; }
+        // `dir` is a folder, or a Map of the .mcc files already read (name -> bytes).
+        if (dir instanceof Map) { data = dir.get(`c.${cx}.${cz}.mcc`); if (!data) continue; }
+        else { try { data = fs.readFileSync(path.join(dir, `c.${cx}.${cz}.mcc`)); } catch { continue; } }
       } else {
         data = Buffer.from(buf.subarray(start + 5, start + 4 + length));
       }

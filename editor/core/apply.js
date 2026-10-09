@@ -15,7 +15,8 @@ import { writeNbt } from '../../web/js/core/nbtWrite.js';
 import { gzipSync } from 'node:zlib';
 import { readRegionFile, writeRegionFile, RegionData } from './region.js';
 import { MIN_DATA_VERSION, ChunkEditor, stateKey } from './chunk.js';
-import { CHUNK_OPS, LEVEL_FILES } from './journal.js';
+import { CHUNK_OPS, LEVEL_FILES, safeRel } from './journal.js';
+import { decodeMask, headerOf } from './freeSpace.js';
 import { replayOnRegion, regionsOfPlan, createsChunks } from './replay.js';
 import { pastedEntityChunk } from './paste.js';
 import { dimensionInfo, dimensionDir, MODERN_PROBE } from './dimensions.js';
@@ -151,7 +152,14 @@ export async function preflight({ worldDir, targetDir, journal, lockCheck = defa
     checks.push({ ok: free >= need * 2, label: free >= need * 2 ? 'Spazio su disco sufficiente' : 'Spazio su disco insufficiente', detail: `${gb(free)} liberi · servono ~${gb(Math.max(need * 2, 1))}` });
   } catch { /* statfs unavailable: skip */ }
   checks.push({ ok: true, label: 'Il mondo originale resta com\'è', detail: 'sola lettura' });
-  return { ok: errors.length === 0, errors, warnings, checks, stats: { regions: regions.length, chunks, worldSize, level: journal.levelOps().length } };
+  return { ok: errors.length === 0, errors, warnings, checks, stats: { regions: regions.length, chunks, worldSize, level: journal.levelOps().length, freed: freedStats(journal) } };
+}
+
+/** What the pending Free space operations promised, or null. */
+function freedStats(journal) {
+  const ops = journal.worldOps();
+  if (!ops.length) return null;
+  return ops.reduce((a, op) => ({ chunks: a.chunks + (op.stats?.chunks || 0), bytes: a.bytes + (op.stats?.bytes || 0) }), { chunks: 0, bytes: 0 });
 }
 
 // ---------------------------------------------------------------------------
@@ -234,9 +242,19 @@ export async function applyJournal({
     throw Object.assign(new Error(`Verifica fallita su ${problems.length} chunk: ${problems[0]}`), { problems });
   }
 
+  // Free space: after the chunk operations, so it deletes whatever they did there.
+  const freed = applyWorldOps(targetDir, journal.worldOps(), onProgress);
+  const wrongs = verifyFreed(targetDir, freed);
+  if (wrongs.length) {
+    throw Object.assign(new Error(`Verifica fallita su ${wrongs.length} file: ${wrongs[0]}`), { problems: wrongs });
+  }
+
   fs.rmSync(path.join(targetDir, INCOMPLETE_MARK));
   onProgress({ phase: 'fine', done: 1, total: 1 });
-  return { targetDir, name, regions: regions.length, chunks: written.length, warnings: pre.warnings };
+  return {
+    targetDir, name, regions: regions.length, chunks: written.length, warnings: pre.warnings,
+    freed: freed.ops ? { chunks: freed.chunks, files: freed.removed.length, bytes: freed.bytes } : null,
+  };
 }
 
 /** Re-read the chunks that were written and check the operations show in them. */
@@ -308,3 +326,125 @@ export function verifyWritten(targetDir, written, plan) {
 }
 
 const lastWriter = (ops, op) => ops[ops.length - 1] === op;
+
+// ---------------------------------------------------------------------------
+// Free space
+// ---------------------------------------------------------------------------
+
+const inside = (root, rel) => {
+  if (!safeRel(rel)) throw new Error(`Percorso non valido: ${rel}`);
+  const full = path.resolve(root, ...rel.split('/'));
+  if (!full.startsWith(path.resolve(root) + path.sep)) throw new Error(`Percorso fuori dal mondo: ${rel}`);
+  return full;
+};
+
+const sizeOf = (p) => { try { const st = fs.statSync(p); return st.isDirectory() ? dirSize(p) : st.size; } catch { return 0; } };
+
+/** Delete a region file and the .mcc files of its chunks. */
+function removeRegion(file) {
+  const m = /r\.(-?\d+)\.(-?\d+)\.mca$/.exec(file);
+  let bytes = sizeOf(file);
+  fs.rmSync(file, { force: true });
+  if (!m) return bytes;
+  const dir = path.dirname(file);
+  for (const name of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+    const c = /^c\.(-?\d+)\.(-?\d+)\.mcc$/.exec(name);
+    if (c && (Number(c[1]) >> 5) === Number(m[1]) && (Number(c[2]) >> 5) === Number(m[2])) {
+      bytes += sizeOf(path.join(dir, name));
+      fs.rmSync(path.join(dir, name));
+    }
+  }
+  return bytes;
+}
+
+function mccInUse(file) {
+  const m = /c\.(-?\d+)\.(-?\d+)\.mcc$/.exec(file);
+  if (!m) return false;
+  const cx = Number(m[1]), cz = Number(m[2]);
+  const region = path.join(path.dirname(file), `r.${cx >> 5}.${cz >> 5}.mca`);
+  if (!fs.existsSync(region)) return false;
+  const i = (cx & 31) + (cz & 31) * 32;
+  return headerOf(fs.readFileSync(region)).some((h) => h.i === i && h.ext);
+}
+
+/**
+ * Carry out the Free space operations on the copy. Returns what was done, for
+ * the verification and the report: { ops, chunks, bytes, removed: [rel],
+ * rewritten: [{ rel, gone: [slot] }] }.
+ */
+export function applyWorldOps(targetDir, ops, onProgress = () => {}) {
+  const out = { ops: ops.length, chunks: 0, bytes: 0, removed: [], rewritten: [] };
+  if (!ops.length) return out;
+  // Several operations on one file add up.
+  const files = new Map();
+  const removeFiles = new Set();
+  const dirs = new Set();
+  for (const op of ops) {
+    for (const [rel, mask] of Object.entries(op.files || {})) {
+      if (mask === '') { files.set(rel, ''); continue; }
+      const prev = files.get(rel);
+      if (prev === '') continue;
+      const set = prev || new Set();
+      for (const i of decodeMask(mask)) set.add(i);
+      files.set(rel, set);
+    }
+    for (const rel of op.remove || []) removeFiles.add(rel);
+    for (const rel of op.dirs || []) dirs.add(rel);
+  }
+  let n = 0;
+  const total = files.size + removeFiles.size + dirs.size;
+  for (const [rel, del] of files) {
+    onProgress({ phase: 'spazio', done: n++, total, file: rel });
+    const file = inside(targetDir, rel);
+    if (!fs.existsSync(file)) continue;
+    const before = sizeOf(file);
+    if (del === '') {
+      if (/(^|\/)region\//.test(rel)) out.chunks += readRegionFile(file).size;
+      out.bytes += removeRegion(file); out.removed.push(rel); continue;
+    }
+    const region = readRegionFile(file);
+    const gone = [...del].filter((i) => region.deleteChunk(i & 31, i >> 5));
+    out.chunks += /(^|\/)region\//.test(rel) ? gone.length : 0;
+    if (!region.size) { out.bytes += removeRegion(file); out.removed.push(rel); continue; }
+    const dir = path.dirname(file);
+    const mccBefore = fs.readdirSync(dir).filter((x) => x.endsWith('.mcc')).reduce((s, x) => s + sizeOf(path.join(dir, x)), 0);
+    writeRegionFile(file, region);
+    const mccAfter = fs.readdirSync(dir).filter((x) => x.endsWith('.mcc')).reduce((s, x) => s + sizeOf(path.join(dir, x)), 0);
+    out.bytes += before - sizeOf(file) + mccBefore - mccAfter;
+    out.rewritten.push({ rel, gone: [...del], kept: region.size });
+  }
+  for (const rel of removeFiles) {
+    onProgress({ phase: 'spazio', done: n++, total, file: rel });
+    const file = inside(targetDir, rel);
+    // Never the .mcc of a chunk its region still points at.
+    if (mccInUse(file)) continue;
+    out.bytes += sizeOf(file);
+    fs.rmSync(file, { force: true });
+    out.removed.push(rel);
+  }
+  for (const rel of dirs) {
+    onProgress({ phase: 'spazio', done: n++, total, file: rel });
+    const dir = inside(targetDir, rel);
+    out.bytes += sizeOf(dir);
+    fs.rmSync(dir, { recursive: true, force: true });
+    out.removed.push(rel);
+  }
+  return out;
+}
+
+/** Read back: removed files are gone, rewritten files parse and lack the deleted chunks. */
+export function verifyFreed(targetDir, freed) {
+  const problems = [];
+  for (const rel of freed.removed) if (fs.existsSync(inside(targetDir, rel))) problems.push(`${rel}: non è stato eliminato`);
+  for (const w of freed.rewritten) {
+    try {
+      const region = readRegionFile(inside(targetDir, w.rel));
+      if (region.size !== w.kept) problems.push(`${w.rel}: ${region.size} chunk invece di ${w.kept}`);
+      for (const i of w.gone) if (region.has(i & 31, i >> 5)) problems.push(`${w.rel}: il chunk ${i} c'è ancora`);
+      for (const { lx, lz } of region.chunks()) region.getChunk(lx, lz, { typed: false });
+    } catch (err) {
+      problems.push(`${w.rel}: ${err.message}`);
+    }
+  }
+  return problems;
+}

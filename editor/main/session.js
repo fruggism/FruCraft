@@ -18,7 +18,7 @@ import { serveTile, getTile, regionSetOf, tileRangeFor, blocksPerTile, TILE_SIZE
 import { readSurface, forgetRegions, NO_DATA } from '../../web/js/core/anvil.js';
 import { NodeSource } from '../core/nodeSource.js';
 import { OverlaySource } from '../core/overlay.js';
-import { Journal, chunkBoundsOf, levelSummary } from '../core/journal.js';
+import { Journal, chunkBoundsOf, levelSummary, WORLD_OPS } from '../core/journal.js';
 import { createClip, clipMeta } from '../core/clips.js';
 import { computeProfiles } from '../core/seam.js';
 import { biomeColor } from '../core/biomes.js';
@@ -28,6 +28,7 @@ import { claudeStatus, runClaude } from './claude.js';
 import { SYSTEM_PROMPT, buildPrompt, parseRecipe, compileRecipe } from '../core/recipe.js';
 import { surveyProblem, surveyStats } from '../core/survey.js';
 import { MIN_DATA_VERSION } from '../core/chunk.js';
+import { planFreeSpace, freeSpaceOp, heatOf } from '../core/freeSpace.js';
 
 export const defaultSavesDir = () => (process.platform === 'darwin'
   ? path.join(os.homedir(), 'Library', 'Application Support', 'minecraft', 'saves')
@@ -149,7 +150,10 @@ export class WorldSession {
    */
   invalidate(op) {
     const b = chunkBoundsOf(op);
-    if (!op) {
+    // A free space scan is only good for the journal it was made with.
+    this.freeScan = null;
+    // Free space can change any file of any dimension: start over.
+    if (!op || WORLD_OPS[op.type]) {
       for (const [key, tiles] of this.caches) {
         for (const [tk, rgba] of tiles) if (Number(tk.split('/')[0]) <= -2) this.staleOf(key).set(tk, rgba);
       }
@@ -462,6 +466,52 @@ export class WorldSession {
       promise,
       cancel: async () => { cancelled = true; if (current) await current.cancel(); },
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Free space
+  // -------------------------------------------------------------------------
+
+  /** Read every chunk once, in a worker (see freeSpace.js). Returns { promise, cancel }. */
+  freeSpaceScan(onProgress) {
+    const dims = this.scan.dimensions.map((d) => ({ id: d.id, label: d.label, regionDir: d.regionDir }));
+    const task = runTask('freeSpaceScan', { worldDir: this.worldDir, journal: this.journal.toJSON(), dims }, onProgress);
+    const version = this.overlay.version;
+    const promise = task.promise.then((scan) => {
+      // Something changed meanwhile: the plan would be off, keep nothing.
+      if (this.overlay.version === version) this.freeScan = scan;
+      return {
+        dims: scan.dims.map((d) => ({ id: d.id, label: d.label })),
+        chunks: scan.records.kind.reduce((n, k) => n + (k === 0 ? 1 : 0), 0),
+        legacy: scan.legacy,
+      };
+    });
+    return { promise, cancel: task.cancel };
+  }
+
+  /** Chunks with pending changes: never deleted, and the margin counts from them. */
+  pendingChunks() {
+    const out = {};
+    for (const [dim, chunks] of this.journal.chunkPlan()) out[dim] = [...chunks.keys()];
+    return out;
+  }
+
+  freePlan(criteria) {
+    if (!this.freeScan) throw new Error('Prima analizza il mondo (Libera spazio → Analizza).');
+    return planFreeSpace(this.freeScan, { ...criteria, protect: this.pendingChunks() });
+  }
+
+  /** Numbers and the map's heat layer for one dimension. */
+  freeSpacePlan(criteria, dimId) {
+    const plan = this.freePlan(criteria);
+    return { bytes: plan.bytes, counts: plan.counts, perDim: plan.perDim, heat: heatOf(this.freeScan, plan, dimId) };
+  }
+
+  freeSpacePush(criteria) {
+    this.assertWritable();
+    const op = freeSpaceOp(this.freePlan(criteria));
+    if (!op) throw new Error('Con questi criteri non si libera niente.');
+    return this.push({ ...op, at: Date.now() });
   }
 
   /**

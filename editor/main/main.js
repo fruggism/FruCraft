@@ -170,6 +170,9 @@ function registerIpc() {
   ipcMain.handle('paste:check', (_e, id, op) => session(id).pasteWarnings(op));
   ipcMain.handle('terrain:lastPaste', (_e, id, dim) => session(id).lastPasteBox(dim));
   ipcMain.handle('terrain:smooth', async (_e, id, params) => { const s = session(id); const r = await s.smooth(params); return { ...(await s.info()), dirty: r.dirty }; });
+  ipcMain.handle('free:scan', (_e, id, taskId) => track(taskId, session(id).freeSpaceScan(progressTo(taskId))));
+  ipcMain.handle('free:plan', (_e, id, criteria, dim) => session(id).freeSpacePlan(criteria, dim));
+  ipcMain.handle('free:push', async (_e, id, criteria) => { const s = session(id); const r = s.freeSpacePush(criteria); return { ...(await s.info()), dirty: r.dirty }; });
   ipcMain.handle('task:cancel', async (_e, taskId) => { const c = tasks.get(taskId); if (c) await c(); });
   ipcMain.handle('shell:reveal', (_e, p) => { shell.showItemInFolder(p); });
   ipcMain.handle('shell:open', (_e, p) => { shell.openPath(p); });

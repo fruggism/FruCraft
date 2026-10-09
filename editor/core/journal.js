@@ -7,9 +7,11 @@
  * the journal laid over it (OverlaySource), and "Apply" replays the very same
  * operations onto a copy.
  *
- * Operations come in two kinds:
+ * Operations come in three kinds:
  *   level  — change level.dat; folded into its tree with applyLevelOp
  *   chunk  — change blocks/biomes; applied to one chunk with applyChunkOp
+ *   world  — delete chunks and files (Free space); carried out by Apply after
+ *            the chunk operations, see WORLD_OPS
  * Undo and redo just move operations between the two stacks.
  */
 
@@ -23,6 +25,7 @@ import { readSpawn } from '../../web/js/core/worldScan.js';
 import { setTerrain, placeFeatures } from './terrain.js';
 import { PASTE } from './paste.js';
 import { SMOOTH } from './seam.js';
+import { decodeMask } from './freeSpace.js';
 
 // ---------------------------------------------------------------------------
 // Level operations
@@ -372,6 +375,40 @@ CHUNK_OPS.group = {
 };
 
 // ---------------------------------------------------------------------------
+// World operations
+// ---------------------------------------------------------------------------
+
+/** A path inside the world folder, '/'-separated, that can't climb out of it. */
+export function safeRel(rel) {
+  const s = String(rel);
+  if (!s || s.startsWith('/') || s.includes('\\') || /^[a-zA-Z]:/.test(s)) return false;
+  return s.split('/').every((p) => p && p !== '.' && p !== '..');
+}
+
+export const WORLD_OPS = {
+  /**
+   * Free space: delete chunks from region / entities / poi files and whole
+   * files or folders. See freeSpace.js for the shape. It deletes whatever
+   * the other operations did in those chunks, in whatever order they came.
+   */
+  freeSpace: {
+    validate(op) {
+      const files = op.files && typeof op.files === 'object' ? op.files : null;
+      if (!files || !Array.isArray(op.remove || []) || !Array.isArray(op.dirs || [])) throw new Error('Operazione "Libera spazio" non valida.');
+      for (const [rel, mask] of Object.entries(files)) {
+        if (!safeRel(rel) || !/\.mca$/.test(rel)) throw new Error(`File non valido: ${rel}`);
+        if (mask !== '') decodeMask(mask);
+      }
+      for (const rel of op.remove || []) if (!safeRel(rel) || !/\.mcc$/.test(rel)) throw new Error(`File non valido: ${rel}`);
+      for (const rel of op.dirs || []) {
+        if (!safeRel(rel) || !['region', 'entities', 'poi', 'DIM-1', 'DIM1'].includes(rel)) throw new Error(`Cartella non valida: ${rel}`);
+      }
+      if (!Object.keys(files).length && !(op.remove || []).length && !(op.dirs || []).length) throw new Error('Non c\'è niente da liberare.');
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Journal
 // ---------------------------------------------------------------------------
 
@@ -393,8 +430,9 @@ export class Journal {
   emit(op = null) { for (const fn of this.listeners) fn(this, op); }
 
   push(op) {
-    if (!LEVEL_OPS[op.type] && !CHUNK_OPS[op.type]) throw new Error(`Operazione sconosciuta: ${op.type}`);
+    if (!LEVEL_OPS[op.type] && !CHUNK_OPS[op.type] && !WORLD_OPS[op.type]) throw new Error(`Operazione sconosciuta: ${op.type}`);
     if (op.type === 'setIcon') validateIcon(op);
+    if (WORLD_OPS[op.type]) WORLD_OPS[op.type].validate(op);
     const def = CHUNK_OPS[op.type];
     if (def) {
       if (!def.bounds(op)) throw new Error('La selezione è vuota.');
@@ -427,6 +465,7 @@ export class Journal {
   /** The icon a pending setIcon will write (PNG as base64), or null. */
   pendingIcon() { const op = this.done.filter((o) => o.type === 'setIcon').pop(); return op ? op.png : null; }
   chunkOps() { return this.done.filter((o) => CHUNK_OPS[o.type]); }
+  worldOps() { return this.done.filter((o) => WORLD_OPS[o.type]); }
 
   /** Pending operations counted by type, for the confirmation dialog. */
   summary() {

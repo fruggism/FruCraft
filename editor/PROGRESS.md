@@ -183,7 +183,47 @@ della selezione)
   incollati a blocchi con Sposta Y +67 nel prato, raccordo su 4 lati, Applica
   nel worker in ~11 s (1.035 chunk).
 
+**Libera spazio** (era "Pota chunk", fase 7: strumento in Mondo e nella colonna)
+- Prima **Analizza il mondo**: un worker legge una volta tutti i file region,
+  entities e poi di tutte le dimensioni, attraverso l'overlay (le modifiche in
+  sospeso contano). Su galaxia (1,7 GB, 275 mila chunk) ci mette ~40 s.
+- Poi i criteri si cambiano dal pannello e l'anteprima si ricalcola subito
+  (`editor/core/freeSpace.js`, `planFreeSpace`): un chunk si elimina se passa
+  tutti i criteri accesi — **tempo passato lì** (`InhabitedTime`) sotto una
+  soglia, **niente di costruito** (palette solo di blocchi naturali,
+  `editor/core/natural.js`, e niente cornici, supporti, barche o animali con
+  nome nel file entities), **nessuna block entity** — ed è oltre il **margine**
+  (in chunk) da ogni chunk che resta. Le **aree escluse** (selezione attiva,
+  selezioni salvate) e i chunk con **modifiche in sospeso** non si toccano mai
+  (questi ultimi contano anche per il margine). Dimensioni da ripulire a scelta.
+- Altro spazio: **region vuote**, **.mcc orfani**, **entities/poi senza
+  terreno**, **compattazione** (riscrive le region senza i buchi lasciati dal
+  gioco), **cartelle non usate** (region/, DIM-1/, DIM1/ rimaste in un mondo
+  26.x; spenta di default). Le entities e i poi di un chunk eliminato vanno con lui.
+- Anteprima: MB liberati per voce e per dimensione, **mappa di calore** sulla
+  mappa (rosso = si elimina, ambra = resta per il margine, ciano = escluso,
+  verde più scuro = più tempo passato lì), tempo del chunk sotto il cursore
+  nella barra di stato.
+- **Metti in sospeso** mette nel giornale un'operazione `freeSpace` (nuovo
+  tipo "world" in `journal.js`: file per percorso relativo, maschera base64
+  dei 1024 chunk, '' = file intero; percorsi validati, niente `..`). La mappa
+  nasconde subito quello che verrà eliminato; Annulla lo rimette. Applica la
+  esegue sulla copia dopo le altre modifiche, con verifica per rilettura, e il
+  dialogo dice chunk eliminati e MB liberati.
+- I byte dell'anteprima sono esatti: su galaxia previsti 690.832.427, liberati
+  690.832.333 (la differenza è `cantiere.json` e `level.dat`). Città Proibita:
+  60 MB → 15 MB, la copia si apre nel Cantiere.
+- Correzione trovata strada facendo: l'overlay, riscrivendo una region con
+  modifiche in sospeso, perdeva i chunk enormi salvati nei `.mcc` (la mappa
+  non li mostrava e la scansione li avrebbe creduti orfani). Ora li legge e
+  li serve; Applica comunque non cancella mai un `.mcc` ancora usato.
+
 ## Cosa manca / scelte da conoscere
+- **Libera spazio**: villaggi, miniere, templi contano come "costruiti"
+  (assi, binari, casse), quindi restano: è voluto. Un chunk eliminato si
+  rigenera con il generatore della versione attuale: accanto al terreno vecchio
+  può esserci uno scalino, per questo c'è il margine. L'analisi va rifatta dopo
+  ogni modifica (il pannello lo fa da solo).
 - **"Solo esposti all'aria"** guarda i vicini dentro lo stesso chunk: sul
   bordo di un chunk un blocco con aria solo nel chunk accanto non conta come
   esposto. Da migliorare quando arriva il motore del terreno (fase 5).
@@ -254,3 +294,8 @@ Sul Mac, con Minecraft **chiuso**, su una copia di prova di un mondo 1.18+:
     mappe non si mescolano.
 13. Chiudi il Cantiere con modifiche in sospeso e riaprilo: devono ricomparire
     (Cronologia).
+14. **Libera spazio**: Mondo → Libera spazio, aspetta l'analisi, guarda la
+    mappa di calore (le tue costruzioni devono restare verdi/ambra, mai rosse),
+    Metti in sospeso, Applica. In gioco nella copia: le costruzioni ci sono
+    tutte, i chunk lontani si rigenerano quando ci vai, nessun errore; la
+    cartella della copia è più piccola (Finder → Ottieni informazioni).

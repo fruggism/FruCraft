@@ -1,5 +1,6 @@
 /*
- * Heavy work off the main process: Apply, search, the replace preview count.
+ * Heavy work off the main process: Apply, search, the replace preview count,
+ * the Free space scan.
  *
  * A worker gets everything as plain data — the world folder, the journal as
  * JSON, the query — rebuilds its own sources from it, and reports progress
@@ -15,6 +16,7 @@ import { Journal } from '../core/journal.js';
 import { applyJournal } from '../core/apply.js';
 import { search, countReplace } from '../core/search.js';
 import { surveyArea } from '../core/survey.js';
+import { scanFreeSpace } from '../core/freeSpace.js';
 
 const progress = (p) => parentPort.postMessage({ type: 'progress', p });
 
@@ -37,6 +39,10 @@ const TASKS = {
   async countReplace({ worldDir, journal, dim, regions, op }) {
     const source = new OverlaySource(new NodeSource(worldDir), Journal.fromJSON(journal));
     return countReplace({ source, dim, regions, op, onProgress: progress });
+  },
+  async freeSpaceScan({ worldDir, journal, dims }) {
+    const source = new OverlaySource(new NodeSource(worldDir), Journal.fromJSON(journal));
+    return scanFreeSpace({ source, dims, onProgress: progress });
   },
 };
 

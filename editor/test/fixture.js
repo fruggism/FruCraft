@@ -30,7 +30,11 @@ function section(sy, palette, indices) {
   };
 }
 
-export function makeChunk(cx, cz) {
+/**
+ * opts.inhabited  InhabitedTime in ticks (default 12345)
+ * opts.natural    no chest: only blocks the world generator places
+ */
+export function makeChunk(cx, cz, { inhabited = 12345n, natural = false } = {}) {
   const stone = new Uint16Array(4096);
   const top = new Uint16Array(4096); // palette: stone, grass_block, chest, air
   for (let i = 0; i < 4096; i++) {
@@ -44,12 +48,12 @@ export function makeChunk(cx, cz) {
     xPos: cx, zPos: cz, yPos: -4,
     Status: 'minecraft:full',
     LastUpdate: 1000n,
-    InhabitedTime: 12345n,
+    InhabitedTime: BigInt(inhabited),
     isLightOn: new TByte(1),
     sections: new TList(TAG.Compound, [
       section(0, ['minecraft:stone'], stone),
       section(1, ['minecraft:stone'], stone),
-      section(2, ['minecraft:stone', 'minecraft:grass_block', 'minecraft:chest', 'minecraft:air'], top),
+      section(2, ['minecraft:stone', 'minecraft:grass_block', natural ? 'minecraft:dirt' : 'minecraft:chest', 'minecraft:air'], top),
       section(3, ['minecraft:air'], stone),
     ]),
     block_entities: new TList(TAG.Compound, cx === 0 && cz === 0

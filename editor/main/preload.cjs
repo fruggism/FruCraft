@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('cantiere', {
   terrain: { lastPaste: call('terrain:lastPaste'), smooth: call('terrain:smooth') },
   journal: { push: call('journal:push'), undo: call('journal:undo'), redo: call('journal:redo'), remove: call('journal:remove'), ops: call('journal:ops') },
   claude: { status: call('claude:status'), ask: call('claude:ask') },
+  free: { scan: call('free:scan'), plan: call('free:plan'), push: call('free:push') },
   apply: {
     check: call('apply:check'),
     run: call('apply:run'),

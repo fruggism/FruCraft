@@ -1631,6 +1631,8 @@ import { register as registerClaude } from '../editor/test/claude.test.js';
 registerClaude({ test, section, assert, assertEqual });
 import { register as registerPaste } from '../editor/test/paste.test.js';
 registerPaste({ test, section, assert, assertEqual });
+import { register as registerFreeSpace } from '../editor/test/freespace.test.js';
+registerFreeSpace({ test, section, assert, assertEqual });
 
 (async () => {
   for (const item of tests) {

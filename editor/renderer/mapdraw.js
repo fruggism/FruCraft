@@ -1,7 +1,7 @@
 /*
  * Everything drawn over the terrain tiles, on one canvas the size of the map:
  * the selection (fill + marching ants), shapes being drawn, the brush cursor,
- * the spawn, search hits and the chunk / region grids.
+ * the spawn, search hits, the Free space heat layer and the chunk / region grids.
  *
  * The selection is drawn the way it is stored — as which block columns are in
  * it — sampled at the resolution of the screen: one sample per block when
@@ -13,6 +13,7 @@
  */
 
 import { chunkMask, selectionBounds } from '../core/selection.js';
+import { heatImage } from './heat.js';
 
 const SEL_FILL = 'rgba(34,211,238,.16)';
 const FIND = '#ff3d8b';
@@ -134,6 +135,7 @@ export class MapOverlay {
     ctx.clearRect(0, 0, w, h);
     if (!st.tab) { this.selPath = null; return; }
 
+    if (st.heat) this.drawHeat(st.heat);
     if (st.grid) this.drawGrid(w, h);
 
     if (rebuild || this.selKey !== st.selKey) {
@@ -157,6 +159,23 @@ export class MapOverlay {
     if (st.spawn) this.drawSpawn(st.spawn);
     if (st.hits && st.hits.length) this.drawHits(st.hits, st.focusHit, st.hitChunks);
     if (st.cursor) this.drawCursor(st.cursor);
+  }
+
+  /**
+   * Free space: one pixel per chunk in an offscreen image (built once per
+   * plan), stretched over the map without smoothing, so 200 000 chunks cost
+   * one drawImage.
+   */
+  drawHeat(heat) {
+    if (this.heatFor !== heat) { this.heatFor = heat; this.heatImg = heatImage(heat); }
+    const img = this.heatImg;
+    if (!img) return;
+    const { ctx } = this;
+    const a = this.px(img.minCx * 16, img.minCz * 16);
+    const b = this.px((img.minCx + img.w * img.step) * 16, (img.minCz + img.h * img.step) * 16);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img.canvas, a.x, a.y, b.x - a.x, b.y - a.y);
+    ctx.imageSmoothingEnabled = true;
   }
 
   drawGrid(w, h) {

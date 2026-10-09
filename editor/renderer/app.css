@@ -325,3 +325,6 @@ body.panel-collapsed #panel-body { display: none; }
 .cl-ex .bchip { cursor: pointer; color: var(--tx2); }
 .cl-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .cl-expl { margin: 0 0 12px; line-height: 1.5; font-size: var(--fs-body); white-space: pre-wrap; }
+/* Libera spazio: legend of the heat layer */
+.legend-row { display: flex; align-items: center; gap: 8px; min-height: 24px; color: var(--tx2); }
+.legend-row .tile { width: 14px; height: 14px; border-radius: 3px; flex: none; }

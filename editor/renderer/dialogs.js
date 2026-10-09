@@ -11,11 +11,12 @@ import { selectionBounds, isEmptySelection, yRange } from '../core/selection.js'
 import { biomesFor, biomeColor, biomeLabel } from '../core/biomes.js';
 import { dimensionInfo } from '../core/dimensions.js';
 import { colorFor, COLORS } from '../../web/js/core/blockColors.js';
+import { bytesText } from './freespace.js';
 
 export const OP_LABELS = {
   setIcon: 'Icona del mondo', setSpawn: 'Spawn', setGameRule: 'Regole di gioco', setLevelValue: 'Ora e meteo', setDayTime: 'Ora e meteo', setWeather: 'Ora e meteo',
   fillBox: 'Riempimenti', replaceBlocks: 'Sostituzioni', paintBiome: 'Biomi dipinti', paste: 'Incollati', smoothTerrain: 'Raccordi del terreno',
-  group: 'Modifiche di Claude', setTerrain: 'Terreno', placeFeatures: 'Alberi e piante',
+  group: 'Modifiche di Claude', setTerrain: 'Terreno', placeFeatures: 'Alberi e piante', freeSpace: 'Libera spazio',
 };
 
 const newTaskId = () => `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -31,7 +32,8 @@ export async function applyDialog(ctx) {
   try { pre = await ctx.api.apply.check(t.id); } catch (err) { toast(cleanError(err), 'err'); return; }
   const summary = Object.entries(t.info.journal.summary)
     .map(([k, v]) => `<div><span>${esc(OP_LABELS[k] || k)}</span><b>${fmt(v)}</b></div>`).join('')
-    + `<div><span>Chunk toccati</span><b>${fmt(pre.stats.chunks)}</b></div>`;
+    + (pre.stats.chunks || !pre.stats.freed ? `<div><span>Chunk toccati</span><b>${fmt(pre.stats.chunks)}</b></div>` : '')
+    + (pre.stats.freed ? `<div><span>Chunk da eliminare</span><b>${fmt(pre.stats.freed.chunks)}</b></div><div><span>Spazio liberato</span><b>${bytesText(pre.stats.freed.bytes)}</b></div>` : '');
   const parent = t.info.path.replace(/[/\\][^/\\]+$/, '/');
   const m = modal(`
     <div class="dh"><div><h2>Applica le modifiche</h2><p>Il mondo originale non viene toccato: il Cantiere crea una copia e scrive lì ${t.info.journal.size === 1 ? 'la modifica' : `le ${fmt(t.info.journal.size)} modifiche`} in sospeso.</p></div></div>
@@ -49,7 +51,7 @@ export async function applyDialog(ctx) {
       </div>
       <div class="dsec hidden" id="ap-progress"><div class="caps" id="ap-phase">Scrittura in corso…</div><div class="pb"><i></i></div><p class="hint" id="ap-file" style="margin:6px 0 0"></p></div>
     </div>
-    <div class="df"><span class="hint">${fmt(pre.stats.regions)} file di regione da riscrivere</span>
+    <div class="df"><span class="hint">${pre.stats.regions || !pre.stats.freed ? `${fmt(pre.stats.regions)} file di regione da riscrivere` : 'Si eliminano chunk e file nella copia'}</span>
       <span class="end"><button class="btn big" id="ap-cancel">Annulla</button><button class="btn big pri" id="ap-go" ${pre.ok ? '' : 'disabled'}>Crea la copia e applica</button></span></div>`, { label: 'Applica le modifiche' });
 
   let taskId = null;
@@ -64,7 +66,7 @@ export async function applyDialog(ctx) {
     m.querySelector('#ap-go').disabled = true;
     m.querySelector('#copy-name').disabled = true;
     m.querySelector('#ap-progress').classList.remove('hidden');
-    const phases = { copia: 'Copia del mondo…', scrittura: 'Scrittura in corso…', verifica: 'Verifica…', fine: 'Fatto' };
+    const phases = { copia: 'Copia del mondo…', scrittura: 'Scrittura in corso…', verifica: 'Verifica…', spazio: 'Libero spazio…', fine: 'Fatto' };
     const off = ctx.api.task.onProgress((id, p) => {
       if (id !== taskId) return;
       m.querySelector('#ap-phase').textContent = phases[p.phase] || p.phase;
@@ -77,7 +79,7 @@ export async function applyDialog(ctx) {
       t.info = res.info;
       ctx.afterJournal(t, { dirty: [{ dim: null }] });
       const done = modal(`
-        <div class="dh"><div><h2 class="done-title">Copia creata</h2><p>${fmt(res.chunks)} chunk riscritti in ${fmt(res.regions)} file, 0 errori. Il mondo originale non è stato toccato.</p></div></div>
+        <div class="dh"><div><h2 class="done-title">Copia creata</h2><p>${fmt(res.chunks)} chunk riscritti in ${fmt(res.regions)} file${res.freed ? `, ${fmt(res.freed.chunks)} chunk eliminati, ${bytesText(res.freed.bytes)} liberati` : ''}, 0 errori. Il mondo originale non è stato toccato.</p></div></div>
         <div class="dsec"><div class="path">${icon('i-open')}${esc(res.targetDir)}</div>
           ${res.warnings.map((w) => `<p class="warnline">${esc(w)}</p>`).join('')}
           <p class="hint" style="margin:10px 0 0">Aprila in Minecraft dall'elenco dei mondi e controlla le modifiche.</p></div>
