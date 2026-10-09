@@ -441,7 +441,7 @@ function ribbonItems() {
       b('apply', 'i-check', 'Applica…', '⌘↩', has && j.size > 0 && !ro), b('reveal', 'i-eye', 'Mostra nel Finder', '', has)];
     case 'Modifica': return [b('undo', 'i-undo', 'Annulla', '⌘Z', has && j.canUndo), b('redo', 'i-redo', 'Ripeti', '⇧⌘Z', has && j.canRedo), '|',
       soon('i-cut', 'Taglia', 3), soon('i-copy', 'Copia', 3), soon('i-paste', 'Incolla', 3), '|', soon('i-rot', 'Ruota', 3), soon('i-flip', 'Specchia', 3), '|',
-      b('replace', 't-replace', 'Sostituisci…', '', has && !ro)];
+      b('replace', 't-replace', 'Sostituisci…', '', has && !ro), b('clearbarriers', 'i-trash', 'Togli barriere', '', has && hasSelection() && !ro)];
     case 'Selezione': return [b('selall', 'i-grid', 'Seleziona tutto', '⌘A', has), b('deselect', 'i-eye', 'Deseleziona', '⌘D', has && hasSelection()),
       b('invert', 'i-flip', 'Inverti', '⇧⌘I', has), '|', b('savesel', 'i-down', 'Salva selezione…', '', has && hasSelection()),
       b('ycut', 'i-fill', 'Y dalla quota di taglio', '', has && t.maxY !== null), '|', b('fillbiome', 't-biome', 'Riempi con il bioma', '', has && hasSelection() && !ro)];
@@ -449,7 +449,7 @@ function ribbonItems() {
       b('replace', 't-replace', 'Sostituisci…', '', has && !ro), '|', soon('t-border', 'Bordo del mondo', 7), soon('t-players', 'Giocatori', 7), soon('t-prune', 'Pota chunk', 7)];
     case 'Vista': return has ? [
       ...t.info.dimensions.map((d) => b(`dim:${d.id}`, DIM_ICON[d.id] || 'd-over', d.label, '', true, t.dim === d.id)), '|',
-      b('biomeview', 't-biome', 'Vista biomi', '', true, t.view === 'biomes'), b('grid', 'i-grid', 'Griglia chunk', '', true, state.grid), '|',
+      b('biomeview', 't-biome', 'Vista biomi', '', true, t.view === 'biomes'), b('grid', 'i-grid', 'Griglia chunk', '', true, state.grid), b('invisible', 'i-eye', 'Nascondi blocchi invisibili', '', true, hideInvisible()), '|',
       b('fit', 'i-target', 'Adatta alla finestra', '⌘0'), b('goto', 'i-target', 'Vai a coordinate…', '⌘G'),
     ] : [{ text: 'Apri un mondo per le opzioni di vista.' }];
     case 'Impostazioni': return [b('savesdir', 'i-open', 'Cartella saves…'), { text: state.settings ? state.settings.savesDir : '' }, '|',
@@ -585,6 +585,7 @@ function propsHtml(t) {
     <div class="sec"><div class="caps sh">Vista</div>
       <div class="row"><span>Griglia dei chunk</span>${sw('pv-grid', state.grid, 'Griglia dei chunk')}</div>
       <div class="row"><span>Vista biomi</span>${sw('pv-biomes', t.view === 'biomes', 'Vista biomi')}</div>
+      <div class="row"><span title="Barriere, blocchi luce e vuoti struttura: in gioco non si vedono, sulla mappa si guarda attraverso">Nascondi blocchi invisibili</span>${sw('pv-invisible', hideInvisible(), 'Nascondi blocchi invisibili')}</div>
     </div>
     <div class="sec"><div class="caps sh">Mondo</div>
       <div class="row"><span>${esc(i.name)}</span><span class="v">${esc(dimLabel)}</span></div>
@@ -646,6 +647,8 @@ function biomePanel(t) {
 
 /** 'minecraft:keep_inventory' (26.x) shows as 'keep_inventory'; older names stay as they are. */
 const ruleLabel = (k) => k.replace(/^minecraft:/, '');
+
+const hideInvisible = () => state.settings?.hideInvisible !== false;
 
 const DAY_PRESETS = [['Alba', 0], ['Giorno', 1000], ['Mezzogiorno', 6000], ['Tramonto', 12000], ['Notte', 13000], ['Mezzanotte', 18000]];
 
@@ -888,6 +891,15 @@ const ACTIONS = {
   exportcsv: exportCsv,
   biomeview: () => { const t = tab(); if (!t) return; t.view = t.view === 'biomes' ? 'blocks' : 'biomes'; if (layer) layer.redraw(); render(); },
   grid: () => { state.grid = !state.grid; overlay.draw(false); render(); },
+  invisible: async () => { state.settings = await api.settings.set({ hideInvisible: !hideInvisible() }); if (layer) layer.redraw(); render(); },
+  clearbarriers: () => {
+    const t = tab();
+    if (!t || !hasSelection()) { toast('Prima seleziona un\'area.', 'warn'); return; }
+    return pushOp({
+      type: 'replaceBlocks', dim: t.dim, region: t.selection, rules: [{ from: 'minecraft:barrier', to: 'minecraft:air' }],
+      yMin: null, yMax: null, exposedOnly: false, keepProps: false, biomes: [], seed: 0,
+    });
+  },
   fit: fitDimension,
   goto: () => tab() && gotoDialog(ctx),
   gospawn: () => { const t = tab(); if (t) goTo(t.info.spawn.x, t.info.spawn.z); },
@@ -919,6 +931,7 @@ document.addEventListener('click', async (e) => {
       else setYRange(null, null);
     } else if (e.target.id === 'pv-grid') ACTIONS.grid();
     else if (e.target.id === 'pv-biomes') ACTIONS.biomeview();
+    else if (e.target.id === 'pv-invisible') ACTIONS.invisible();
     return;
   }
   const d = el.dataset;

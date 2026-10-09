@@ -53,7 +53,7 @@ const session = (id) => {
 function registerIpc() {
   const publicSettings = () => {
     const s = readSettings();
-    return { savesDir: savesDir(), defaultSavesDir: defaultSavesDir(), theme: s.theme || 'dark', dev: !!s.dev };
+    return { savesDir: savesDir(), defaultSavesDir: defaultSavesDir(), theme: s.theme || 'dark', dev: !!s.dev, hideInvisible: s.hideInvisible !== false };
   };
   ipcMain.handle('settings:get', () => publicSettings());
   ipcMain.handle('settings:set', (_e, patch) => {
@@ -62,6 +62,10 @@ function registerIpc() {
     if (typeof p.savesDir === 'string') out.savesDir = p.savesDir;
     if (['dark', 'light', 'system'].includes(p.theme)) out.theme = p.theme;
     if (typeof p.dev === 'boolean') out.dev = p.dev;
+    if (typeof p.hideInvisible === 'boolean') {
+      out.hideInvisible = p.hideInvisible;
+      for (const s of sessions.values()) s.setHideInvisible(p.hideInvisible);
+    }
     writeSettings(out);
     return publicSettings();
   });
@@ -90,6 +94,7 @@ function registerIpc() {
   ipcMain.handle('world:open', async (_e, dir) => {
     const s = await WorldSession.open(dir, { dataDir: app.getPath('userData') });
     const id = nextId++;
+    s.setHideInvisible(readSettings().hideInvisible !== false);
     s.onTilesReady = (box) => { if (win && !win.isDestroyed()) win.webContents.send('tiles:ready', id, box); };
     sessions.set(id, s);
     return { id, info: await s.info() };

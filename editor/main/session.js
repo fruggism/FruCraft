@@ -63,6 +63,9 @@ const snapshot = (file) => {
   try { const st = fs.statSync(file); return `${st.size}:${st.mtimeMs}`; } catch { return null; }
 };
 
+/** Invisible in game, solid on a map: looked through when "hide invisible blocks" is on. */
+export const INVISIBLE_BLOCKS = ['minecraft:barrier', 'minecraft:light', 'minecraft:structure_void'];
+
 export class WorldSession {
   static async open(worldDir, { dataDir }) {
     const s = new WorldSession(path.resolve(worldDir), dataDir);
@@ -92,6 +95,7 @@ export class WorldSession {
     this.rebuildChain = Promise.resolve();
     this.onTilesReady = null;        // set by the main process: (box) => notify the window
     this.journal.onChange((_j, op) => { this.invalidate(op); this.persist(); });
+    if (this.hidden === undefined) this.hidden = new Set(INVISIBLE_BLOCKS);
     this.regionSets = new Map(this.scan.dimensions.map((d) => [d.id, regionSetOf(d.regions)]));
   }
 
@@ -145,14 +149,14 @@ export class WorldSession {
    * out, tiles are composed from those once they exist.
    */
   scheduleRebuild(dimId, maxY, view, z, x, y) {
-    const id = `${dimId}|${maxY ?? ''}|${view}|${z}/${x}/${y}`;
+    const id = `${this.cacheKey(dimId, maxY, view)}|${z}/${x}/${y}`;
     if (this.rebuildQueued.has(id)) return;
     this.rebuildQueued.add(id);
     this.rebuildChain = this.rebuildChain.then(async () => {
       try {
         const ctx = this.ctxFor(dimId, maxY, view);
         const r = await getTile(ctx, z, x, y, true);
-        if (!r.partial) this.staleOf(`${dimId}|${maxY ?? ''}|${view}`).delete(`${z}/${x}/${y}`);
+        if (!r.partial) this.staleOf(this.cacheKey(dimId, maxY, view)).delete(`${z}/${x}/${y}`);
         const span = blocksPerTile(z);
         if (this.onTilesReady) this.onTilesReady({ dim: dimId, bounds: { minX: x * span, minZ: y * span, maxX: (x + 1) * span - 1, maxZ: (y + 1) * span - 1 } });
       } catch { /* the window will ask again */ }
@@ -217,10 +221,13 @@ export class WorldSession {
     };
   }
 
+  /** One tile cache per dimension, cut height, view and invisible-blocks setting. */
+  cacheKey(dimId, maxY, view) { return `${dimId}|${maxY ?? ''}|${view}|${this.hidden ? 'h' : ''}`; }
+
   ctxFor(dimId, maxY, view = 'blocks') {
     const dim = this.scan.dimensions.find((x) => x.id === dimId);
     if (!dim) throw new Error(`Dimensione sconosciuta: ${dimId}`);
-    const key = `${dimId}|${maxY ?? ''}|${view}`;
+    const key = this.cacheKey(dimId, maxY, view);
     if (!this.caches.has(key)) this.caches.set(key, new Map());
     const tiles = this.caches.get(key);
     return {
@@ -235,15 +242,19 @@ export class WorldSession {
       renderOptions: {
         ...(maxY === null || maxY === undefined ? {} : { maxY }),
         ...(view === 'biomes' ? { biomeColor } : {}),
+        ...(this.hidden ? { hiddenBlocks: this.hidden } : {}),
       },
     };
   }
+
+  /** Look through barriers, light blocks and structure voids on the map (true) or draw them (false). */
+  setHideInvisible(on) { this.hidden = on ? new Set(INVISIBLE_BLOCKS) : null; }
 
   /** RGBA bytes of a 256x256 tile, or null when there is nothing there. view: 'blocks' | 'biomes'. */
   async tile(dimId, z, x, y, maxY = null, view = 'blocks') {
     const r = await serveTile(this.ctxFor(dimId, maxY, view), z, x, y);
     if (r.partial && z <= -2) {
-      const old = this.stale.get(`${dimId}|${maxY ?? ''}|${view}`)?.get(`${z}/${x}/${y}`);
+      const old = this.stale.get(this.cacheKey(dimId, maxY, view))?.get(`${z}/${x}/${y}`);
       if (old) {
         if (z >= -3) this.scheduleRebuild(dimId, maxY, view, z, x, y);
         return old;
@@ -255,7 +266,7 @@ export class WorldSession {
   /** What is under the cursor: surface block, its height and biome. */
   async probe(dimId, x, z, maxY = null) {
     const dim = this.scan.dimensions.find((d) => d.id === dimId);
-    const g = await readSurface(this.overlay, dim.regionDir, x, z, 1, 1, maxY === null ? {} : { maxY });
+    const g = await readSurface(this.overlay, dim.regionDir, x, z, 1, 1, { ...(maxY === null ? {} : { maxY }), ...(this.hidden ? { hiddenBlocks: this.hidden } : {}) });
     if (g.surfaceY[0] === NO_DATA) return null;
     return { y: g.surfaceY[0], block: g.surfaceName[0], biome: g.biome[0] };
   }

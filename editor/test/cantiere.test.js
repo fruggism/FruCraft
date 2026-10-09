@@ -476,6 +476,18 @@ export function register({ test, section, assert, assertEqual }) {
     assert(!fs.existsSync(path.join(res.targetDir, 'data', 'minecraft', 'weather.dat')), 'nessun file nuovo');
   });
 
+  test('barriere: la mappa le attraversa se nascoste, e "Togli barriere" le sostituisce con aria', async () => {
+    const world = makeWorld(freshSaves(), 'Barriere');
+    const s = await WorldSession.open(world, { dataDir: path.join(scratch, 'dati-barriere') });
+    s.push({ type: 'fillBox', dim: 'overworld', x1: 3, y1: 45, z1: 3, x2: 3, y2: 45, z2: 3, state: 'barrier' });
+    assertEqual((await s.probe('overworld', 3, 3)).block, 'minecraft:grass_block', 'nascoste di default: si vede l\'erba');
+    s.setHideInvisible(false);
+    assertEqual((await s.probe('overworld', 3, 3)).block, 'minecraft:barrier', 'visibili: si vede la barriera');
+    s.push({ type: 'replaceBlocks', dim: 'overworld', region: { items: [{ mode: 'add', shape: { type: 'rect', minX: 0, minZ: 0, maxX: 7, maxZ: 7 } }], yMin: null, yMax: null },
+      rules: [{ from: 'minecraft:barrier', to: 'minecraft:air' }], yMin: null, yMax: null, exposedOnly: false, keepProps: false, biomes: [], seed: 0 });
+    assertEqual((await s.probe('overworld', 3, 3)).block, 'minecraft:grass_block', 'barriera tolta');
+  });
+
   test('il giornale non applicato sopravvive alla chiusura dell\'app', async () => {
     const saves = freshSaves();
     const world = makeWorld(saves);
