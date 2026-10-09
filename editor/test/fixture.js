@@ -74,12 +74,14 @@ export function makeChunk(cx, cz) {
 }
 
 /** Build <savesDir>/<name> with level.dat and region/r.0.0.mca. Returns the world dir. */
-export function makeWorld(savesDir, name = 'Prova', { newSpawn = false } = {}) {
+export function makeWorld(savesDir, name = 'Prova', { newSpawn = false, splitLevel = false, modernDirs = false } = {}) {
   const dir = path.join(savesDir, name);
-  fs.mkdirSync(path.join(dir, 'region'), { recursive: true });
+  // 26.x keeps the overworld in dimensions/minecraft/overworld/ too.
+  const regionDir = path.join(dir, ...(modernDirs ? ['dimensions', 'minecraft', 'overworld', 'region'] : ['region']));
+  fs.mkdirSync(regionDir, { recursive: true });
   const region = new RegionData(0, 0);
   for (const [cx, cz] of CHUNKS) region.setChunk(cx, cz, makeChunk(cx, cz), '', 1700000000);
-  writeRegionFile(path.join(dir, 'region', 'r.0.0.mca'), region);
+  writeRegionFile(path.join(regionDir, 'r.0.0.mca'), region);
   const level = {
     Data: {
       LevelName: name,
@@ -96,6 +98,16 @@ export function makeWorld(savesDir, name = 'Prova', { newSpawn = false } = {}) {
     // 1.21.9+ layout: the spawn is a compound, SpawnX/Y/Z are gone.
     for (const k of ['SpawnX', 'SpawnY', 'SpawnZ', 'SpawnAngle']) delete level.Data[k];
     level.Data.spawn = { pos: new TIntArray([440, 71, 1085]), dimension: 'minecraft:overworld', yaw: new TFloat(180), pitch: new TFloat(0) };
+  }
+  if (splitLevel) {
+    // 26.x layout: time, weather and game rules in data/minecraft/*.dat.
+    for (const k of ['DayTime', 'raining', 'rainTime', 'thundering', 'thunderTime', 'GameRules']) delete level.Data[k];
+    const dm = path.join(dir, 'data', 'minecraft');
+    fs.mkdirSync(dm, { recursive: true });
+    const put = (file, data) => fs.writeFileSync(path.join(dm, file), zlib.gzipSync(Buffer.from(writeNbt({ data, DataVersion: DATA_VERSION }, ''))));
+    put('world_clocks.dat', { 'minecraft:overworld': { total_ticks: 30000n, paused: new TByte(0) } });
+    put('weather.dat', { raining: new TByte(1), thundering: new TByte(0), rain_time: 100, thunder_time: 200, clear_weather_time: 0 });
+    put('game_rules.dat', { 'minecraft:keep_inventory': new TByte(0), 'minecraft:random_tick_speed': 3, 'minecraft:respawn_radius': 10 });
   }
   fs.writeFileSync(path.join(dir, 'level.dat'), zlib.gzipSync(Buffer.from(writeNbt(level, ''))));
   fs.mkdirSync(path.join(dir, 'playerdata'), { recursive: true });

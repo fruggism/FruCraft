@@ -95,7 +95,7 @@ function overlayState() {
     selKey: t ? t.selKey : '',
     draft: state.draft,
     grid: state.grid,
-    spawn: t && t.dim === 'overworld' ? { ...t.info.spawn, radius: Number(t.info.gameRules.spawnRadius ?? 10) } : null,
+    spawn: t && t.dim === 'overworld' ? { ...t.info.spawn, radius: Number(t.info.gameRules.spawnRadius ?? t.info.gameRules['minecraft:respawn_radius'] ?? 10) } : null,
     hits: t && t.search ? t.search.items : null,
     hitChunks: t && t.search ? t.search.chunks : null,
     focusHit: t && t.focusHit,
@@ -374,17 +374,7 @@ async function fillSelectionWithBiome() {
   await pushOp({ type: 'paintBiome', dim: t.dim, biome: state.biome, region: t.selection });
 }
 
-function setWeather(kind) {
-  const ops = [];
-  const set = (name, k, v) => ops.push({ type: 'setLevelValue', path: ['Data', name], kind: k, value: v });
-  const rain = kind !== 'clear', storm = kind === 'storm';
-  set('raining', 'byte', rain ? 1 : 0);
-  set('thundering', 'byte', storm ? 1 : 0);
-  if (rain) set('rainTime', 'int', 6000);
-  if (storm) set('thunderTime', 'int', 6000);
-  if (!rain) set('clearWeatherTime', 'int', 6000);
-  return ops.reduce((p, op) => p.then(() => pushOp(op)), Promise.resolve());
-}
+function setWeather(kind) { return pushOp({ type: 'setWeather', kind }); }
 
 // ---------------------------------------------------------------------------
 // Worlds and tabs
@@ -654,6 +644,9 @@ function biomePanel(t) {
     </div>`;
 }
 
+/** 'minecraft:keep_inventory' (26.x) shows as 'keep_inventory'; older names stay as they are. */
+const ruleLabel = (k) => k.replace(/^minecraft:/, '');
+
 const DAY_PRESETS = [['Alba', 0], ['Giorno', 1000], ['Mezzogiorno', 6000], ['Tramonto', 12000], ['Notte', 13000], ['Mezzanotte', 18000]];
 
 function levelPanel(t) {
@@ -662,13 +655,13 @@ function levelPanel(t) {
   const weather = i.time.thundering ? 'storm' : i.time.raining ? 'rain' : 'clear';
   const rules = Object.entries(i.gameRules).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
     v === 'true' || v === 'false'
-      ? `<div class="rule-row"><span>${esc(k)}</span><button class="sw${v === 'true' ? ' on' : ''}" data-rule="${esc(k)}" data-bool="1" role="switch" aria-checked="${v === 'true'}" aria-label="${esc(k)}" ${ro}></button></div>`
-      : `<div class="rule-row"><span>${esc(k)}</span><input class="fld" data-rule="${esc(k)}" value="${esc(v)}" ${ro} aria-label="${esc(k)}"></div>`)).join('');
+      ? `<div class="rule-row"><span title="${esc(k)}">${esc(ruleLabel(k))}</span><button class="sw${v === 'true' ? ' on' : ''}" data-rule="${esc(k)}" data-bool="1" role="switch" aria-checked="${v === 'true'}" aria-label="${esc(k)}" ${ro}></button></div>`
+      : `<div class="rule-row"><span title="${esc(k)}">${esc(ruleLabel(k))}</span><input class="fld" data-rule="${esc(k)}" value="${esc(v)}" ${ro} aria-label="${esc(k)}"></div>`)).join('');
   return `
     <div class="sec"><div class="caps sh">Spawn del mondo</div>
       <div class="row"><span>X · Y · Z</span><span style="display:flex;gap:4px"><input class="fld" id="sp-x" value="${i.spawn.x}" ${ro} aria-label="X"><input class="fld" id="sp-y" value="${i.spawn.y}" ${ro} aria-label="Y"><input class="fld" id="sp-z" value="${i.spawn.z}" ${ro} aria-label="Z"></span></div>
       <div class="actions" style="margin-top:6px"><button class="btn" id="sp-set" ${ro}>Imposta</button><button class="btn" data-act="gospawn">Vai allo spawn</button></div>
-      <p class="hint" style="margin:8px 0 0">Oppure clicca sulla mappa con lo strumento Spawn. Il raggio è la regola <span class="mono">spawnRadius</span>.</p>
+      <p class="hint" style="margin:8px 0 0">Oppure clicca sulla mappa con lo strumento Spawn. Il raggio è la regola <span class="mono">${i.splitLevel ? 'respawn_radius' : 'spawnRadius'}</span>.</p>
     </div>
     <div class="sec"><div class="caps sh">Ora del giorno</div>
       <div class="row"><select class="fld" id="day-preset" ${ro}><option value="">Scegli…</option>${DAY_PRESETS.map(([n, v]) => `<option value="${v}">${n}</option>`).join('')}</select><input class="fld" id="day-time" value="${esc(i.time.dayTime)}" ${ro} aria-label="Tick del giorno" style="width:90px"></div>
@@ -679,13 +672,15 @@ function levelPanel(t) {
     <div class="sec"><div class="caps sh">Regole di gioco</div>${rules || '<p class="empty-note">Nessuna regola salvata.</p>'}</div>`;
 }
 
-const OP_COLOR = { setSpawn: '#ee6a62', setGameRule: '#62a8f0', setLevelValue: '#f2b13b', fillBox: '#d9a033', replaceBlocks: '#76ba5a', paintBiome: '#3f7d35' };
+const OP_COLOR = { setSpawn: '#ee6a62', setGameRule: '#62a8f0', setLevelValue: '#f2b13b', setDayTime: '#f2b13b', setWeather: '#f2b13b', fillBox: '#d9a033', replaceBlocks: '#76ba5a', paintBiome: '#3f7d35' };
 
 function describeOp(op) {
   const c = (n) => fmt(n);
   switch (op.type) {
     case 'setSpawn': return ['Spawn spostato', `X ${signed(op.x)}, Y ${signed(op.y)}, Z ${signed(op.z)}`];
-    case 'setGameRule': return [`Regola ${op.rule}`, `= ${op.value}`];
+    case 'setGameRule': return [`Regola ${ruleLabel(op.rule)}`, `= ${op.value}`];
+    case 'setDayTime': return ['Ora del giorno', String(op.value)];
+    case 'setWeather': return ['Meteo', { clear: 'Sereno', rain: 'Pioggia', storm: 'Temporale' }[op.kind] || op.kind];
     case 'setLevelValue': return [{ DayTime: 'Ora del giorno', raining: 'Pioggia', thundering: 'Temporale', rainTime: 'Durata pioggia', thunderTime: 'Durata temporale', clearWeatherTime: 'Durata sereno' }[op.path[op.path.length - 1]] || op.path.join('.'), String(op.value)];
     case 'fillBox': return [`Riempi · ${op.state}`, `${c(Math.abs(op.x2 - op.x1) + 1)} × ${c(Math.abs(op.z2 - op.z1) + 1)} × ${c(Math.abs(op.y2 - op.y1) + 1)}`];
     case 'replaceBlocks': return [`Sostituisci · ${op.rules.length === 1 ? `${op.rules[0].from} → ${op.rules[0].to}` : `${op.rules.length} regole`}`, bboxText(op.region)];
@@ -963,8 +958,8 @@ document.addEventListener('change', (e) => {
     const a = el.id.endsWith('min') ? parseY(el.value) : lo, b = el.id.endsWith('max') ? parseY(el.value) : hi;
     if (Number.isFinite(a) && Number.isFinite(b)) setYRange(Math.min(a, b), Math.max(a, b));
   } else if (el.dataset.rule && !el.dataset.bool) pushOp({ type: 'setGameRule', rule: el.dataset.rule, value: Number(el.value) });
-  else if (el.id === 'day-preset') { if (el.value !== '') pushOp({ type: 'setLevelValue', path: ['Data', 'DayTime'], kind: 'long', value: Number(el.value) }); }
-  else if (el.id === 'day-time') pushOp({ type: 'setLevelValue', path: ['Data', 'DayTime'], kind: 'long', value: Math.max(0, Math.floor(Number(el.value) || 0)) });
+  else if (el.id === 'day-preset') { if (el.value !== '') pushOp({ type: 'setDayTime', value: Number(el.value) }); }
+  else if (el.id === 'day-time') pushOp({ type: 'setDayTime', value: Math.max(0, Math.floor(Number(el.value) || 0)) });
 });
 
 document.addEventListener('input', (e) => {

@@ -53,7 +53,8 @@ async function loadRegion(source, rel, rx, rz) {
  */
 export async function walkChunks({ source, dim, regions, selection, onProgress, signal, kind = 'region' }, fn) {
   const info = dimensionInfo(dim);
-  const dir = kind === 'region' ? info.dir : dimensionDir(dim, kind);
+  const modern = !!(source.modern ?? source.modernLayout);
+  const dir = dimensionDir(dim, kind, modern);
   const plan = chunksToVisit(regions, selection);
   let done = 0;
   for (const r of plan) {

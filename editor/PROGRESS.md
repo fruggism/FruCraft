@@ -79,6 +79,23 @@ su una copia** con verifica per rilettura, spawn/ora/meteo/regole di gioco.
 - Versione minima: il controllo era già DataVersion 2860 = **1.18**, ma i
   messaggi dicevano "1.18.2". Ora dicono 1.18.
 
+**Mondi 26.x** (i salvataggi di oggi: 1.21.9 → 26.3 hanno cambiato formato)
+- **Spawn**: in `level.dat` è `Data.spawn.pos` [x, y, z], non più SpawnX/Y/Z.
+  Leggerlo male dava NaN e il clic su un mondo non apriva niente.
+- **Palette dei blocchi** (26.3): nomi nudi, oppure lista mista con
+  `{ id, properties }`; in binario gli elementi non compound sono avvolti in
+  `{ "": x }` (`nbt.js` li spacchetta e `nbtWrite.js` li riavvolge: 200 chunk
+  veri riscritti identici al byte). Prima la mappa saltava le sezioni con piante
+  e acqua e dall'alto si vedeva pietra grigia a quadrati. `ChunkEditor` scrive
+  nel formato del chunk che modifica.
+- **Cartelle**: anche l'Overworld sta in `dimensions/minecraft/overworld/`
+  (`dimensionInfo(id, modern)`, `NodeSource.modernLayout`). Prima Applica non
+  trovava le region e copiava il mondo senza le modifiche ai blocchi.
+- **Ora, meteo, regole**: in `data/minecraft/world_clocks.dat`, `weather.dat`,
+  `game_rules.dat` (regole come `minecraft:keep_inventory`, byte/int). Nuove
+  operazioni `setDayTime` e `setWeather`; `setGameRule` scrive dove serve. Le
+  vecchie `setLevelValue` restano valide per i giornali già salvati.
+
 ## Cosa manca / scelte da conoscere
 - **"Solo esposti all'aria"** guarda i vicini dentro lo stesso chunk: sul
   bordo di un chunk un blocco con aria solo nel chunk accanto non conta come

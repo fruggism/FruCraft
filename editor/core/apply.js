@@ -15,12 +15,14 @@ import { writeNbt } from '../../web/js/core/nbtWrite.js';
 import { gzipSync } from 'node:zlib';
 import { readRegionFile, writeRegionFile } from './region.js';
 import { MIN_DATA_VERSION, ChunkEditor, stateKey } from './chunk.js';
-import { CHUNK_OPS } from './journal.js';
+import { CHUNK_OPS, LEVEL_FILES } from './journal.js';
 import { replayOnRegion, regionsOfPlan } from './replay.js';
-import { dimensionInfo } from './dimensions.js';
+import { dimensionInfo, MODERN_PROBE } from './dimensions.js';
 
 export const INCOMPLETE_MARK = '.cantiere-incompleto';
 export const COPY_MARK = 'cantiere.json';
+// Level operations that may write the 26.x level files instead of level.dat.
+const SPLIT_OPS = new Set(['setGameRule', 'setDayTime', 'setWeather']);
 
 // ---------------------------------------------------------------------------
 // Level.dat
@@ -39,6 +41,28 @@ export function writeLevel(worldDir, level) {
 }
 
 export const dataVersionOf = (level) => Number(level.value?.Data?.DataVersion || 0);
+
+/** The 26.x level files that exist in this world: { relative path -> typed root }. */
+export async function readLevelFiles(worldDir) {
+  const files = {};
+  for (const rel of Object.values(LEVEL_FILES)) {
+    const file = path.join(worldDir, rel);
+    if (!fs.existsSync(file)) continue;
+    files[rel] = (await parse(new Uint8Array(fs.readFileSync(file)), { typed: true })).value;
+  }
+  return files;
+}
+
+/** Write them back (gzipped, unnamed root, like the game), through a temporary file. */
+export function writeLevelFiles(worldDir, files) {
+  for (const [rel, root] of Object.entries(files)) {
+    const file = path.join(worldDir, rel);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.cantiere-tmp`;
+    fs.writeFileSync(tmp, gzipSync(Buffer.from(writeNbt(root, ''))));
+    fs.renameSync(tmp, file);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Preflight
@@ -79,6 +103,9 @@ export function uniqueCopyName(savesDir, baseName) {
   return name;
 }
 
+/** Does the world use the 26.x folder layout? See dimensions.js. */
+export const isModernWorld = (dir) => fs.existsSync(path.join(dir, MODERN_PROBE));
+
 export const isCantiereCopy = (dir) => fs.existsSync(path.join(dir, COPY_MARK));
 
 /**
@@ -107,7 +134,7 @@ export async function preflight({ worldDir, targetDir, journal, lockCheck = defa
     ? { ok: false, label: 'Minecraft sembra aperto', detail: 'chiudilo e riprova' }
     : { ok: true, label: 'Minecraft è chiuso', detail: lock === null ? 'non verificabile: controlla tu' : 'nessun lock sul mondo' });
   const plan = journal.chunkPlan();
-  const regions = regionsOfPlan(plan, (dim) => dimensionInfo(dim).dir);
+  const regions = regionsOfPlan(plan, (dim) => dimensionInfo(dim, isModernWorld(worldDir)).dir);
   let chunks = 0;
   for (const m of plan.values()) chunks += m.size;
   const need = regions.reduce((sum, r) => {
@@ -162,16 +189,22 @@ export async function applyJournal({
 
   // level.dat
   const level = await readLevel(targetDir);
-  journal.applyToLevel(level.value);
+  const levelFiles = await readLevelFiles(targetDir);
+  journal.applyToLevel(level.value, levelFiles);
   level.value.Data.LevelName = name;
   writeLevel(targetDir, level);
+  if (journal.levelOps().some((op) => SPLIT_OPS.has(op.type))) {
+    writeLevelFiles(targetDir, levelFiles);
+    // Read back: a file that doesn't parse must not survive Apply.
+    for (const rel of Object.keys(levelFiles)) await parse(new Uint8Array(fs.readFileSync(path.join(targetDir, rel))));
+  }
   fs.writeFileSync(path.join(targetDir, COPY_MARK), JSON.stringify({
     origine: path.basename(worldDir), creata: new Date().toISOString(), operazioni: journal.summary(),
   }, null, 2));
 
   // Regions
   const plan = journal.chunkPlan();
-  const regions = regionsOfPlan(plan, (dim) => dimensionInfo(dim).dir);
+  const regions = regionsOfPlan(plan, (dim) => dimensionInfo(dim, isModernWorld(worldDir)).dir);
   const written = [];
   let n = 0;
   for (const r of regions) {

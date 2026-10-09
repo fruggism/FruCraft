@@ -13,7 +13,7 @@ import { dimensionInfo } from '../core/dimensions.js';
 import { colorFor, COLORS } from '../../web/js/core/blockColors.js';
 
 export const OP_LABELS = {
-  setSpawn: 'Spawn', setGameRule: 'Regole di gioco', setLevelValue: 'Ora e meteo',
+  setSpawn: 'Spawn', setGameRule: 'Regole di gioco', setLevelValue: 'Ora e meteo', setDayTime: 'Ora e meteo', setWeather: 'Ora e meteo',
   fillBox: 'Riempimenti', replaceBlocks: 'Sostituzioni', paintBiome: 'Biomi dipinti',
 };
 

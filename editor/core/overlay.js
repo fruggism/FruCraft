@@ -19,6 +19,7 @@ export class OverlaySource {
     this.version = 0;
     this.cache = new Map();   // rel path -> { version, bytes }
     this.plan = journal.chunkPlan();
+    this.modern = !!base.modernLayout;
     journal.onChange((_j, op) => {
       this.version++;
       this.plan = journal.chunkPlan();
@@ -30,7 +31,7 @@ export class OverlaySource {
 
   /** Relative paths of the region files a block box of a dimension covers. */
   regionsOf(dim, b) {
-    const dir = dimensionInfo(dim).dir;
+    const dir = dimensionInfo(dim, this.modern).dir;
     const out = new Set();
     for (let rz = b.minZ >> 9; rz <= b.maxZ >> 9; rz++) {
       for (let rx = b.minX >> 9; rx <= b.maxX >> 9; rx++) out.add(`${dir}/r.${rx}.${rz}.mca`);
@@ -50,7 +51,7 @@ export class OverlaySource {
     if (!m) return null;
     const dir = m[1] || 'region';
     for (const [dim, chunks] of this.plan) {
-      if (dimensionInfo(dim).dir !== dir) continue;
+      if (dimensionInfo(dim, this.modern).dir !== dir) continue;
       return { dim, chunks, rx: Number(m[2]), rz: Number(m[3]) };
     }
     return null;

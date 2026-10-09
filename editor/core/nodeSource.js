@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { WorldSource } from '../../web/js/core/source.js';
+import { MODERN_PROBE } from './dimensions.js';
 
 export class NodeSource extends WorldSource {
   constructor(root) {
@@ -16,6 +17,8 @@ export class NodeSource extends WorldSource {
 
   get name() { return path.basename(this.root); }
   get key() { return `node:${this.root}`; }
+  /** Does the world use the 26.x folder layout (dimensions/minecraft/overworld/...)? */
+  get modernLayout() { return fs.existsSync(this.full(MODERN_PROBE)); }
 
   full(rel) {
     return path.join(this.root, String(rel || '').replace(/\//g, path.sep));

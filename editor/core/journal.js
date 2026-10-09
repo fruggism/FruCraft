@@ -19,6 +19,7 @@ import { dimensionInfo } from './dimensions.js';
 import { selectionBounds, chunkMask, yRange } from './selection.js';
 import { blockMatcher, compileMix, pickFromMix, carryProperties, hash3 } from './blocks.js';
 import { AIR_NAMES } from '../../web/js/core/anvil.js';
+import { readSpawn } from '../../web/js/core/worldScan.js';
 
 // ---------------------------------------------------------------------------
 // Level operations
@@ -43,6 +44,64 @@ function ensurePath(root, path) {
   return node;
 }
 
+/*
+ * From 26.x (1.21.9 onwards, in steps) time, weather and game rules left
+ * level.dat for files of their own. Level operations work on both layouts:
+ * they get the level.dat tree plus `files`, { relative path -> parsed root },
+ * holding whichever of these exist (an op creates one when it must).
+ */
+export const LEVEL_FILES = {
+  clocks: 'data/minecraft/world_clocks.dat',
+  weather: 'data/minecraft/weather.dat',
+  gameRules: 'data/minecraft/game_rules.dat',
+};
+const OVERWORLD_CLOCK = 'minecraft:overworld';
+
+/** Does this world keep time, weather and rules outside level.dat? */
+export function isSplitLevel(level, files = {}) {
+  const d = level.Data || {};
+  if (Object.values(LEVEL_FILES).some((rel) => files[rel])) return true;
+  return !('DayTime' in d) && !('GameRules' in d) && !('raining' in d);
+}
+
+/** The `data` compound of one of LEVEL_FILES, created when missing. */
+function fileData(level, files, rel) {
+  if (!files[rel]) files[rel] = { data: {}, DataVersion: Number(level.Data?.DataVersion || 0) };
+  if (typeof files[rel].data !== 'object' || files[rel].data === null) files[rel].data = {};
+  return files[rel].data;
+}
+
+const val = (x) => (x !== null && typeof x === 'object' && 'v' in x ? x.v : x);
+
+/**
+ * What the level panel shows, from either layout: spawn, time, weather and the
+ * game rules as strings ('true' / 'false' / a number), keyed by their own names.
+ */
+export function levelSummary(level, files = {}) {
+  const d = level.Data || {};
+  if (!isSplitLevel(level, files)) {
+    return {
+      split: false,
+      spawn: readSpawn(d),
+      time: { dayTime: String(val(d.DayTime) ?? 0), raining: !!val(d.raining), thundering: !!val(d.thundering) },
+      gameRules: { ...(d.GameRules || {}) },
+    };
+  }
+  const clock = files[LEVEL_FILES.clocks]?.data?.[OVERWORLD_CLOCK];
+  const ticks = BigInt(val(clock?.total_ticks) ?? 0);
+  const w = files[LEVEL_FILES.weather]?.data || {};
+  const rules = {};
+  for (const [k, v] of Object.entries(files[LEVEL_FILES.gameRules]?.data || {})) {
+    rules[k] = v instanceof TByte ? (v.v ? 'true' : 'false') : String(val(v));
+  }
+  return {
+    split: true,
+    spawn: readSpawn(d),
+    time: { dayTime: String(((ticks % 24000n) + 24000n) % 24000n), raining: !!val(w.raining), thundering: !!val(w.thundering) },
+    gameRules: rules,
+  };
+}
+
 export const LEVEL_OPS = {
   /** Set the world spawn. Handles both the old (SpawnX/Y/Z) and new (Data.spawn) layouts. */
   setSpawn(op, level) {
@@ -62,11 +121,49 @@ export const LEVEL_OPS = {
     const node = ensurePath(level, op.path);
     node[op.path[op.path.length - 1]] = KINDS[op.kind](op.value);
   },
-  /** Game rules are stored as strings: 'true', 'false' or a number. */
-  setGameRule(op, level) {
+  /**
+   * Game rules: strings ('true', 'false' or a number) in level.dat; from 26.x
+   * bytes and ints in game_rules.dat, under names like minecraft:keep_inventory.
+   */
+  setGameRule(op, level, files = {}) {
+    if (isSplitLevel(level, files)) {
+      const v = op.value;
+      const bool = typeof v === 'boolean' || v === 'true' || v === 'false';
+      fileData(level, files, LEVEL_FILES.gameRules)[op.rule] = bool ? new TByte(v === true || v === 'true' ? 1 : 0) : Number(v) | 0;
+      return;
+    }
     const d = level.Data;
     if (!d.GameRules || typeof d.GameRules !== 'object') d.GameRules = {};
     d.GameRules[op.rule] = String(op.value);
+  },
+  /** Time of day in ticks (0 = sunrise): DayTime, or the overworld clock from 26.x. */
+  setDayTime(op, level, files = {}) {
+    const t = Math.max(0, Math.floor(Number(op.value) || 0));
+    if (!isSplitLevel(level, files)) { level.Data.DayTime = new TLong(t); return; }
+    const clocks = fileData(level, files, LEVEL_FILES.clocks);
+    const clock = clocks[OVERWORLD_CLOCK] && typeof clocks[OVERWORLD_CLOCK] === 'object' ? clocks[OVERWORLD_CLOCK] : (clocks[OVERWORLD_CLOCK] = { paused: new TByte(0) });
+    // Keep the days already lived, move to the chosen time of the current one.
+    const now = BigInt(val(clock.total_ticks) ?? 0);
+    clock.total_ticks = now - (((now % 24000n) + 24000n) % 24000n) + BigInt(t % 24000);
+  },
+  /** Weather: 'clear' | 'rain' | 'storm', for the next 6000 ticks (5 minutes). */
+  setWeather(op, level, files = {}) {
+    const rain = op.kind !== 'clear', storm = op.kind === 'storm';
+    if (!isSplitLevel(level, files)) {
+      const d = level.Data;
+      d.raining = new TByte(rain ? 1 : 0);
+      d.thundering = new TByte(storm ? 1 : 0);
+      if (rain) d.rainTime = 6000;
+      if (storm) d.thunderTime = 6000;
+      if (!rain) d.clearWeatherTime = 6000;
+      return;
+    }
+    const w = fileData(level, files, LEVEL_FILES.weather);
+    w.raining = new TByte(rain ? 1 : 0);
+    w.thundering = new TByte(storm ? 1 : 0);
+    if (rain) w.rain_time = 6000;
+    if (storm) w.thunder_time = 6000;
+    if (!rain) w.clear_weather_time = 6000;
   },
 };
 
@@ -280,9 +377,12 @@ export class Journal {
     return new Journal(json.ops);
   }
 
-  /** Fold the level operations into a (typed) level.dat tree. */
-  applyToLevel(level) {
-    for (const op of this.levelOps()) LEVEL_OPS[op.type](op, level);
+  /**
+   * Fold the level operations into a (typed) level.dat tree and, for 26.x
+   * worlds, into `files` (see LEVEL_FILES; entries are created as needed).
+   */
+  applyToLevel(level, files = {}) {
+    for (const op of this.levelOps()) LEVEL_OPS[op.type](op, level, files);
     return level;
   }
 

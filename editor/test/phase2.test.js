@@ -188,6 +188,24 @@ export function register({ test, section, assert, assertEqual }) {
   // -------------------------------------------------------------------------
   section('Cantiere — ricerca e conteggi');
 
+  test('mondo 26.x (dimensions/minecraft/overworld): anteprima, ricerca e Applica trovano i chunk', async () => {
+    const world = makeWorld(freshSaves(), 'Moderno', { modernDirs: true });
+    const src = new NodeSource(world);
+    assert(src.modernLayout, 'layout riconosciuto');
+    const r = await search({ source: src, dim: 'overworld', regions: REGIONS, selection: null, query: { kind: 'block', block: 'chest' } });
+    assertEqual(r.total, 4, 'la ricerca legge i chunk nella cartella nuova');
+    const j = new Journal();
+    j.push({ type: 'fillBox', dim: 'overworld', x1: 2, y1: 39, z1: 2, x2: 20, y2: 39, z2: 20, state: 'gold_block' });
+    const overlay = new OverlaySource(src, j);
+    const hit = await search({ source: overlay, dim: 'overworld', regions: REGIONS, selection: null, query: { kind: 'block', block: 'gold_block' } });
+    assertEqual(hit.total, 19 * 19, 'l\'anteprima vede le modifiche in sospeso');
+    const res = await applyJournal({ worldDir: world, journal: j, lockCheck: () => false });
+    assertEqual(res.chunks, 4, 'Applica riscrive i chunk invece di saltarli');
+    assert(!fs.existsSync(path.join(res.targetDir, 'region')), 'nessuna cartella region/ inventata');
+    const copy = await search({ source: new NodeSource(res.targetDir), dim: 'overworld', regions: REGIONS, selection: null, query: { kind: 'block', block: 'gold_block' } });
+    assertEqual(copy.total, 19 * 19, 'l\'oro è nella copia');
+  });
+
   test('cerca blocchi, block entity per oggetto contenuto, rispetta la selezione', async () => {
     const world = makeWorld(freshSaves());
     const src = new NodeSource(world);

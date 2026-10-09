@@ -13,14 +13,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { scanWorld, readSpawn } from '../../web/js/core/worldScan.js';
+import { scanWorld } from '../../web/js/core/worldScan.js';
 import { serveTile, getTile, regionSetOf, tileRangeFor, blocksPerTile, TILE_SIZE, MIN_ZOOM, NATIVE_ZOOM } from '../../web/js/core/tiler.js';
 import { readSurface, forgetRegions, NO_DATA } from '../../web/js/core/anvil.js';
 import { NodeSource } from '../core/nodeSource.js';
 import { OverlaySource } from '../core/overlay.js';
-import { Journal, chunkBoundsOf } from '../core/journal.js';
+import { Journal, chunkBoundsOf, levelSummary } from '../core/journal.js';
 import { biomeColor } from '../core/biomes.js';
-import { applyJournal, preflight, readLevel, dataVersionOf, isCantiereCopy, uniqueCopyName, INCOMPLETE_MARK } from '../core/apply.js';
+import { applyJournal, preflight, readLevel, readLevelFiles, dataVersionOf, isCantiereCopy, uniqueCopyName, INCOMPLETE_MARK } from '../core/apply.js';
 import { runTask } from './tasks.js';
 import { MIN_DATA_VERSION } from '../core/chunk.js';
 
@@ -182,12 +182,14 @@ export class WorldSession {
   /** Level data with the pending level operations on top (spawn, rules, ...). */
   async levelPreview() {
     const level = await readLevel(this.worldDir);
-    this.journal.applyToLevel(level.value);
-    return level.value.Data;
+    const files = await readLevelFiles(this.worldDir);
+    this.journal.applyToLevel(level.value, files);
+    return { level: level.value, files };
   }
 
   async info() {
-    const d = await this.levelPreview();
+    const { level, files } = await this.levelPreview();
+    const summary = levelSummary(level, files);
     return {
       path: this.worldDir,
       name: this.scan.levelName,
@@ -195,13 +197,10 @@ export class WorldSession {
       dataVersion: this.scan.dataVersion,
       readOnly: this.readOnly,
       isCopy: isCantiereCopy(this.worldDir),
-      spawn: readSpawn(d),
-      time: {
-        dayTime: String(d.DayTime ?? 0),
-        raining: !!(d.raining && d.raining.v),
-        thundering: !!(d.thundering && d.thundering.v),
-      },
-      gameRules: { ...(d.GameRules || {}) },
+      spawn: summary.spawn,
+      time: summary.time,
+      gameRules: summary.gameRules,
+      splitLevel: summary.split,
       dimensions: this.scan.dimensions.map((x) => ({
         id: x.id, label: x.label, regionCount: x.regionCount, bounds: x.bounds,
       })),

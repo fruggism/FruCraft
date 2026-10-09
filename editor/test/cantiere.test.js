@@ -417,8 +417,63 @@ export function register({ test, section, assert, assertEqual }) {
     const after = (await s.info()).spawn;
     assertEqual(after.x, -5, 'spawn in anteprima x');
     assertEqual(after.z, 12, 'spawn in anteprima z');
-    const d = await s.levelPreview();
+    const d = (await s.levelPreview()).level.Data;
     assert(!('SpawnX' in d), 'niente SpawnX nel formato nuovo');
+  });
+
+  test('mondo 26.x: ora, meteo e regole si leggono dai file in data/minecraft', async () => {
+    const world = makeWorld(freshSaves(), 'Diviso', { splitLevel: true });
+    const s = await WorldSession.open(world, { dataDir: path.join(scratch, 'dati-diviso') });
+    const info = await s.info();
+    assert(info.splitLevel, 'formato riconosciuto');
+    assertEqual(info.time.dayTime, '6000', 'ora del giorno = tick dell\'orologio modulo 24000');
+    assert(info.time.raining && !info.time.thundering, 'meteo');
+    assertEqual(info.gameRules['minecraft:keep_inventory'], 'false', 'regola booleana');
+    assertEqual(info.gameRules['minecraft:random_tick_speed'], '3', 'regola numerica');
+    s.push({ type: 'setDayTime', value: 18000 });
+    s.push({ type: 'setWeather', kind: 'storm' });
+    s.push({ type: 'setGameRule', rule: 'minecraft:keep_inventory', value: true });
+    const after = await s.info();
+    assertEqual(after.time.dayTime, '18000', 'ora in anteprima');
+    assert(after.time.thundering, 'temporale in anteprima');
+    assertEqual(after.gameRules['minecraft:keep_inventory'], 'true', 'regola in anteprima');
+  });
+
+  test('mondo 26.x: Applica scrive ora, meteo e regole nei file giusti della copia', async () => {
+    const world = makeWorld(freshSaves(), 'Diviso', { splitLevel: true });
+    const before = hashTree(world);
+    const j = new Journal();
+    j.push({ type: 'setDayTime', value: 13000 });
+    j.push({ type: 'setWeather', kind: 'clear' });
+    j.push({ type: 'setGameRule', rule: 'minecraft:keep_inventory', value: true });
+    j.push({ type: 'setGameRule', rule: 'minecraft:random_tick_speed', value: 0 });
+    const res = await applyJournal({ worldDir: world, journal: j, lockCheck: unlocked });
+    assertEqual(hashTree(world), before, 'l\'originale è cambiato');
+    const read = (f) => parseRaw(zlib.gunzipSync(fs.readFileSync(path.join(res.targetDir, 'data', 'minecraft', f)))).value;
+    assertEqual(read('world_clocks.dat').data['minecraft:overworld'].total_ticks, 37000n, 'giorno conservato, ora cambiata');
+    const w = read('weather.dat').data;
+    assertEqual(w.raining, 0, 'pioggia tolta');
+    assertEqual(w.clear_weather_time, 6000, 'sereno per 5 minuti');
+    const r = read('game_rules.dat').data;
+    assertEqual(r['minecraft:keep_inventory'], 1, 'keep_inventory come byte');
+    assertEqual(r['minecraft:random_tick_speed'], 0, 'random_tick_speed come int');
+    assertEqual(r['minecraft:respawn_radius'], 10, 'le altre regole restano');
+    const level = (await readLevel(res.targetDir)).value.Data;
+    assert(!('DayTime' in level) && !('GameRules' in level) && !('raining' in level), 'niente campi vecchi nel level.dat');
+  });
+
+  test('mondo vecchio: le stesse operazioni scrivono ancora nel level.dat', async () => {
+    const world = makeWorld(freshSaves());
+    const j = new Journal();
+    j.push({ type: 'setDayTime', value: 13000 });
+    j.push({ type: 'setWeather', kind: 'rain' });
+    j.push({ type: 'setGameRule', rule: 'keepInventory', value: true });
+    const res = await applyJournal({ worldDir: world, journal: j, lockCheck: unlocked });
+    const level = (await readLevel(res.targetDir)).value.Data;
+    assertEqual(BigInt(level.DayTime.v ?? level.DayTime), 13000n, 'DayTime');
+    assertEqual(level.raining.v, 1, 'raining');
+    assertEqual(level.GameRules.keepInventory, 'true', 'regola come stringa');
+    assert(!fs.existsSync(path.join(res.targetDir, 'data', 'minecraft', 'weather.dat')), 'nessun file nuovo');
   });
 
   test('il giornale non applicato sopravvive alla chiusura dell\'app', async () => {
