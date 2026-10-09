@@ -22,7 +22,7 @@ import { applyJournal, preflight, readLevel, uniqueCopyName, INCOMPLETE_MARK } f
 import { OverlaySource } from '../core/overlay.js';
 import { NodeSource } from '../core/nodeSource.js';
 import { makeWorld, makeChunk, CHUNKS } from './fixture.js';
-import { WorldSession, listWorlds } from '../main/session.js';
+import { WorldSession, listWorlds, mainArea } from '../main/session.js';
 
 const unlocked = () => false;
 
@@ -502,6 +502,17 @@ export function register({ test, section, assert, assertEqual }) {
     const res = await applyJournal({ worldDir: world, journal: s.journal, lockCheck: unlocked });
     assertEqual(fs.readFileSync(path.join(res.targetDir, 'icon.png')).toString('base64'), png, 'icon.png nella copia');
     assertEqual(hashTree(world), before, 'l\'originale è cambiato');
+  });
+
+  test('mappa: "Adatta alla finestra" ignora le region isolate lontanissime', () => {
+    const regions = [];
+    for (let x = -2; x <= 3; x++) for (let z = -1; z <= 2; z++) regions.push({ x, z });
+    regions.push({ x: -23433, z: -14241 }, { x: 1955, z: 436 });
+    const { mainBounds, home } = mainArea(regions);
+    assertEqual(mainBounds.minX, -1024, 'minX'); assertEqual(mainBounds.maxX, 2047, 'maxX');
+    assertEqual(mainBounds.minZ, -512, 'minZ'); assertEqual(mainBounds.maxZ, 1535, 'maxZ');
+    assertEqual(home.x, 0, 'home a 0,0 quando c\'è');
+    assertEqual(mainArea([{ x: 10, z: 10 }]).home.x, 5375, 'altrimenti il centro del gruppo');
   });
 
   test('il giornale non applicato sopravvive alla chiusura dell\'app', async () => {

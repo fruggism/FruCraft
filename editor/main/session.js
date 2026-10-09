@@ -66,6 +66,39 @@ const snapshot = (file) => {
 /** Invisible in game, solid on a map: looked through when "hide invisible blocks" is on. */
 export const INVISIBLE_BLOCKS = ['minecraft:barrier', 'minecraft:light', 'minecraft:structure_void'];
 
+/**
+ * The part of a dimension worth showing: the biggest group of neighbouring
+ * region files. A few regions far away (a teleport to x = 12,000,000, a
+ * chunk-loader test) would otherwise make "fit to window" show a whole
+ * continent of nothing. `home` is where to look first: 0,0 when it is part of
+ * that group (the End's main island, the Nether under the overworld spawn),
+ * else the group's middle.
+ */
+export function mainArea(regions) {
+  if (!regions || !regions.length) return { mainBounds: null, home: { x: 0, z: 0 } };
+  const key = (x, z) => `${x},${z}`;
+  const left = new Map(regions.map((r) => [key(r.x, r.z), r]));
+  const GAP = 3; // regions this close (in region units) belong to the same group
+  let best = null;
+  while (left.size) {
+    const [k0, r0] = left.entries().next().value;
+    left.delete(k0);
+    const group = [r0], queue = [r0];
+    while (queue.length) {
+      const r = queue.pop();
+      for (let dz = -GAP; dz <= GAP; dz++) for (let dx = -GAP; dx <= GAP; dx++) {
+        const k = key(r.x + dx, r.z + dz), n = left.get(k);
+        if (n) { left.delete(k); group.push(n); queue.push(n); }
+      }
+    }
+    if (!best || group.length > best.length) best = group;
+  }
+  const xs = best.map((r) => r.x), zs = best.map((r) => r.z);
+  const b = { minX: Math.min(...xs) * 512, minZ: Math.min(...zs) * 512, maxX: (Math.max(...xs) + 1) * 512 - 1, maxZ: (Math.max(...zs) + 1) * 512 - 1 };
+  const hasOrigin = best.some((r) => r.x >= -1 && r.x <= 0 && r.z >= -1 && r.z <= 0);
+  return { mainBounds: b, home: hasOrigin ? { x: 0, z: 0 } : { x: (b.minX + b.maxX) >> 1, z: (b.minZ + b.maxZ) >> 1 } };
+}
+
 export class WorldSession {
   static async open(worldDir, { dataDir }) {
     const s = new WorldSession(path.resolve(worldDir), dataDir);
@@ -207,7 +240,7 @@ export class WorldSession {
       splitLevel: summary.split,
       icon: this.iconUrl(),
       dimensions: this.scan.dimensions.map((x) => ({
-        id: x.id, label: x.label, regionCount: x.regionCount, bounds: x.bounds,
+        id: x.id, label: x.label, regionCount: x.regionCount, bounds: x.bounds, ...mainArea(x.regions),
       })),
       journal: this.journalState(),
     };
@@ -262,11 +295,12 @@ export class WorldSession {
   async tile(dimId, z, x, y, maxY = null, view = 'blocks') {
     const r = await serveTile(this.ctxFor(dimId, maxY, view), z, x, y);
     if (r.partial && z <= -2) {
+      // Far zooms are only composed from tiles already built: build this one in
+      // the background (the window is told when it is ready) instead of leaving
+      // it black until somebody happens to look at the area up close.
+      this.scheduleRebuild(dimId, maxY, view, z, x, y);
       const old = this.stale.get(this.cacheKey(dimId, maxY, view))?.get(`${z}/${x}/${y}`);
-      if (old) {
-        if (z >= -3) this.scheduleRebuild(dimId, maxY, view, z, x, y);
-        return old;
-      }
+      if (old) return old;
     }
     return r.empty ? null : r.rgba;
   }

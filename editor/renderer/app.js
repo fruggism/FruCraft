@@ -150,7 +150,7 @@ function showTab() {
     const b = d.bounds;
     map.setMaxBounds(L.latLngBounds(toLatLng(b.minX, b.minZ), toLatLng(b.maxX + 1, b.maxZ + 1)).pad(1.0));
   }
-  const v = t.mapView || { center: t.dim === 'overworld' ? { x: t.info.spawn.x, z: t.info.spawn.z } : centerOf(d.bounds), zoom: 0 };
+  const v = t.mapView || { center: t.dim === 'overworld' ? { x: t.info.spawn.x, z: t.info.spawn.z } : (d.home || centerOf(d.bounds)), zoom: 0 };
   map.setView(toLatLng(v.center.x, v.center.z), v.zoom, { animate: false });
   overlay.draw();
 }
@@ -160,7 +160,8 @@ const centerOf = (b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 })
 function fitDimension() {
   const t = tab();
   if (!t) return;
-  const b = t.info.dimensions.find((x) => x.id === t.dim).bounds;
+  const d = t.info.dimensions.find((x) => x.id === t.dim);
+  const b = d.mainBounds || d.bounds;
   map.fitBounds(L.latLngBounds(toLatLng(b.minX, b.minZ), toLatLng(b.maxX + 1, b.maxZ + 1)), { animate: false });
 }
 
