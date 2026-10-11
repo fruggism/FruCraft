@@ -241,6 +241,25 @@ export class MapOverlay {
     if (b.maxX < b.minX || b.maxZ < b.minZ) return;
     const a = this.px(b.minX, b.minZ), c = this.px(b.maxX + 1, b.maxZ + 1);
     if (g.fill) { ctx.fillStyle = g.fill; ctx.fillRect(a.x, a.y, c.x - a.x, c.y - a.y); }
+    if (g.image) {
+      // A picture of what is being placed, cut to the box it will occupy.
+      let img = this.images && this.images.get(g.image.src);
+      if (!img) {
+        if (!this.images) this.images = new Map();
+        img = new Image();
+        img.onload = () => this.draw(false);
+        img.src = g.image.src;
+        this.images.set(g.image.src, img);
+      }
+      if (img.complete && img.naturalWidth) {
+        const ia = this.px(g.image.box.minX, g.image.box.minZ), ic = this.px(g.image.box.maxX + 1, g.image.box.maxZ + 1);
+        ctx.save();
+        ctx.beginPath(); ctx.rect(a.x, a.y, c.x - a.x, c.y - a.y); ctx.clip();
+        ctx.globalAlpha = 0.85; ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, ia.x, ia.y, ic.x - ia.x, ic.y - ia.y);
+        ctx.restore();
+      }
+    }
     ctx.setLineDash(g.dashed ? [6, 5] : []);
     ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeRect(a.x, a.y, c.x - a.x, c.y - a.y);
     ctx.strokeStyle = g.color; ctx.lineWidth = 1.5; ctx.strokeRect(a.x, a.y, c.x - a.x, c.y - a.y);

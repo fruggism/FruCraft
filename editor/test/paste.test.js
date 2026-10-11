@@ -251,7 +251,10 @@ export function register({ test, section, assert, assertEqual }) {
     const dataDir = path.join(scratch, 'dati-sessione');
     const a = await WorldSession.open(sourceWorld(), { dataDir });
     const b = await WorldSession.open(makeWorld(freshSaves(), 'Arrivo', { modernDirs: true }), { dataDir });
-    const clip = a.copy('overworld', sel(rect(0, 0, 15, 15)), path.join(dataDir, 'clips'));
+    const clip = await a.copy('overworld', sel(rect(0, 0, 15, 15)), path.join(dataDir, 'clips'));
+    assert(clip.preview && clip.preview.startsWith('data:image/png;base64,'), 'anteprima dall\'alto per posare il pezzo');
+    assertEqual(clip.previewBox.minX, 0, 'l\'anteprima copre i chunk interi');
+    assert(clip.fromY !== null && clip.fromY > -64, 'tutta la colonna: si parte poco sotto il terreno, non dal fondo del mondo');
     b.push({ type: 'paste', dim: 'overworld', clip: clip.dir, mode: 'chunks', ...pastePlacement(clip, { mode: 'chunks', x: 16, z: 16 }), selection: clip.selection });
     assertEqual((await b.probe('overworld', 21, 21)).block, 'minecraft:chest', 'l\'anteprima mostra il pezzo');
     const last = b.lastPasteBox('overworld');

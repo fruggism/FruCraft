@@ -20,6 +20,9 @@ import { NodeSource } from '../core/nodeSource.js';
 import { OverlaySource } from '../core/overlay.js';
 import { Journal, chunkBoundsOf, levelSummary, WORLD_OPS } from '../core/journal.js';
 import { createClip, clipMeta } from '../core/clips.js';
+import { selectionBounds } from '../core/selection.js';
+import { dimensionInfo } from '../core/dimensions.js';
+import { colorFor } from '../../web/js/core/blockColors.js';
 import { computeProfiles } from '../core/seam.js';
 import { biomeColor } from '../core/biomes.js';
 import { applyJournal, preflight, readLevel, readLevelFiles, dataVersionOf, isCantiereCopy, uniqueCopyName, INCOMPLETE_MARK } from '../core/apply.js';
@@ -367,13 +370,48 @@ export class WorldSession {
   removeAt(i) { this.journal.removeAt(i); return { ...this.journalState(), dirty: this.takeDirty() }; }
 
   /** Copy the selection into a new clip (see clips.js) under clipsDir. */
-  copy(dimId, selection, clipsDir) {
+  /**
+   * Copy a selection into a new clip. The piece is looked at from above once:
+   * that picture is shown while placing the paste, and when the selection
+   * takes the whole column the copy starts a little under the lowest ground in
+   * it instead of at the bottom of the world (nobody wants 130 blocks of stone
+   * under a palace). `fromY` in the result says where it starts.
+   */
+  async copy(dimId, selection, clipsDir) {
     const dim = this.scan.dimensions.find((d) => d.id === dimId);
     if (!dim) throw new Error(`Dimensione sconosciuta: ${dimId}`);
-    return createClip({
-      worldDir: this.worldDir, modern: this.base.modernLayout, dim: dimId, selection, clipsDir,
+    const b = selectionBounds(selection);
+    if (!b) throw new Error('Prima seleziona l\'area da copiare.');
+    const box = { minX: (b.minX >> 4) * 16, minZ: (b.minZ >> 4) * 16, maxX: (b.maxX >> 4) * 16 + 15, maxZ: (b.maxZ >> 4) * 16 + 15 };
+    const w = box.maxX - box.minX + 1, h = box.maxZ - box.minZ + 1;
+    const g = await readSurface(this.overlay, dim.regionDir, box.minX, box.minZ, w, h, this.hidden ? { hiddenBlocks: this.hidden } : {});
+    const step = Math.max(1, Math.ceil(Math.max(w, h) / 512));
+    const pw = Math.ceil(w / step), ph = Math.ceil(h / step);
+    const rgba = new Uint8Array(pw * ph * 4);
+    let low = Infinity;
+    for (let z = 0; z < h; z++) for (let x = 0; x < w; x++) {
+      const i = z * w + x, y = g.surfaceY[i];
+      if (y === NO_DATA) continue;
+      const bx = box.minX + x, bz = box.minZ + z;
+      if (bx >= b.minX && bx <= b.maxX && bz >= b.minZ && bz <= b.maxZ) low = Math.min(low, g.floorY[i] !== NO_DATA ? g.floorY[i] : y);
+      if (x % step || z % step) continue;
+      const c = colorFor(g.surfaceName[i], g.biome[i]);
+      const north = z > 0 && g.surfaceY[i - w] !== NO_DATA ? g.surfaceY[i - w] : y;
+      const shade = Math.max(0.75, Math.min(1.25, 1 + (y - north) * 0.08));
+      const p = ((z / step) * pw + x / step) * 4;
+      rgba[p] = Math.min(255, c[0] * shade); rgba[p + 1] = Math.min(255, c[1] * shade); rgba[p + 2] = Math.min(255, c[2] * shade); rgba[p + 3] = 255;
+    }
+    const info = dimensionInfo(dimId);
+    let sel = selection;
+    if ((selection.yMin === null || selection.yMin === undefined) && Number.isFinite(low)) {
+      sel = { ...selection, yMin: Math.max(info.minY, low - 8) };
+    }
+    const clip = createClip({
+      worldDir: this.worldDir, modern: this.base.modernLayout, dim: dimId, selection: sel, clipsDir,
       worldName: this.scan.levelName, dataVersion: this.scan.dataVersion,
+      preview: { width: pw, height: ph, rgba, box },
     });
+    return { ...clip, fromY: sel.yMin ?? null };
   }
 
   /** Check a paste against this world before it goes in the journal. Returns warnings. */

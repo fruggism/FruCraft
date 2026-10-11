@@ -208,6 +208,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // For automated UI checks with the window out of sight (CANTIERE_NO_THROTTLE=1).
+      backgroundThrottling: !process.env.CANTIERE_NO_THROTTLE,
     },
   });
   win.loadFile(path.join(here, '..', 'renderer', 'index.html'));

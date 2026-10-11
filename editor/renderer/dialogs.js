@@ -298,6 +298,28 @@ export function iconDialog(ctx) {
   };
 }
 
+/** Open another world: the saves folder's worlds with their pictures (like the start screen). */
+export async function worldsDialog(ctx) {
+  const { worlds } = await ctx.api.worlds.list();
+  const open = new Set(ctx.openPaths ? ctx.openPaths() : []);
+  const m = modal(`
+    <div class="dh"><div><h2>Apri un mondo</h2><p>I mondi della cartella dei salvataggi. Le modifiche vanno sempre in una copia.</p></div></div>
+    <div class="dsec" style="max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:6px">
+      ${worlds.length ? worlds.map((w) => `<button class="wr${w.readOnly ? ' off' : ''}" data-wopen="${esc(w.path)}" ${open.has(w.path) ? 'disabled title="Già aperto"' : ''}>
+        <div class="th" ${w.icon ? `style="background-image:url('${w.icon}')"` : ''}></div>
+        <div style="flex:1;min-width:0;text-align:left"><div class="nm">${esc(w.name)}</div><div class="meta">${esc(w.dimensions.join(', '))}${w.folder !== w.name ? ` · cartella “${esc(w.folder)}”` : ''}${open.has(w.path) ? ' · già aperto' : ''}</div></div>
+        <span class="ver${w.readOnly ? ' bad' : ''}">${esc(w.version || '?')}</span></button>`).join('') : '<p class="empty-note">Nessun mondo in questa cartella.</p>'}
+    </div>
+    <div class="df"><span class="end"><button class="btn" id="wo-other">Da un'altra posizione…</button><button class="btn" id="wo-no">Annulla</button></span></div>`, { label: 'Apri un mondo', wide: true });
+  m.querySelector('#wo-no').onclick = closeModal;
+  m.querySelector('#wo-other').onclick = () => { closeModal(); ctx.pickAndOpen(); };
+  m.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-wopen]');
+    if (!b || b.disabled) return;
+    closeModal(); ctx.openWorld(b.dataset.wopen);
+  });
+}
+
 export function saveSelectionDialog(ctx) {
   const m = modal(`
     <div class="dh"><div><h2>Salva la selezione</h2><p>La ritrovi nel pannello Proprietà quando usi uno strumento di selezione, per questo mondo.</p></div></div>

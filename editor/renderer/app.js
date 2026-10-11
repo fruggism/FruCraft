@@ -10,7 +10,7 @@
 
 import { $, esc, icon, fmt, signed, rgb, toast, guard, modalOpen, closeModal, pickFrom, ago, whenText, cleanError } from './ui.js';
 import { MapOverlay, scaleBar } from './mapdraw.js';
-import { applyDialog, replaceDialog, gotoDialog, saveSelectionDialog, devFillDialog, iconDialog, claudeDialog, OP_LABELS } from './dialogs.js';
+import { applyDialog, replaceDialog, gotoDialog, saveSelectionDialog, devFillDialog, iconDialog, worldsDialog, claudeDialog, OP_LABELS } from './dialogs.js';
 import {
   emptySelection, isEmptySelection, combine, invert, selectionBounds, measure, simplifyPoints, yRange,
 } from '../core/selection.js';
@@ -55,8 +55,9 @@ const saveUi = () => { try { localStorage.setItem('cantiere.ui', JSON.stringify(
 const TOOL_GROUPS = [
   ['Naviga', [['move', 'Sposta', 'V']]],
   ['Seleziona', [['rect', 'Rettangolo', 'M'], ['poly', 'Poligono', 'P'], ['lasso', 'Lazo', 'L'], ['sbrush', 'Pennello', 'S']]],
-  ['Modifica', [['biome', 'Bioma', 'B'], ['terrain', 'Terreno', 'T'], ['veg', 'Vegetazione', '', 6], ['river', 'Fiume e lago', '', 6], ['replace', 'Sostituisci', 'R']]],
-  ['Mondo', [['spawn', 'Spawn', ''], ['border', 'Bordo del mondo', '', 7], ['players', 'Giocatori', '', 7], ['search', 'Cerca', 'F'], ['prune', 'Libera spazio', '']]],
+  // Every tool lives here and only here; tools still to come are not shown.
+  ['Modifica', [['biome', 'Bioma', 'B'], ['terrain', 'Terreno', 'T'], ['replace', 'Sostituisci', 'R']]],
+  ['Mondo', [['spawn', 'Spawn', ''], ['search', 'Cerca', 'F'], ['prune', 'Libera spazio', '']]],
 ];
 const TOOL = Object.fromEntries(TOOL_GROUPS.flatMap(([, items]) => items.map(([id, label, key, phase]) => [id, { id, label, key, phase }])));
 // Not in the column: placing a paste is a mode entered from Incolla.
@@ -75,7 +76,7 @@ let overlay = null;
 function initMap() {
   map = L.map('map', {
     crs: L.CRS.Simple, minZoom: -6, maxZoom: 5, zoomSnap: 0.5, zoomDelta: 0.5,
-    wheelPxPerZoomLevel: 90, attributionControl: false, zoomControl: false, doubleClickZoom: false,
+    wheelPxPerZoomLevel: 35, attributionControl: false, zoomControl: false, doubleClickZoom: false,
     boxZoom: false, keyboard: false,
   });
   map.setView([0, 0], 0);
@@ -429,6 +430,8 @@ async function closeTab(id) {
 }
 
 async function pickAndOpen() { await openWorld(await api.worlds.pick()); }
+/** The saves folder's worlds, with their pictures; "another place…" falls back to the folder picker. */
+function chooseWorld() { if (!state.tabs.length) { pickAndOpen(); return; } worldsDialog(ctx); }
 
 function setDim(id) {
   const t = tab(); if (!t || t.dim === id) return;
@@ -442,7 +445,7 @@ function setDim(id) {
 // Top: menus and ribbon (Chrome.dc.html)
 // ---------------------------------------------------------------------------
 
-const MENUS = ['File', 'Modifica', 'Selezione', 'Mondo', 'Vista', 'Impostazioni'];
+const MENUS = ['File', 'Modifica', 'Selezione', 'Vista', 'Impostazioni'];
 
 function ribbonItems() {
   const t = tab();
@@ -453,16 +456,14 @@ function ribbonItems() {
   const soon = (ic, label, phase) => b('', ic, label, '', false, false, `In arrivo (fase ${phase})`);
   switch (state.menu) {
     case 'File': return [b('open', 'i-open', 'Apri mondo…', '⌘O'), b('opensaves', 'i-open', 'Apri cartella saves'), b('close', 'i-plus', 'Chiudi mondo', '⌘W', has), '|',
-      b('apply', 'i-check', 'Applica…', '⌘↩', has && j.size > 0 && !ro), b('reveal', 'i-eye', 'Mostra nel Finder', '', has)];
+      b('reveal', 'i-eye', 'Mostra nel Finder', '', has)];
     case 'Modifica': return [b('undo', 'i-undo', 'Annulla', '⌘Z', has && j.canUndo), b('redo', 'i-redo', 'Ripeti', '⇧⌘Z', has && j.canRedo), '|',
-      soon('i-cut', 'Taglia', 3), b('copy', 'i-copy', 'Copia', '⌘C', has && hasSelection()), b('paste', 'i-paste', 'Incolla…', '⌘V', has && !ro && state.clips.length > 0, state.tool === 'paste'), '|', soon('i-rot', 'Ruota', 3), soon('i-flip', 'Specchia', 3), '|',
-      b('replace', 't-replace', 'Sostituisci…', '', has && !ro), b('clearbarriers', 'i-trash', 'Togli barriere', '', has && hasSelection() && !ro), '|',
+      b('copy', 'i-copy', 'Copia', '⌘C', has && hasSelection()), b('paste', 'i-paste', 'Incolla…', '⌘V', has && !ro && state.clips.length > 0, state.tool === 'paste'), '|',
+      b('clearbarriers', 'i-trash', 'Togli barriere', '', has && hasSelection() && !ro),
       b('askclaude', 't-terrain', 'Chiedi a Claude…', '⌘K', has && hasSelection() && !ro, false, has && !hasSelection() ? 'Prima seleziona un\'area' : '')];
     case 'Selezione': return [b('selall', 'i-grid', 'Seleziona tutto', '⌘A', has), b('deselect', 'i-eye', 'Deseleziona', '⌘D', has && hasSelection()),
       b('invert', 'i-flip', 'Inverti', '⇧⌘I', has), '|', b('savesel', 'i-down', 'Salva selezione…', '', has && hasSelection()),
-      b('ycut', 'i-fill', 'Y dalla quota di taglio', '', has && t.maxY !== null), '|', b('fillbiome', 't-biome', 'Riempi con il bioma', '', has && hasSelection() && !ro)];
-    case 'Mondo': return [b('tool:spawn', 't-spawn', 'Spawn e regole', '', has, state.tool === 'spawn'), b('tool:search', 't-search', 'Cerca blocchi', '⌘F', has, state.tool === 'search'),
-      b('replace', 't-replace', 'Sostituisci…', '', has && !ro), b('askclaude', 't-terrain', 'Chiedi a Claude…', '⌘K', has && hasSelection() && !ro), b('icon', 'i-eye', 'Icona del mondo…', '', has && !ro), '|', soon('t-border', 'Bordo del mondo', 7), soon('t-players', 'Giocatori', 7), b('tool:prune', 't-prune', 'Libera spazio', '', has && !ro, state.tool === 'prune')];
+      b('ycut', 'i-fill', 'Y dalla quota di taglio', '', has && t.maxY !== null)];
     case 'Vista': return has ? [
       ...t.info.dimensions.map((d) => b(`dim:${d.id}`, DIM_ICON[d.id] || 'd-over', d.label, '', true, t.dim === d.id)), '|',
       b('biomeview', 't-biome', 'Vista biomi', '', true, t.view === 'biomes'), b('grid', 'i-grid', 'Griglia chunk', '', true, state.grid), b('invisible', 'i-eye', 'Nascondi blocchi invisibili', '', true, hideInvisible()), '|',
@@ -543,8 +544,7 @@ function renderOptions() {
   const name = `<span class="nm">${esc(TOOL[state.tool].label)}</span>`;
   const brush = `<label>Dimensione <input type="range" id="brush-r" min="1" max="64" value="${state.brushR}" style="width:120px"><span class="mono" style="color:var(--tx)">${state.brushR * 2}</span></label>`;
   if (state.tool === 'move') {
-    el.innerHTML = `${name}<span class="hint">Trascina per spostarti · scorri per ingrandire · tieni premuto spazio con qualsiasi strumento</span>
-      <button class="btn right" data-act="fit">Adatta alla finestra</button><button class="btn" data-act="goto">Vai a coordinate…</button>`;
+    el.innerHTML = `${name}<span class="hint">Trascina per spostarti · scorri per ingrandire · tieni premuto spazio con qualsiasi strumento · ⌘0 tutto il mondo · ⌘G vai a coordinate</span>`;
   } else if (SELECT_TOOLS.has(state.tool)) {
     const seg = [['new', 'Nuova'], ['add', 'Aggiungi'], ['sub', 'Sottrai'], ['and', 'Interseca']]
       .map(([id, l]) => `<button class="sg${state.selMode === id ? ' on' : ''}" data-selmode="${id}" title="${id === 'add' ? 'oppure tieni ⇧' : id === 'sub' ? 'oppure tieni ⌥' : ''}">${l}</button>`).join('');
@@ -552,8 +552,7 @@ function renderOptions() {
     el.innerHTML = `${name}<div class="seg" style="width:268px">${seg}</div>${hint}${yFields(t.selection, info)}${selectionSummary(t)}`;
   } else if (state.tool === 'biome') {
     el.innerHTML = `${name}<button class="picker-btn" id="biome-pick"><i class="tile" style="background:${rgb(biomeColor(state.biome))}"></i>${esc(biomeLabel(state.biome))} ▾</button>${brush}
-      <span class="hint">${hasSelection() ? 'Il pennello dipinge solo dentro la selezione' : 'Dipingi sulla mappa · i biomi si cambiano a celle di 4×4'}</span>
-      <button class="btn right" data-act="fillbiome" ${hasSelection() ? '' : 'disabled'}>Riempi la selezione</button>`;
+      <span class="hint">${hasSelection() ? 'Il pennello dipinge solo dentro la selezione · "Riempi la selezione" è nel pannello' : 'Dipingi sulla mappa · i biomi si cambiano a celle di 4×4'}</span>`;
   } else if (state.tool === 'replace') {
     el.innerHTML = `${name}<span class="hint">Ambito: ${hasSelection() ? `selezione attiva${t.measure ? ` · ${fmt(t.measure.columns)} colonne` : ''}` : 'tutta la dimensione (nessuna selezione)'}</span>
       <span class="hint right">Le sostituzioni restano in sospeso finché non premi Applica</span><button class="btn pri" data-act="replace">Regole…</button>`;
@@ -618,12 +617,6 @@ function propsHtml(t) {
       <div class="actions"><button class="btn pri" data-act="replace">Apri le regole…</button>${hasSelection() ? '<button class="btn" data-act="deselect">Deseleziona</button>' : ''}</div></div>${selectionPanel(t, true)}`;
   }
   return `
-    <div class="sec"><div class="caps sh">Vista</div>
-      <div class="row"><span>Griglia dei chunk</span>${sw('pv-grid', state.grid, 'Griglia dei chunk')}</div>
-      <div class="row"><span>Vista biomi</span>${sw('pv-biomes', t.view === 'biomes', 'Vista biomi')}</div>
-      ${t.view === 'biomes' ? '<p class="hint" style="margin:2px 0 6px">Ogni colore è un bioma (pianura, foresta, oceano…). Passa il mouse sulla mappa: il nome compare in basso. Lo strumento Bioma (B) li dipinge.</p>' : ''}
-      <div class="row"><span title="Barriere, blocchi luce e vuoti struttura: in gioco non si vedono, sulla mappa si guarda attraverso">Nascondi blocchi invisibili</span>${sw('pv-invisible', hideInvisible(), 'Nascondi blocchi invisibili')}</div>
-    </div>
     <div class="sec"><div class="caps sh">Mondo</div>
       <div class="row"><span>${esc(i.name)}</span><span class="v">${esc(dimLabel)}</span></div>
       <div class="row"><span style="display:flex;align-items:center;gap:8px">${i.icon ? `<img src="${i.icon}" alt="" width="32" height="32" style="image-rendering:pixelated;border-radius:4px">` : ''}Icona</span><button class="btn" data-act="icon" ${i.readOnly ? 'disabled' : ''}>Cambia…</button></div>
@@ -656,18 +649,8 @@ function selectionPanel(t, compact = false) {
       <div class="row"><span>A</span><input class="fld" id="py-max" value="${signed(hi)}" ${full ? 'disabled' : ''} aria-label="Y massima"></div>
       <div class="row"><span>Tutta la colonna</span>${sw('py-full', full, 'Tutta la colonna')}</div>
     </div>
-    <div class="sec"><div class="caps sh">Azioni</div><div class="actions">
-      <button class="btn" data-act="fillbiome" ${hasSelection() && !t.info.readOnly ? '' : 'disabled'}>Riempi con il bioma</button>
-      <button class="btn" data-act="replace" ${t.info.readOnly ? 'disabled' : ''}>Sostituisci…</button>
-      <button class="btn" data-act="askclaude" ${hasSelection() && !t.info.readOnly ? '' : 'disabled'}>Chiedi a Claude…</button>
-      <button class="btn" data-act="searchhere" ${hasSelection() ? '' : 'disabled'}>Cerca qui</button>
-      <button class="btn" data-act="savesel" ${hasSelection() ? '' : 'disabled'}>Salva…</button>
-      <button class="btn" data-act="invert">Inverti</button>
-      <button class="btn" data-act="deselect" ${hasSelection() ? '' : 'disabled'}>Deseleziona</button>
-      ${state.settings?.dev ? `<button class="btn" data-act="devfill" ${t.info.readOnly ? 'disabled' : ''}>Riempi con blocco… (prova)</button>` : ''}
-    </div></div>
     <div class="sec"><div class="caps sh">Selezioni salvate</div>
-      ${saved.length ? saved.map((s) => `<div class="row"><button class="btn" data-loadsel="${esc(s.name)}" style="flex:1;justify-content:flex-start">${esc(s.name)}</button><button class="btn" data-delsel="${esc(s.name)}" aria-label="Elimina ${esc(s.name)}">${icon('i-trash')}</button></div>`).join('') : '<p class="empty-note" style="padding:0">Nessuna. “Salva…” tiene la selezione per questo mondo.</p>'}
+      ${saved.length ? saved.map((s) => `<div class="row"><button class="btn" data-loadsel="${esc(s.name)}" style="flex:1;justify-content:flex-start">${esc(s.name)}</button><button class="btn" data-delsel="${esc(s.name)}" aria-label="Elimina ${esc(s.name)}">${icon('i-trash')}</button></div>`).join('') : '<p class="empty-note" style="padding:0">Nessuna. Selezione → Salva selezione… la tiene per questo mondo.</p>'}
     </div>`;
 }
 
@@ -676,7 +659,7 @@ function biomePanel(t) {
   return `
     <div class="sec"><div class="caps sh">Bioma da dipingere</div>
       <div class="row"><span style="display:flex;align-items:center;gap:8px"><i class="tile" style="background:${rgb(biomeColor(state.biome))}"></i>${esc(biomeLabel(state.biome))}</span><span class="v mono">${esc(state.biome.replace('minecraft:', ''))}</span></div>
-      <div class="actions" style="margin-top:8px"><button class="btn" data-act="fillbiome" ${hasSelection() ? '' : 'disabled'}>Riempi la selezione</button><button class="btn" data-act="biomeview">${t.view === 'biomes' ? 'Torna ai blocchi' : 'Mostra la vista biomi'}</button></div>
+      <div class="actions" style="margin-top:8px"><button class="btn" data-act="fillbiome" ${hasSelection() ? '' : 'disabled'}>Riempi la selezione</button></div>
       <p class="hint" style="margin:10px 0 0">Si cambia solo il bioma (erba, fogliame, acqua, mob, meteo): i blocchi restano. ${hasSelection() ? 'Il pennello resta dentro la selezione e il suo intervallo Y.' : 'Tutta la colonna, dal fondo al cielo.'}</p>
     </div>
     <div class="sec"><div class="caps sh">Biomi</div>
@@ -842,6 +825,7 @@ function renderStatus() {
   }
   if (map && t) parts.push(`<span>Zoom ${fmt(Math.round(Math.pow(2, map.getZoom()) * 100))}%</span>`);
   // Far zooms are built in the background: say so, instead of a silent black map.
+  if (t && state.busy) parts.push(`<span class="building">${esc(state.busy)}</span>`);
   if (t && state.building) parts.push(`<span class="building" title="Le zone viste da lontano si disegnano in background, partendo da quella che hai davanti. La prima volta può volerci qualche minuto; poi restano pronte finché il mondo è aperto.">Preparo la mappa… ${fmt(state.building)}</span>`);
   let cut = '';
   if (t) {
@@ -926,6 +910,8 @@ const ctx = {
   center: () => fromLatLng(map.getCenter()),
   goTo: (x, z) => goTo(x, z),
   mapRect: () => $('map').getBoundingClientRect(),
+  pickAndOpen: () => pickAndOpen(),
+  openPaths: () => state.tabs.map((x) => x.info.path),
 };
 
 const free = createFreeSpace({
@@ -944,7 +930,7 @@ async function copySelection() {
   const clip = await guard(() => api.clips.copy(t.id, t.dim, t.selection));
   if (!clip) return;
   state.clips = await api.clips.list();
-  toast(`Copiato: ${fmt(clip.bounds.maxX - clip.bounds.minX + 1)} × ${fmt(clip.bounds.maxZ - clip.bounds.minZ + 1)} blocchi. Incollalo con ⌘V, anche in un altro mondo.`);
+  toast(`Copiato: ${fmt(clip.bounds.maxX - clip.bounds.minX + 1)} × ${fmt(clip.bounds.maxZ - clip.bounds.minZ + 1)} blocchi${clip.fromY !== null && clip.fromY !== undefined ? `, da Y ${signed(clip.fromY)} in su (poco sotto il terreno)` : ''}. Incollalo con ⌘V, anche in un altro mondo.`);
   render();
 }
 
@@ -954,7 +940,8 @@ function startPaste(clip) {
   if (t.info.readOnly) { toast('Mondo in sola lettura.', 'warn'); return; }
   if (clip.dim !== t.dim) { toast(`L'appunto viene da un'altra dimensione (${clip.dim}).`, 'warn'); return; }
   setTool('paste');
-  state.paste = { clip, mode: 'chunks', dy: 0, air: true, biomes: true, at: state.cursor ? { x: state.cursor.fx, z: state.cursor.fz } : null };
+  // "Blocchi" by default: a building arrives without the ground around it up to the chunk edge.
+  state.paste = { clip, mode: state.pasteMode || 'blocks', dy: 0, air: true, biomes: true, at: state.cursor ? { x: state.cursor.fx, z: state.cursor.fz } : null };
   render();
   overlay.draw(false);
 }
@@ -979,10 +966,13 @@ async function placePaste(same = false) {
     air: p.air, biomes: p.biomes, selection: p.clip.selection,
     yMin: p.clip.selection.yMin ?? null, yMax: p.clip.selection.yMax ?? null,
   };
-  const warnings = await guard(() => api.clips.check(t.id, op));
-  if (!warnings) return;
-  for (const w of warnings) toast(w, 'warn');
-  await pushOp(op);
+  state.busy = 'Incollo il pezzo…'; renderStatus();
+  try {
+    const warnings = await guard(() => api.clips.check(t.id, op));
+    if (!warnings) return;
+    for (const w of warnings) toast(w, 'warn');
+    await pushOp(op);
+  } finally { state.busy = null; renderStatus(); }
   setTool('move');
   toast('Incollato in sospeso. Lo strumento Terreno (T) raccorda i bordi del pezzo.');
 }
@@ -1076,7 +1066,12 @@ function ghosts(t) {
   if (!t) return null;
   if (state.tool === 'paste' && state.paste && (state.paste.at || false)) {
     const b = pasteNow(state.paste).to;
-    return [{ box: b, color: '#a78bfa', fill: 'rgba(167,139,250,.18)', label: `${state.paste.clip.name}` }];
+    const p = state.paste, c = p.clip;
+    // The piece itself, seen from above (taken when it was copied), moved to where it would land.
+    const from = p.mode === 'chunks' ? { x: c.chunks.minX * 16, z: c.chunks.minZ * 16 } : { x: c.bounds.minX, z: c.bounds.minZ };
+    const pb = c.previewBox;
+    const image = c.preview && pb ? { src: c.preview, box: { minX: pb.minX + b.minX - from.x, minZ: pb.minZ + b.minZ - from.z, maxX: pb.maxX + b.minX - from.x, maxZ: pb.maxZ + b.minZ - from.z } } : null;
+    return [{ box: b, color: '#a78bfa', fill: image ? null : 'rgba(167,139,250,.18)', image, label: `${c.name}` }];
   }
   if (state.tool === 'terrain' && terrainBox) {
     const tr = state.terrain, b = terrainBox, on = new Set(tr.sides);
@@ -1098,7 +1093,7 @@ function ghosts(t) {
 // ---------------------------------------------------------------------------
 
 const ACTIONS = {
-  open: pickAndOpen,
+  open: chooseWorld,
   opensaves: () => state.settings && api.openPath(state.settings.savesDir),
   close: () => state.active && closeTab(state.active),
   undo, redo,
@@ -1118,7 +1113,12 @@ const ACTIONS = {
   freescan: () => free.scan(),
   freecancel: () => free.cancel(),
   freepush: () => free.push(),
-  biomeview: () => { const t = tab(); if (!t) return; t.view = t.view === 'biomes' ? 'blocks' : 'biomes'; if (layer) layer.redraw(); render(); },
+  biomeview: () => {
+    const t = tab(); if (!t) return;
+    t.view = t.view === 'biomes' ? 'blocks' : 'biomes';
+    if (t.view === 'biomes') toast('Vista biomi: ogni colore è un bioma. Passa il mouse sulla mappa e il nome compare in basso.');
+    if (layer) layer.redraw(); render();
+  },
   grid: () => { state.grid = !state.grid; overlay.draw(false); render(); },
   icon: () => tab() && iconDialog(ctx),
   invisible: async () => { state.settings = await api.settings.set({ hideInvisible: !hideInvisible() }); if (layer) layer.redraw(); render(); },
@@ -1195,7 +1195,7 @@ document.addEventListener('click', async (e) => {
   else if (d.qkind) { state.search.kind = d.qkind; renderPanel(); }
   else if (d.weather) setWeather(d.weather);
   else if (d.rule && d.bool) pushOp({ type: 'setGameRule', rule: d.rule, value: !el.classList.contains('on') });
-  else if (d.pmode && state.paste) { state.paste.mode = d.pmode; renderOptions(); overlay.draw(false); }
+  else if (d.pmode && state.paste) { state.paste.mode = state.pasteMode = d.pmode; renderOptions(); overlay.draw(false); }
   else if (d.pasteclip) startPaste(state.clips.find((c) => c.dir === d.pasteclip));
   else if (d.delclip) deleteClip(d.delclip);
   else if (d.side) { const s = new Set(state.terrain.sides); if (s.has(d.side)) s.delete(d.side); else s.add(d.side); state.terrain.sides = SIDES.filter((x) => s.has(x)); renderPanel(); overlay.draw(false); }
@@ -1265,7 +1265,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (meta) {
-    if (k === 'o') { e.preventDefault(); pickAndOpen(); }
+    if (k === 'o') { e.preventDefault(); chooseWorld(); }
     else if (k === 'w') { e.preventDefault(); ACTIONS.close(); }
     else if (k === 'z') { e.preventDefault(); (e.shiftKey ? redo : undo)(); }
     else if (e.key === 'Enter') { e.preventDefault(); applyDialog(ctx); }

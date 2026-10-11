@@ -334,3 +334,4 @@ body.panel-collapsed #panel-body { display: none; }
 #status .building::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: building-pulse 1.2s ease-in-out infinite; }
 @keyframes building-pulse { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { #status .building::before { animation: none; } }
+.wr:disabled { opacity: .5; cursor: default; }
