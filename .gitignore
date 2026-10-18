@@ -5,3 +5,6 @@ data/
 
 *.log
 .DS_Store
+
+# Chiavi del router AI: restano sul tuo computer
+.env

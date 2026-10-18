@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Router AI</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6a66; --line: #e3e1db;
+    --accent: #2f6f5e; --accent-text: #ffffff; --user: #e8f0ed; --code: #f0eee9;
+    --free: #2f6f5e; --paid: #9a5b13; --error: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #1f1f1d; --text: #ecebe7; --muted: #9c9a94; --line: #34332f;
+      --accent: #5fb39b; --accent-text: #0e1a16; --user: #22302b; --code: #2a2926;
+      --free: #5fb39b; --paid: #e0a050; --error: #f2817a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+    padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0 auto 0 0; }
+  select, button, textarea { font: inherit; color: inherit; }
+  select, .btn {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px;
+  }
+  .btn { cursor: pointer; }
+  label.toggle { display: flex; gap: 6px; align-items: center; cursor: pointer; color: var(--muted); }
+  main { flex: 1; overflow-y: auto; }
+  #chat { max-width: 780px; margin: 0 auto; padding: 16px; }
+  .msg { margin: 0 0 18px; }
+  .msg.user .body {
+    background: var(--user); border-radius: 12px; padding: 10px 14px; margin-left: auto; max-width: 85%;
+    width: fit-content; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .msg.assistant .body { overflow-wrap: anywhere; }
+  .body p { margin: 0 0 .7em; }
+  .body pre { background: var(--code); border-radius: 8px; padding: 10px 12px; overflow-x: auto; font-size: 13px; }
+  .body code { background: var(--code); border-radius: 4px; padding: 1px 4px; font-size: .92em; }
+  .body pre code { background: none; padding: 0; }
+  .meta { font-size: 12.5px; color: var(--muted); margin-bottom: 4px; display: flex; flex-wrap: wrap; gap: 4px 8px; }
+  .tag { border-radius: 99px; padding: 0 8px; border: 1px solid currentColor; }
+  .tag.free { color: var(--free); } .tag.paid { color: var(--paid); }
+  .note { color: var(--muted); font-size: 12.5px; }
+  .err { color: var(--error); }
+  footer { border-top: 1px solid var(--line); background: var(--panel); padding: 10px 16px; }
+  form { max-width: 780px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
+  textarea {
+    flex: 1; resize: none; min-height: 44px; max-height: 40vh; padding: 10px 12px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .send { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
+  .send:disabled { opacity: .5; cursor: default; }
+  dialog {
+    border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text);
+    width: min(640px, calc(100vw - 32px)); max-height: 85vh; padding: 18px;
+  }
+  dialog::backdrop { background: rgb(0 0 0 / .4); }
+  dialog h2 { font-size: 15px; margin: 18px 0 6px; } dialog h2:first-child { margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .ok { color: var(--free); } .off { color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; margin-top: 18vh; padding: 0 16px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Router AI</h1>
+  <select id="model" aria-label="Modello"><option value="auto">Automatico</option></select>
+  <label class="toggle"><input type="checkbox" id="free"> Solo gratis</label>
+  <button class="btn" id="info" type="button">Modelli e uso</button>
+  <button class="btn" id="reset" type="button">Nuova chat</button>
+</header>
+<main><div id="chat"></div></main>
+<footer>
+  <form id="form">
+    <textarea id="input" rows="1" placeholder="Scrivi un messaggio…" title="Invio per mandare, Maiusc+Invio per andare a capo"></textarea>
+    <button class="send" id="send">Invia</button>
+  </form>
+</footer>
+<dialog id="dlg">
+  <div id="dlgBody"></div>
+  <p style="text-align:right;margin:14px 0 0"><button class="btn" type="button" onclick="dlg.close()">Chiudi</button></p>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const chatEl = $('chat'), input = $('input'), sendBtn = $('send'), modelSel = $('model'), freeBox = $('free');
+let history = [];
+let busy = false;
+let stato = null;
+
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+function esc(s) {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Markdown essenziale: blocchi di codice, codice in linea, grassetto, paragrafi.
+function render(md) {
+  const parts = md.split(/```/);
+  return parts.map((part, i) => {
+    if (i % 2 === 1) {
+      const nl = part.indexOf('\n');
+      const code = nl >= 0 && /^[\w+-]*$/.test(part.slice(0, nl)) ? part.slice(nl + 1) : part;
+      return `<pre><code>${esc(code.replace(/\n$/, ''))}</code></pre>`;
+    }
+    return esc(part).split(/\n{2,}/).filter(p => p.trim()).map(p => '<p>' + p
+      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>') + '</p>').join('');
+  }).join('');
+}
+
+function metaHtml(m) {
+  const bits = [];
+  if (m.label) bits.push(`<span class="tag ${m.free ? 'free' : 'paid'}">${esc(m.label)} · ${m.free ? 'gratis' : 'a pagamento'}</span>`);
+  if (m.categoria) bits.push(`<span>${esc(m.categoria)}${m.motivo ? ' — ' + esc(m.motivo) : ''}</span>`);
+  else if (m.via === 'manuale') bits.push('<span>scelto da te</span>');
+  if (m.via && m.via !== 'manuale') bits.push(`<span>deciso da: ${esc(m.via === 'regole' ? 'regole' : m.via)}</span>`);
+  return bits.join('');
+}
+
+function draw() {
+  if (!history.length) {
+    chatEl.innerHTML = `<p class="empty">Scrivi qualcosa: il router sceglie il modello adatto, prima tra quelli gratuiti.</p>`;
+    return;
+  }
+  chatEl.innerHTML = history.map(m => m.role === 'user'
+    ? `<div class="msg user"><div class="body">${esc(m.content)}</div></div>`
+    : `<div class="msg assistant"><div class="meta">${metaHtml(m.meta || {})}</div>
+         ${(m.meta?.notes || []).map(n => `<div class="note">${esc(n)}</div>`).join('')}
+         <div class="body">${render(m.content)}</div>
+         ${m.meta?.error ? `<div class="err">${esc(m.meta.error)}</div>` : ''}</div>`).join('');
+  document.querySelector('main').scrollTop = 1e9;
+}
+
+async function loadStato() {
+  stato = await fetch('/api/stato').then(r => r.json());
+  const keep = modelSel.value;
+  const opt = m => `<option value="${m.id}" ${m.stato === 'senza-chiave' ? 'disabled' : ''}>${esc(m.label)}${m.stato === 'senza-chiave' ? ' (senza chiave)' : ''}</option>`;
+  modelSel.innerHTML = '<option value="auto">Automatico</option>' +
+    `<optgroup label="Gratis">${stato.modelli.filter(m => m.free).map(opt).join('')}</optgroup>` +
+    `<optgroup label="A pagamento">${stato.modelli.filter(m => !m.free).map(opt).join('')}</optgroup>`;
+  modelSel.value = [...modelSel.options].some(o => o.value === keep && !o.disabled) ? keep : 'auto';
+}
+
+function showInfo() {
+  const attivi = stato.fornitori.filter(f => f.attivo).length;
+  const statoTxt = { 'ok': '<span class="ok">pronto</span>', 'senza-chiave': '<span class="off">senza chiave</span>',
+    'in-pausa': 'in pausa', 'limite-giorno': 'limite di oggi raggiunto' };
+  const totals = {};
+  for (const d of stato.uso) for (const [id, r] of Object.entries(d.modelli)) {
+    totals[id] ||= { richieste: 0, caratteri: 0 };
+    totals[id].richieste += r.richieste; totals[id].caratteri += r.caratteri;
+  }
+  const label = id => stato.modelli.find(m => m.id === id)?.label || id;
+  $('dlgBody').innerHTML = `
+    <h2>Fornitori (${attivi} attivi)</h2>
+    <table>${stato.fornitori.map(f => `<tr><td>${esc(f.label)}</td><td>${f.attivo ? '<span class="ok">attivo</span>'
+      : `<span class="off">manca ${esc(f.env)} nel .env</span> · <a href="${esc(f.signup)}" target="_blank" rel="noopener">${f.env === 'OLLAMA_URL' ? 'scaricalo' : 'prendi la chiave'}</a>`}</td></tr>`).join('')}</table>
+    <h2>Modelli</h2>
+    <table><tr><th>Modello</th><th>Costo</th><th>Stato</th><th>Oggi</th></tr>${stato.modelli.map(m => `<tr>
+      <td>${esc(m.label)}</td><td>${m.free ? 'gratis' : 'a pagamento'}</td>
+      <td>${statoTxt[m.stato] || esc(m.stato)}${m.pausa ? ` <span class="note">(${esc(m.pausa)})</span>` : ''}</td>
+      <td>${m.oggi}${m.limiteGiorno ? ' / ' + m.limiteGiorno : ''}</td></tr>`).join('')}</table>
+    <h2>Uso degli ultimi 14 giorni</h2>
+    ${Object.keys(totals).length ? `<table><tr><th>Modello</th><th>Richieste</th><th>Caratteri in risposta</th></tr>${Object.entries(totals)
+      .sort((a, b) => b[1].richieste - a[1].richieste)
+      .map(([id, r]) => `<tr><td>${esc(label(id))}</td><td>${r.richieste}</td><td>${r.caratteri.toLocaleString('it')}</td></tr>`).join('')}</table>`
+      : '<p class="note">Ancora nessuna richiesta.</p>'}
+    <h2>Come sceglie</h2>
+    <table>${Object.entries(stato.categorie).map(([k, d]) => `<tr><td><strong>${esc(k)}</strong></td><td>${esc(d)}</td></tr>`).join('')}</table>
+    <p class="note">Classificazione: ${stato.classificatore === 'regole' ? 'regole a parole chiave' : 'un modello gratuito (regole come riserva)'}. Ordine dei modelli per categoria in config.js.</p>`;
+  $('dlg').showModal();
+}
+
+async function send(text) {
+  busy = true; sendBtn.disabled = true;
+  history.push({ role: 'user', content: text });
+  const reply = { role: 'assistant', content: '', meta: { notes: [] } };
+  history.push(reply);
+  draw();
+  const payload = {
+    messages: history.slice(0, -1).filter(m => m.content).map(m => ({ role: m.role, content: m.content })),
+    model: modelSel.value,
+    soloGratis: freeBox.checked,
+  };
+  try {
+    const res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `errore ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 2);
+        if (!line.startsWith('data:')) continue;
+        const ev = JSON.parse(line.slice(5));
+        if (ev.type === 'route') Object.assign(reply.meta, { categoria: ev.categoria, motivo: ev.motivo, via: ev.via });
+        else if (ev.type === 'model') Object.assign(reply.meta, { label: ev.label, free: ev.free, model: ev.model });
+        else if (ev.type === 'fallback') reply.meta.notes.push(`${ev.label} non disponibile (${ev.motivo}), passo al successivo`);
+        else if (ev.type === 'delta') reply.content += ev.text;
+        else if (ev.type === 'error') reply.meta.error = ev.message;
+        draw();
+      }
+    }
+  } catch (err) {
+    reply.meta.error = err.message;
+  }
+  draw();
+  store.set('router.history', history);
+  busy = false; sendBtn.disabled = false;
+  loadStato().catch(() => {});
+}
+
+$('form').addEventListener('submit', e => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text || busy) return;
+  input.value = ''; input.style.height = '';
+  send(text);
+});
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('form').requestSubmit(); }
+});
+input.addEventListener('input', () => { input.style.height = ''; input.style.height = input.scrollHeight + 'px'; });
+$('reset').onclick = () => { if (busy) return; history = []; store.set('router.history', history); draw(); input.focus(); };
+$('info').onclick = () => loadStato().then(showInfo);
+freeBox.onchange = () => store.set('router.free', freeBox.checked);
+modelSel.onchange = () => store.set('router.model', modelSel.value);
+
+history = store.get('router.history', []);
+draw();
+loadStato().then(() => {
+  freeBox.checked = store.get('router.free', stato.soloGratis);
+  const saved = store.get('router.model', 'auto');
+  if ([...modelSel.options].some(o => o.value === saved && !o.disabled)) modelSel.value = saved;
+}).catch(() => { chatEl.innerHTML = '<p class="empty err">Il server non risponde. È avviato con npm start?</p>'; });
+input.focus();
+</script>
+</body>
+</html>
